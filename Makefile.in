@@ -7,7 +7,7 @@ sbindir=@sbindir@
 sysconfdir=@sysconfdir@
 localstatedir=@localstatedir@
 
-SQLITE3_AMALGAMATION = sqlite-amalgamation-3140200
+SQLITE3_AMALGAMATION = sqlite-amalgamation-3150200
 
 include $(SOURCE_PREFIX)sourcefiles.mk
 include $(SOURCE_PREFIX)headerfiles.mk
@@ -75,7 +75,6 @@ CFLAGS+=-DSQLITE_THREADSAFE=0 \
 	-DSQLITE_OMIT_COMPILEOPTION_DIAGS \
 	-DSQLITE_OMIT_DEPRECATED \
 	-DSQLITE_OMIT_LOAD_EXTENSION \
-	-DSQLITE_OMIT_VIRTUALTABLE \
 	-DSQLITE_OMIT_AUTHORIZATION
 CFLAGS+=-fPIC -DSERVAL_ENABLE_DEBUG=1 -Wall -Werror -Wextra -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2
 

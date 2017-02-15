@@ -1,4 +1,4 @@
-/* 
+/*
 Serval DNA MDP addressing
 Copyright (C) 2012-2013 Serval Project Inc.
 
@@ -51,7 +51,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 struct packet_rule;
 struct overlay_buffer;
 
-// This structure supports both our own routing protocol which can store calculation details in *node 
+// This structure supports both our own routing protocol which can store calculation details in *node
 // or IP4 addresses reachable via any other kind of normal layer3 routing protocol, eg olsr
 struct subscriber{
   // minimum abbreviation length, in bits.
@@ -60,13 +60,13 @@ struct subscriber{
   sid_t sid;
 
   int max_packet_version;
-  
+
   // link state routing information
   struct link_state *link_state;
-  
+
   // rhizome sync state
-  struct rhizome_sync *sync_state;
-  struct rhizome_sync_keys *sync_keys_state;
+  struct rhizome_sync_bars_subscriber_state *sync_bars_state;
+  struct rhizome_sync_keys_peer_state *sync_keys_state;
   uint8_t sync_version;
 
   // result of routing calculations;
@@ -76,14 +76,14 @@ struct subscriber{
   struct subscriber *next_hop;
   int hop_count;
   struct subscriber *prior_hop;
-  
+
   // if direct, or unicast, where do we send packets?
   struct network_destination *destination;
-  
+
   time_ms_t last_stun_request;
   time_ms_t last_probe_response;
   time_ms_t last_explained;
-  
+
   // public signing key details for remote peers
   identity_t id_public;
   time_ms_t id_last_request;

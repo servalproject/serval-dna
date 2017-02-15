@@ -78,20 +78,20 @@ struct sync_state{
 static void sync_xor(const sync_key_t *src_key, key_message_t *dest_key)
 {
   unsigned i=0;
-  
+
   assert(dest_key->prefix_len < KEY_LEN_BITS);
-  
+
   // Assign whole prefix bytes
   for(;i<(dest_key->prefix_len>>3);i++)
     dest_key->key.key[i] = src_key->key[i];
-    
+
   if (dest_key->prefix_len&7){
     // Mix assignment and xor for the byte of overlap
     uint8_t mask = (0xFF00>>(dest_key->prefix_len&7)) & 0xFF;
     dest_key->key.key[i] = (mask & src_key->key[i]) | (dest_key->key.key[i] ^ src_key->key[i]);
     i++;
   }
-  
+
   // Xor whole remaining bytes
   for (;i<KEY_LEN;i++)
     dest_key->key.key[i] ^= src_key->key[i];
@@ -122,10 +122,10 @@ static int cmp_message(const key_message_t *first, const key_message_t *second)
   uint8_t second_xor_begin = (second->prefix_len == KEY_LEN_BITS)?second->min_prefix_len:second->prefix_len;
   uint8_t xor_begin_offset = MAX_VAL(first_xor_begin, second_xor_begin);
   int ret=0;
-  
+
   // TODO at least we can compare before common_prefix_len and after xor_begin_offset
   // But we aren't comparing the bits in the middle
-      
+
   if (common_prefix_len < xor_begin_offset){
     if (common_prefix_len>=8 && memcmp(&first->key, &second->key, common_prefix_len>>3)!=0)
       ret = -1;
@@ -162,15 +162,15 @@ static struct node *add_key(struct node **root, const sync_key_t *key, void *con
   uint8_t min_prefix_len = prefix_len;
   while(*node){
     uint8_t child_index = sync_get_bits(prefix_len, PREFIX_STEP_BITS, key);
-    
+
     if ((*node)->message.prefix_len == prefix_len){
       sync_xor_node((*node), key);
-      
+
       if ((*node)->send_state == SENT)
 	(*node)->send_state = NOT_SENT;
       if ((*node)->send_state == QUEUED && (*node)->sent_count>0)
 	(*node)->send_state = DONT_SEND;
-	
+
       // reset the send counter
       (*node)->sent_count=0;
       prefix_len += PREFIX_STEP_BITS;
@@ -180,32 +180,32 @@ static struct node *add_key(struct node **root, const sync_key_t *key, void *con
 	break;
       continue;
     }
-    
+
     // this node represents a range of prefix bits
     uint8_t node_child_index = sync_get_bits(prefix_len, PREFIX_STEP_BITS, &(*node)->message.key);
-    
+
     // if the prefix matches the key, keep searching.
     if (child_index == node_child_index){
       prefix_len += PREFIX_STEP_BITS;
       continue;
     }
-    
+
     // if there is a mismatch in the range of prefix bits, we need to create a new node to represent the new range.
     struct node *parent = emalloc_zero(sizeof(struct node));
     parent->message.min_prefix_len = min_prefix_len;
     parent->message.prefix_len = prefix_len;
     parent->message.stored = stored;
     parent->children[node_child_index] = *node;
-    
+
     min_prefix_len = prefix_len + PREFIX_STEP_BITS;
     assert(min_prefix_len <= (*node)->message.prefix_len);
-    
+
     (*node)->message.min_prefix_len = min_prefix_len;
-    
+
     // xor all the existing children of this node, we can't assume the prefix bits are right in the existing node.
     // we might be able to speed this up by using the prefix bits of the passed in key
     xor_children(parent, &parent->message);
-    
+
     *node = parent;
   }
   // create final leaf node
@@ -226,11 +226,11 @@ static void free_node(struct sync_state *state, struct node *node)
   unsigned i;
   for (i=0;i<NODE_CHILDREN;i++)
     free_node(state, node->children[i]);
-  
+
   if (node->transmit_next){
     assert(state);
     assert(node->transmit_prev);
-    
+
     if (node->transmit_next == node){
       assert(node->transmit_prev==node);
       state->transmit_ptr = NULL;
@@ -241,7 +241,7 @@ static void free_node(struct sync_state *state, struct node *node)
       node->transmit_prev->transmit_next = node->transmit_next;
     }
   }
-  
+
   free(node);
 }
 
@@ -250,10 +250,10 @@ static void remove_key(struct sync_state *state, struct node **root, const sync_
   uint8_t prefix_len = 0;
   struct node **node = root;
   struct node **parent = NULL;
-  
+
   while((*node)->message.prefix_len != KEY_LEN_BITS){
     uint8_t child_index = sync_get_bits(prefix_len, PREFIX_STEP_BITS, key);
-    
+
     // this node represents a range of prefix bits
     if (prefix_len < (*node)->message.prefix_len){
       uint8_t node_child_index = sync_get_bits(prefix_len, PREFIX_STEP_BITS, &(*node)->message.key);
@@ -261,28 +261,28 @@ static void remove_key(struct sync_state *state, struct node **root, const sync_
       prefix_len += PREFIX_STEP_BITS;
       continue;
     }
-    
+
     sync_xor_node((*node), key);
     if ((*node)->send_state == SENT)
       (*node)->send_state = NOT_SENT;
     if ((*node)->send_state == QUEUED && (*node)->sent_count>0)
       (*node)->send_state = DONT_SEND;
-      
+
     // reset the send counter
     (*node)->sent_count=0;
-    
+
     parent = node;
     node = &(*node)->children[child_index];
     assert(*node);
     prefix_len += PREFIX_STEP_BITS;
   }
-  
+
   free_node(state, (*node));
   *node = NULL;
-  
+
   if (!parent)
     return;
-  
+
   node = NULL;
   // If *parent has <= 1 child now, we need to remove *parent as well
   unsigned i;
@@ -300,9 +300,9 @@ static void remove_key(struct sync_state *state, struct node **root, const sync_
   // remove child ptr so it isn't free'd
   *node = NULL;
   c->message.min_prefix_len = (*parent)->message.min_prefix_len;
-  
+
   free_node(state, *parent);
-  
+
   *parent = c;
 }
 
@@ -312,15 +312,15 @@ static const struct node * find_message(const struct node *node, const key_messa
   if (!node)
     return NULL;
   uint8_t prefix_len = node->message.prefix_len;
-  
+
   while(1){
     if (cmp_message(&node->message, message)==0)
       return node;
     if (node->message.prefix_len == KEY_LEN_BITS)
       return NULL;
-    
+
     uint8_t child_index = sync_get_bits(prefix_len, PREFIX_STEP_BITS, &message->key);
-    
+
     if (prefix_len < node->message.prefix_len){
       // TODO optimise this case by comparing all possible prefix bits in one hit
       uint8_t node_index = sync_get_bits(prefix_len, PREFIX_STEP_BITS, &node->message.key);
@@ -364,11 +364,11 @@ void sync_add_key(struct sync_state *state, const sync_key_t *key, void *context
     node->context = context;
     return;
   }
-  
+
   state->key_count++;
   state->progress=0;
   add_key(&state->root, key, context, 1);
-  
+
   struct sync_peer_state *peer_state = state->peers;
   while(peer_state){
     if (find_message(peer_state->root, &message)){
@@ -409,18 +409,18 @@ void sync_free_state(struct sync_state *state){
     p->transmit_next=NULL;
     p->transmit_prev=NULL;
   }
-  
+
   free_node(NULL, state->root);
-    
+
   while(state->peers){
     struct sync_peer_state *peer_state = state->peers;
-    
+
     free_node(NULL, peer_state->root);
-    
+
     state->peers = peer_state->next;
     free(peer_state);
   }
-  
+
   free(state);
 }
 
@@ -443,13 +443,13 @@ size_t sync_build_message(struct sync_state *state, uint8_t *buff, size_t len)
   size_t offset=0;
   state->sent_messages++;
   state->progress++;
-  
+
   struct node *tail = state->transmit_ptr;
-  
+
   while(tail && offset + MESSAGE_BYTES<=len){
     struct node *head = tail->transmit_next;
     assert(head->transmit_prev == tail);
-    
+
     if (head->send_state == QUEUED){
       copy_message(&buff[offset], &head->message);
       offset+=MESSAGE_BYTES;
@@ -458,7 +458,7 @@ size_t sync_build_message(struct sync_state *state, uint8_t *buff, size_t len)
       if (head->sent_count>=SYNC_MAX_RETRIES)
 	head->send_state = SENT;
     }
-    
+
     if (head->send_state == QUEUED){
       // advance tail pointer
       tail = head;
@@ -466,7 +466,7 @@ size_t sync_build_message(struct sync_state *state, uint8_t *buff, size_t len)
       struct node *next = head->transmit_next;
       head->transmit_next = NULL;
       head->transmit_prev = NULL;
-      
+
       if (head == tail || next == head){
 	// transmit loop is now empty
 	tail = NULL;
@@ -477,14 +477,14 @@ size_t sync_build_message(struct sync_state *state, uint8_t *buff, size_t len)
 	next->transmit_prev = tail;
       }
     }
-    
+
     // stop if we just sent everything in the loop once.
     if (head == state->transmit_ptr)
       break;
   }
-  
+
   state->transmit_ptr = tail;
-  
+
   // If we don't have anything else to send, always send our root tree node
   if(offset + MESSAGE_BYTES<=len && offset==0){
     state->sent_root++;
@@ -492,10 +492,22 @@ size_t sync_build_message(struct sync_state *state, uint8_t *buff, size_t len)
     offset+=MESSAGE_BYTES;
     state->sent_record_count++;
   }
-  
+
 
   return offset;
 }
+
+// prepare a network packet buffer, with no outgoing messages.
+// Only used to advertise rhizome_sync_keys capability.
+size_t sync_build_empty_message(uint8_t *buff, size_t len)
+{
+  assert(len >= MESSAGE_BYTES);
+
+  copy_message(&buff[0], NULL);
+
+  return MESSAGE_BYTES;
+}
+
 
 // Add a tree node into our transmission queue
 // the node can be added to the head or tail of the list.
@@ -504,10 +516,10 @@ static void queue_node(struct sync_state *state, struct node *node, uint8_t head
   node->send_state = QUEUED;
   if (node->transmit_next)
     return;
-  
+
   if (node->message.prefix_len == KEY_LEN_BITS)
     state->progress=0;
-  
+
   // insert this node into the transmit loop
   if (!state->transmit_ptr){
     state->transmit_ptr = node;
@@ -516,10 +528,10 @@ static void queue_node(struct sync_state *state, struct node *node, uint8_t head
   }else{
     node->transmit_next = state->transmit_ptr->transmit_next;
     node->transmit_prev = state->transmit_ptr;
-    
+
     node->transmit_next->transmit_prev = node;
     node->transmit_prev->transmit_next = node;
-    
+
     // advance past this node to transmit it last
     if (!head)
       state->transmit_ptr = node;
@@ -540,7 +552,7 @@ static unsigned peer_is_missing(struct sync_state *state, struct sync_peer_state
     }
     return 0;
   }
-  
+
   add_key(&peer->root, &node->message.key, node->context, 1);
   peer->send_count ++;
   state->progress=0;
@@ -552,7 +564,7 @@ static unsigned peer_is_missing(struct sync_state *state, struct sync_peer_state
 // traverse the children of this node, and add them all to the transmit queue
 // optionally ignoring a single child of this node.
 static void peer_missing_leaf_nodes(
-    struct sync_state *state, struct sync_peer_state *peer, 
+    struct sync_state *state, struct sync_peer_state *peer,
     struct node *node, unsigned except, uint8_t allow_remove)
 {
   if (node->message.prefix_len == KEY_LEN_BITS){
@@ -571,14 +583,14 @@ static void peer_add_key(struct sync_state *state, struct sync_peer_state *peer_
 {
   if (message->prefix_len != KEY_LEN_BITS || !message->stored)
     return;
-    
+
   struct node *node = add_key_if_missing(&peer_state->root, message, 0);
-  
+
   if (node){
     //Yay, they told us something we didn't know.
     state->progress=0;
     peer_state->recv_count++;
-    
+
     if (state->has)
       state->has(state->context, peer_state->peer_context, &message->key);
     queue_node(state, node, 0);
@@ -627,21 +639,21 @@ static struct node * remove_differences(struct sync_peer_state *peer_state, key_
 {
   if (!peer_state->root || !message->stored)
     return NULL;
-  
+
   struct node *peer_node = peer_state->root;
   uint8_t prefix_len = 0;
-  
+
   while(prefix_len < message->prefix_len){
-    
+
     if (peer_node->message.prefix_len == KEY_LEN_BITS){
       if (cmp_message(message, &peer_node->message)==0)
 	break;
       if (message->prefix_len == KEY_LEN_BITS)
 	return NULL;
     }
-    
+
     uint8_t child_index = sync_get_bits(prefix_len, PREFIX_STEP_BITS, &message->key);
-    
+
     if (prefix_len < peer_node->message.prefix_len){
       // TODO optimise this case by comparing all possible prefix bits in one hit
       uint8_t node_index = sync_get_bits(prefix_len, PREFIX_STEP_BITS, &peer_node->message.key);
@@ -654,7 +666,7 @@ static struct node * remove_differences(struct sync_peer_state *peer_state, key_
     }
     prefix_len+=PREFIX_STEP_BITS;
   }
-  
+
   if (message->prefix_len < KEY_LEN_BITS){
     if (peer_node->message.prefix_len == message->prefix_len || peer_node->message.prefix_len == KEY_LEN_BITS){
       // shortcut, we can xor the nodes
@@ -673,18 +685,18 @@ static int recv_key(struct sync_state *state, struct sync_peer_state *peer_state
   // sanity check on two header bytes.
   if (message->min_prefix_len > message->prefix_len || message->prefix_len > KEY_LEN_BITS+1)
     return WHYF("Malformed message (min_prefix = %u, prefix = %u)", message->min_prefix_len, message->prefix_len);
-  
+
   state->received_record_count++;
   /* Possible outcomes;
     key is an exact match for part of our tree
       Yay, nothing to do.
-    
+
     key->prefix_len == KEY_LEN_BITS && we don't have this node
       Woohoo, we discovered something we didn't know before!
-    
+
     they are missing sibling nodes between their min_prefix_len and prefix_len
       queue all the sibling leaf nodes!
-      
+
     our node doesn't match
       XOR our node against theirs
       search our tree for a single leaf node that matches this result
@@ -706,7 +718,7 @@ static int recv_key(struct sync_state *state, struct sync_peer_state *peer_state
   }
 
   key_message_t peer_message = *message;
-  
+
   // first, remove information from peer_message that we have already learnt about this peer
   struct node *peer_node = remove_differences(peer_state, &peer_message);
   struct node *node = state->root;
@@ -716,14 +728,14 @@ static int recv_key(struct sync_state *state, struct sync_peer_state *peer_state
   for (i=(peer_message.prefix_len>>3)+1;i<KEY_LEN && is_blank;i++)
     if (peer_message.key.key[i])
       is_blank = 0;
-  
+
   while(1){
     if (cmp_message(message, &node->message)==0){
       // if we queued this exact message, there's no point sending it now.
       // but don't cancel every child, that breaks with multiple peers.
       if (node->send_state == QUEUED)
 	node->send_state = DONT_SEND;
-      
+
       if (message->stored){
 	// we can mark any keys they need as being received
 	if (peer_has_received_all(state, peer_state, peer_node)==0)
@@ -735,13 +747,13 @@ static int recv_key(struct sync_state *state, struct sync_peer_state *peer_state
       }
       return 0;
     }
-    
+
     // Nothing to do if we understand the rest of the differences
     if (cmp_message(&peer_message, &node->message)==0){
       state->received_uninteresting++;
       return 0;
     }
-    
+
     // once we've looked at all of the prefix_len bits of the incoming key
     // we need to stop
     if (peer_message.prefix_len <= prefix_len){
@@ -755,11 +767,11 @@ static int recv_key(struct sync_state *state, struct sync_peer_state *peer_state
 	// compare their node to our tree, test if we can easily detect a part of our tree they don't know
 	// Note, this only works if there are an odd number of different leaf nodes
 	// With an even number of keys, the XOR will wipe out the prefix bits.
-	
+
 	// work out the difference between their node and ours
 	key_message_t test_message = peer_message;
 	sync_xor(&node->message.key, &test_message);
-	
+
 	// if we can explain the difference based on a matching node, queue all leaf nodes
 	struct node *test_node = node;
 	uint8_t test_prefix = prefix_len;
@@ -782,7 +794,7 @@ static int recv_key(struct sync_state *state, struct sync_peer_state *peer_state
 	  }
 	  test_prefix+=PREFIX_STEP_BITS;
 	}
-	
+
 	// queue the transmission of all child nodes of this node
         unsigned i;
 	for (i=0;i<NODE_CHILDREN;i++){
@@ -792,10 +804,10 @@ static int recv_key(struct sync_state *state, struct sync_peer_state *peer_state
       }
       return 0;
     }
-    
+
     // which branch of the tree should we look at next
     uint8_t key_index = sync_get_bits(prefix_len, PREFIX_STEP_BITS, &peer_message.key);
-  
+
     // if our node represents a large range of the keyspace, find the first prefix bit that differs
     while (prefix_len < node->message.prefix_len && prefix_len < peer_message.prefix_len){
       // check the next step bits
@@ -805,13 +817,13 @@ static int recv_key(struct sync_state *state, struct sync_peer_state *peer_state
 	// send them all
 	if (prefix_len >= peer_message.min_prefix_len && peer_message.stored){
 	  peer_missing_leaf_nodes(state, peer_state, node, NODE_CHILDREN, 0);
-	  
+
 	  if (peer_message.prefix_len != KEY_LEN_BITS)
-	    // and after they have added all these missing keys, they need to know 
+	    // and after they have added all these missing keys, they need to know
 	    // this summary node so they can be reminded to send this key or it's children again.
 	    queue_node(state, node, 0);
 	}
-	
+
 	if (peer_message.prefix_len == KEY_LEN_BITS)
 	  peer_add_key(state, peer_state, &peer_message);
 	return 0;
@@ -819,18 +831,18 @@ static int recv_key(struct sync_state *state, struct sync_peer_state *peer_state
       prefix_len += PREFIX_STEP_BITS;
       key_index = sync_get_bits(prefix_len, PREFIX_STEP_BITS, &peer_message.key);
     }
-    
+
     if (message->prefix_len <= prefix_len)
       continue;
-    
+
     assert(prefix_len == node->message.prefix_len);
-    
+
     if (peer_message.min_prefix_len <= node->message.prefix_len && peer_message.stored){
       // send all keys to the other party, except for the child @key_index
       // they don't have any of these siblings
       peer_missing_leaf_nodes(state, peer_state, node, key_index, 0);
     }
-    
+
     // look at the next node in our graph
     if (!node->children[key_index]){
       // we know nothing about this key
@@ -843,12 +855,12 @@ static int recv_key(struct sync_state *state, struct sync_peer_state *peer_state
       }
       return 0;
     }
-    
+
     // Don't retransmit if we have heard some kind of confirmation of delivery from a peer
     // this is broken!
     //if (node->sent_count>0 && node->send_state == QUEUED)
     //  node->send_state = SENT;
-    
+
     node = node->children[key_index];
     prefix_len += PREFIX_STEP_BITS;
   }
@@ -858,19 +870,19 @@ static int recv_key(struct sync_state *state, struct sync_peer_state *peer_state
 int sync_recv_message(struct sync_state *state, void *peer_context, const uint8_t *buff, size_t len)
 {
   assert(peer_context);
-  
+
   struct sync_peer_state *peer_state = state->peers;
   while(peer_state && peer_state->peer_context != peer_context){
     peer_state = peer_state->next;
   }
-  
+
   if (!peer_state){
     peer_state = emalloc_zero(sizeof(struct sync_peer_state));
     peer_state->peer_context = peer_context;
     peer_state->next = state->peers;
     state->peers = peer_state;
   }
-  
+
   size_t offset=0;
   if (len%MESSAGE_BYTES)
     return -1;
@@ -878,21 +890,21 @@ int sync_recv_message(struct sync_state *state, void *peer_context, const uint8_
     const uint8_t *p = &buff[offset];
     key_message_t message;
     bzero(&message, sizeof message);
-    
+
     message.stored = (p[0]&0x80)?1:0;
     message.min_prefix_len = p[0]&0x7F;
     message.prefix_len = p[1];
     memcpy(&message.key.key[0], &p[2], KEY_LEN);
-    
+
     if (recv_key(state, peer_state, &message)==-1)
       return -1;
-      
+
     offset+=MESSAGE_BYTES;
   }
   return 0;
 }
 
-static void enum_diffs(struct sync_state *state, struct sync_peer_state *peer_state, struct node *node, 
+static void enum_diffs(struct sync_state *state, struct sync_peer_state *peer_state, struct node *node,
   void (*callback)(void *context, void *peer_context, const sync_key_t *key, uint8_t theirs))
 {
   if (!node)
@@ -907,7 +919,7 @@ static void enum_diffs(struct sync_state *state, struct sync_peer_state *peer_st
   }
 }
 
-void sync_enum_differences(struct sync_state *state, 
+void sync_enum_differences(struct sync_state *state,
   void (*callback)(void *context, void *peer_context, const sync_key_t *key, uint8_t theirs))
 {
   struct sync_peer_state *peer_state = state->peers;
@@ -916,3 +928,4 @@ void sync_enum_differences(struct sync_state *state,
     peer_state = peer_state->next;
   }
 }
+

@@ -38,10 +38,14 @@ int sync_has_transmit_queued(const struct sync_state *state);
 // ask for a message to be inserted into buff, returns packet length
 size_t sync_build_message(struct sync_state *state, uint8_t *buff, size_t len);
 
+// build empty message, returns packet length.
+size_t sync_build_empty_message(uint8_t *buff, size_t len);
+
 // process a message received from a peer.
 int sync_recv_message(struct sync_state *state, void *peer_context, const uint8_t *buff, size_t len);
 
-void sync_enum_differences(struct sync_state *state, 
+void sync_enum_differences(struct sync_state *state,
   void (*callback)(void *context, void *peer_context, const sync_key_t *key, uint8_t theirs));
 
 #endif
+

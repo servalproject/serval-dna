@@ -1,4 +1,4 @@
-/* 
+/*
 Serval DNA configuration
 Copyright (C) 2012 Serval Project Inc.
 
@@ -259,6 +259,7 @@ ATOM(bool_t, rhizome_manifest,          0, boolean,, "")
 ATOM(bool_t, rhizome_sql_bind,          0, boolean,, "")
 ATOM(bool_t, rhizome_store,             0, boolean,, "")
 ATOM(bool_t, rhizome_sync,              0, boolean,, "")
+ATOM(bool_t, rhizome_sync_bars,         0, boolean,, "")
 ATOM(bool_t, rhizome_sync_keys,         0, boolean,, "")
 ATOM(bool_t, rhizome_tx,                0, boolean,, "")
 ATOM(bool_t, rhizome_rx,                0, boolean,, "")
@@ -409,6 +410,7 @@ END_STRUCT
 
 STRUCT(rhizome_mdp)
 ATOM(bool_t,                enable,     1, boolean,, "If true, Rhizome MDP server is started")
+ATOM(int32_t,               protocol,   -1, int32_nonneg,, "If >= 0, Rhizome MDP synchronisation protocol version is forced")
 ATOM(uint64_t,              stall_timeout,      1000, uint64_scaled,, "Timeout to request more data.")
 ATOM(uint64_t,              block_size, 512, uint64_scaled,, "Transfer block size.")
 END_STRUCT
