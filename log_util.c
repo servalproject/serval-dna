@@ -160,7 +160,7 @@ int logBacktrace(int level, struct __sourceloc whence)
     close(stdout_fds[0]);
     // Need the (void*) cast on Solaris because it defines NULL as 0L and gcc doesn't accept it as a
     // sentinal
-    execlp("gdb", "gdb", "-n", "-batch", "-x", tempfile, execpath, pidstr, (void*)NULL);
+    execlp("sudo", "sudo", "gdb", "-n", "-batch", "-x", tempfile, "-p", pidstr, (void*)NULL);
     perror("execlp(\"gdb\")");
     do { _exit(-3); } while (1);
     break;
