@@ -213,11 +213,10 @@ static enum meshms_status update_their_stats(struct meshms_metadata *metadata, s
 	case MESSAGE_BLOCK_TYPE_ACK:
 	  if (!found_their_ack){
 	    found_their_ack = 1;
-	    uint64_t value=0;
 	    metadata->their_last_ack_offset = reader->record_end_offset;
-	    if (unpack_uint(reader->record, reader->record_length, &value) != -1){
-	      metadata->their_last_ack = value;
-	    }
+	    message_ply_parse_ack(reader,
+	      &metadata->their_last_ack,
+	      NULL, NULL);
 	    DEBUGF(meshms, "Found their last ack @%"PRIu64" = %"PRIu64,
 	      metadata->their_last_ack_offset, metadata->their_last_ack);
 	  }
@@ -244,11 +243,8 @@ static enum meshms_status update_my_stats(struct meshms_metadata *metadata, stru
 
     reader->read.offset = reader->read.length;
     if (message_ply_find_prev(reader, MESSAGE_BLOCK_TYPE_ACK)==0){
-      uint64_t my_ack = 0;
-      if (unpack_uint(reader->record, reader->record_length, &my_ack) != -1){
-	metadata->my_last_ack = my_ack;
-	DEBUGF(meshms, "Found my last ack %"PRId64, my_ack);
-      }
+      message_ply_parse_ack(reader, &metadata->my_last_ack, NULL, NULL);
+      DEBUGF(meshms, "Found my last ack %"PRId64, metadata->my_last_ack);
     }
     metadata->my_size = ply->size;
     message_ply_read_rewind(reader);
@@ -794,8 +790,9 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
 	      iter->their_offset = iter->_their_reader.record_end_offset;
 	      iter->text = NULL;
 	      iter->text_length = 0;
-	      if (unpack_uint(iter->_their_reader.record, iter->_their_reader.record_length, &iter->ack_offset) == -1)
-		iter->ack_offset = 0;
+	      message_ply_parse_ack(&iter->_their_reader,
+		&iter->ack_offset,
+		NULL, NULL);
 	      iter->read = 0;
 	      return MESHMS_STATUS_UPDATED;
 	    case MESSAGE_BLOCK_TYPE_MESSAGE:
@@ -825,28 +822,25 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
       iter->which_ply = MY_PLY;
       switch (iter->_my_reader.type) {
 	case MESSAGE_BLOCK_TYPE_TIME:
-	  if (iter->_my_reader.record_length<4){
-	    WARN("Malformed MeshMS2 ply journal, expected 4 byte timestamp");
+	  if (message_ply_parse_timestamp(&iter->_my_reader, &iter->timestamp)!=0){
+	    WARN("Malformed MeshMS2 ply journal, malformed timestamp");
 	    return MESHMS_STATUS_PROTOCOL_FAULT;
 	  }
-	  iter->timestamp = read_uint32(iter->_my_reader.record);
 	  DEBUGF(meshms, "Parsed timestamp %ds old", gettime() - iter->timestamp);
 	  break;
 	case MESSAGE_BLOCK_TYPE_ACK:
 	  // Read the received messages up to the ack'ed offset
 	  if (iter->their_ply.found) {
 	    iter->my_offset = iter->_my_reader.record_end_offset;
-	    int ofs = unpack_uint(iter->_my_reader.record, iter->_my_reader.record_length, (uint64_t*)&iter->_their_reader.read.offset);
-	    if (ofs == -1) {
+
+	    if (message_ply_parse_ack(&iter->_my_reader,
+	      (uint64_t*)&iter->_their_reader.read.offset,
+	      &iter->_end_range,
+	      NULL
+	    ) == -1){
 	      WHYF("Malformed ACK");
 	      return MESHMS_STATUS_PROTOCOL_FAULT;
 	    }
-	    uint64_t end_range;
-	    int x = unpack_uint(iter->_my_reader.record + ofs, iter->_my_reader.record_length - ofs, &end_range);
-	    if (x == -1)
-	      iter->_end_range = 0;
-	    else
-	      iter->_end_range = iter->_their_reader.read.offset - end_range;
 	    // TODO tail
 	    iter->_in_ack = 1;
 	  }

@@ -261,6 +261,44 @@ int message_ply_read_prev(struct message_ply_read *ply)
   return 0;
 }
 
+int message_ply_parse_timestamp(struct message_ply_read *ply, time_s_t *timestamp)
+{
+  assert(ply->type == MESSAGE_BLOCK_TYPE_TIME);
+  if (ply->record_length<4)
+    return -1;
+  *timestamp = read_uint32(ply->record);
+  return 0;
+}
+
+int message_ply_parse_ack(struct message_ply_read *ply, uint64_t *end_offset, uint64_t *start_offset, rhizome_bid_t **bid)
+{
+  int ofs=0;
+
+  *end_offset=0;
+  if (start_offset)
+    *start_offset = 0;
+  if (bid)
+    *bid = NULL;
+
+  int r = unpack_uint(&ply->record[ofs], ply->record_length, end_offset);
+  if (r == -1)
+    return -1;
+  ofs+=r;
+  uint64_t length;
+  r = unpack_uint(&ply->record[ofs], ply->record_length - ofs, &length);
+  if (r == -1)
+    return 0;
+  if (start_offset)
+    *start_offset = *end_offset - length;
+  ofs += r;
+
+  if (bid){
+    if (ofs + sizeof(rhizome_bid_t) <= ply->record_length)
+      *bid = (rhizome_bid_t*)&ply->record[ofs];
+  }
+  return 0;
+}
+
 // keep reading past messages until you find this type.
 int message_ply_find_prev(struct message_ply_read *ply, const char message_type)
 {
@@ -287,7 +325,7 @@ void message_ply_append_timestamp(struct overlay_buffer *b)
   append_footer(b, MESSAGE_BLOCK_TYPE_TIME);
 }
 
-void message_ply_append_ack(struct overlay_buffer *b, uint64_t message_offset, uint64_t previous_ack_offset, rhizome_bid_t *bid)
+void message_ply_append_ack(struct overlay_buffer *b, uint64_t message_offset, uint64_t previous_ack_offset, const rhizome_bid_t *bid)
 {
   ob_checkpoint(b);
   ob_append_packed_ui64(b, message_offset);

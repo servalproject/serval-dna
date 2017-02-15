@@ -85,11 +85,10 @@ static int app_meshmb_read(const struct cli_parsed *parsed, struct cli_context *
   while(message_ply_read_prev(&read)==0){
     switch(read.type){
       case MESSAGE_BLOCK_TYPE_TIME:
-	if (read.record_length<4){
-	  WARN("Malformed ply, expected 4 byte timestamp");
+	if (message_ply_parse_timestamp(&read, &timestamp)!=0){
+	  WARN("Malformed ply, expected timestamp");
 	  continue;
 	}
-	timestamp = read_uint32(read.record);
 	break;
 
       case MESSAGE_BLOCK_TYPE_MESSAGE:

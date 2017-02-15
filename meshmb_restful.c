@@ -174,11 +174,10 @@ static int next_ply_message(httpd_request *r){
 
     switch(r->u.plylist.ply_reader.type){
       case MESSAGE_BLOCK_TYPE_TIME:
-	if (r->u.plylist.ply_reader.record_length<4){
-	  WARN("Malformed ply, expected 4 byte timestamp");
+	if (message_ply_parse_timestamp(&r->u.plylist.ply_reader, &r->u.plylist.timestamp)!=0){
+	  WARN("Malformed ply, expected timestamp");
 	  continue;
 	}
-	r->u.plylist.timestamp = read_uint32(r->u.plylist.ply_reader.record);
 	break;
 
       case MESSAGE_BLOCK_TYPE_MESSAGE:

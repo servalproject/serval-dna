@@ -108,11 +108,10 @@ static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metada
     if (reader->record_end_offset <= metadata->size)
       break;
     if (reader->type == MESSAGE_BLOCK_TYPE_TIME){
-      if (reader->record_length<4){
-	WARN("Malformed ply, expected 4 byte timestamp");
+      if (message_ply_parse_timestamp(reader, &timestamp)!=0){
+	WARN("Malformed ply, expected timestamp");
 	continue;
       }
-      timestamp = read_uint32(reader->record);
 
     }else if(reader->type == MESSAGE_BLOCK_TYPE_MESSAGE){
       if (metadata->last_message_offset == reader->record_end_offset)
