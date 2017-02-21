@@ -17,6 +17,16 @@ struct meshmb_feed_details{
   time_s_t timestamp;
 };
 
+// threaded feed iterator state
+struct meshmb_activity_iterator{
+  struct meshmb_feeds *feeds;
+  struct message_ply_read ack_reader;
+  time_s_t ack_timestamp;
+  uint64_t ack_start;
+  rhizome_bid_t msg_ply;
+  struct message_ply_read msg_reader;
+};
+
 struct rhizome_manifest_field_assignment;
 int meshmb_send(const keyring_identity *id, const char *message, size_t message_len,
   unsigned nassignments, const struct rhizome_manifest_field_assignment *assignments);
@@ -36,6 +46,11 @@ int meshmb_ignore(struct meshmb_feeds *feeds, rhizome_bid_t *bid);
 // enumerate feeds, starting from restart_from
 typedef int (*meshmb_callback) (struct meshmb_feed_details *details, void *context);
 int meshmb_enum(struct meshmb_feeds *feeds, rhizome_bid_t *restart_from, meshmb_callback callback, void *context);
+
+// enumerate messages, starting with the most recently received
+struct meshmb_activity_iterator *meshmb_activity_open(struct meshmb_feeds *feeds);
+int meshmb_activity_next(struct meshmb_activity_iterator *i);
+void meshmb_activity_close(struct meshmb_activity_iterator *i);
 
 // update metadata of all feeds based on current rhizome contents (optionally call after opening)
 int meshmb_update(struct meshmb_feeds *feeds);

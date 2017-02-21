@@ -167,16 +167,27 @@ end:
   return ret;
 }
 
-int message_ply_read_open(struct message_ply_read *ply, const rhizome_bid_t *bid)
+int message_ply_read_open(struct message_ply_read *ply, const rhizome_bid_t *bid, const sign_keypair_t *keypair)
 {
-  DEBUGF(meshms, "Opening ply %s", alloca_tohex_rhizome_bid_t(*bid));
 
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     return -1;
 
   int ret=-1;
-  if (rhizome_retrieve_manifest(bid, m) == RHIZOME_BUNDLE_STATUS_SAME
+  enum rhizome_bundle_status status;
+  if (keypair){
+    DEBUGF2(meshms, meshmb, "Opening ply %s", alloca_tohex_rhizome_bid_t(keypair->public_key));
+    struct rhizome_bundle_result result;
+    result = rhizome_private_bundle(m, keypair);
+    status = result.status;
+    rhizome_bundle_result_free(&result);
+  }else{
+    DEBUGF2(meshms, meshmb, "Opening ply %s", alloca_tohex_rhizome_bid_t(*bid));
+    status = rhizome_retrieve_manifest(bid, m);
+  }
+
+  if (status == RHIZOME_BUNDLE_STATUS_SAME
     && rhizome_open_decrypt_read(m, &ply->read) == RHIZOME_PAYLOAD_STATUS_STORED){
 
     assert(m->filesize != RHIZOME_SIZE_UNSET);
@@ -222,7 +233,7 @@ int message_ply_read_prev(struct message_ply_read *ply)
   ply->record_end_offset = ply->read.offset;
   uint8_t footer[2];
   if (ply->read.offset <= sizeof footer) {
-    DEBUG(meshms, "EOF");
+    DEBUGF2(meshms, meshmb, "EOF");
     return -1;
   }
   ply->read.offset -= sizeof footer;
@@ -237,10 +248,10 @@ int message_ply_read_prev(struct message_ply_read *ply)
     ply->type = r & 0xF;
     ply->record_length = r >> 4;
   }
-  DEBUGF(meshms, "Found record %d, length %d @%"PRId64, ply->type, ply->record_length, ply->record_end_offset);
+  DEBUGF2(meshms, meshmb, "Found record %d, length %d @%"PRId64, ply->type, ply->record_length, ply->record_end_offset);
   // need to allow for advancing the tail and cutting a message in half.
   if (ply->record_length + sizeof footer > ply->read.offset){
-    DEBUGF(meshms, "EOF");
+    DEBUGF2(meshms, meshmb, "EOF");
     return -1;
   }
   ply->read.offset -= ply->record_length + sizeof(footer);

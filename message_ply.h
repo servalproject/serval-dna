@@ -43,7 +43,7 @@ struct message_ply_write{
   struct rhizome_write write;
 };
 
-int message_ply_read_open(struct message_ply_read *ply, const rhizome_bid_t *bid);
+int message_ply_read_open(struct message_ply_read *ply, const rhizome_bid_t *bid, const sign_keypair_t *keypair);
 void message_ply_read_close(struct message_ply_read *ply);
 int message_ply_read_prev(struct message_ply_read *ply);
 int message_ply_find_prev(struct message_ply_read *ply, char type);

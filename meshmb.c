@@ -33,6 +33,83 @@ struct meshmb_feeds{
   uint8_t generation;
 };
 
+struct meshmb_activity_iterator *meshmb_activity_open(struct meshmb_feeds *feeds){
+  struct meshmb_activity_iterator *ret = emalloc_zero(sizeof(struct meshmb_activity_iterator));
+  if (!ret)
+    return NULL;
+
+  ret->feeds = feeds;
+  if (message_ply_read_open(&ret->ack_reader, NULL, &feeds->ack_bundle_keypair)==-1){
+    free(ret);
+    ret = NULL;
+  }
+
+  return ret;
+}
+
+int meshmb_activity_next(struct meshmb_activity_iterator *i){
+  while(1){
+    // can we read another message?
+    if (message_ply_is_open(&i->msg_reader)
+      && i->msg_reader.read.offset > i->ack_start){
+      DEBUGF(meshmb, "Reading next incoming record from %u",
+	i->msg_reader.read.offset);
+      if (message_ply_read_prev(&i->msg_reader)!=-1
+      && i->msg_reader.read.offset >= i->ack_start)
+	return 1;
+    }
+
+    // read the next ack
+    if (message_ply_read_prev(&i->ack_reader)==-1)
+      return 0;
+
+    switch (i->ack_reader.type) {
+      case MESSAGE_BLOCK_TYPE_TIME:
+	message_ply_parse_timestamp(&i->ack_reader, &i->ack_timestamp);
+	continue;
+
+      case MESSAGE_BLOCK_TYPE_ACK:{
+	uint64_t ack_end;
+	rhizome_bid_t *bid;
+	if (message_ply_parse_ack(&i->ack_reader,
+	  &ack_end,
+	  &i->ack_start,
+	  &bid
+	) == -1)
+	  return -1;
+
+	DEBUGF(meshmb, "Found ack for %s, %u to %u",
+	  alloca_tohex_rhizome_bid_t(*bid), i->ack_start, ack_end);
+
+	if (bcmp(&i->msg_ply, bid, sizeof(*bid))==0){
+	  // shortcut for consecutive acks for the same incoming feed
+	  DEBUGF(meshmb, "Ply still open @%u",
+	    i->msg_reader.read.offset);
+	} else {
+	  message_ply_read_close(&i->msg_reader);
+	  if (message_ply_read_open(&i->msg_reader, bid, NULL)==-1){
+	    bzero(&i->msg_ply, sizeof i->msg_ply);
+	    continue;
+	  }
+	  i->msg_ply = *bid;
+	}
+
+	i->msg_reader.read.offset = ack_end;
+      } break;
+
+      default:
+	continue;
+    }
+  }
+}
+
+void meshmb_activity_close(struct meshmb_activity_iterator *i){
+  message_ply_read_close(&i->ack_reader);
+  message_ply_read_close(&i->msg_reader);
+  free(i);
+}
+
+
 // only remember this many bytes of ply names & last messages
 #define MAX_NAME_LEN (256)  // ??
 #define MAX_MSG_LEN (256)  // ??
@@ -41,26 +118,39 @@ static int finish_ack_writing(struct meshmb_feeds *feeds){
   if (!feeds->ack_manifest)
     return 0;
 
-  int ret=-1;
+  int ret;
 
   DEBUGF(meshmb, "Completing private ply for ack thread");
-  enum rhizome_payload_status status = rhizome_finish_write(&feeds->ack_writer);
-  status = rhizome_finish_store(&feeds->ack_writer, feeds->ack_manifest, status);
-  if (status == RHIZOME_PAYLOAD_STATUS_NEW){
-    rhizome_manifest *mout=NULL;
-    struct rhizome_bundle_result result = rhizome_manifest_finalise(feeds->ack_manifest, &mout, 0);
-    if (mout && mout!=feeds->ack_manifest)
-      rhizome_manifest_free(mout);
-
-    if (result.status == RHIZOME_BUNDLE_STATUS_NEW)
-      ret = 0;
-    rhizome_bundle_result_free(&result);
+  {
+    struct overlay_buffer *b = ob_new();
+    message_ply_append_timestamp(b);
+    ret = rhizome_write_buffer(&feeds->ack_writer, ob_ptr(b), ob_position(b));
+    ob_free(b);
   }
+
+  if (ret==0){
+    ret =-1;
+    enum rhizome_payload_status status = rhizome_finish_write(&feeds->ack_writer);
+    status = rhizome_finish_store(&feeds->ack_writer, feeds->ack_manifest, status);
+
+    if (status == RHIZOME_PAYLOAD_STATUS_NEW){
+      rhizome_manifest *mout=NULL;
+      struct rhizome_bundle_result result = rhizome_manifest_finalise(feeds->ack_manifest, &mout, 0);
+      if (mout && mout!=feeds->ack_manifest)
+	rhizome_manifest_free(mout);
+
+      if (result.status == RHIZOME_BUNDLE_STATUS_NEW)
+	ret = 0;
+      rhizome_bundle_result_free(&result);
+    }
+  }
+
+  if (ret!=0)
+    rhizome_fail_write(&feeds->ack_writer);
   bzero(&feeds->ack_writer, sizeof feeds->ack_writer);
 
   rhizome_manifest_free(feeds->ack_manifest);
   feeds->ack_manifest = NULL;
-
   return ret;
 }
 
@@ -83,7 +173,7 @@ static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metada
     return 0;
 
   if (!message_ply_is_open(reader)
-    && message_ply_read_open(reader, &metadata->ply.bundle_id)!=0)
+    && message_ply_read_open(reader, &metadata->ply.bundle_id, NULL)!=0)
     return -1;
 
   // TODO allow the user to specify an overridden name?
@@ -167,7 +257,7 @@ static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metada
     {
       struct overlay_buffer *b = ob_new();
 
-      message_ply_append_ack(b, last_offset, metadata->last_message_offset, &metadata->ply.bundle_id);
+      message_ply_append_ack(b, metadata->ply.size, metadata->size, &metadata->ply.bundle_id);
       int r = rhizome_write_buffer(&feeds->ack_writer, ob_ptr(b), ob_position(b));
       DEBUGF(meshmb, "Acked incoming messages");
       ob_free(b);

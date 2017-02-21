@@ -69,7 +69,7 @@ static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_
 	  if (it.current->metadata.their_last_message && it.current->their_ply.found){
 	    struct message_ply_read reader;
 	    bzero(&reader, sizeof reader);
-	    if (message_ply_read_open(&reader, &it.current->their_ply.bundle_id) == 0){
+	    if (message_ply_read_open(&reader, &it.current->their_ply.bundle_id, NULL) == 0){
 	      reader.read.offset = it.current->metadata.their_last_message;
 	      if (message_ply_read_prev(&reader)==0){
 		cli_put_string(context, (const char *)reader.record, "\n");

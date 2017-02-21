@@ -174,7 +174,7 @@ static enum meshms_status open_ply(struct message_ply *ply, struct message_ply_r
 {
   if (ply->found
   && !message_ply_is_open(reader)
-  && message_ply_read_open(reader, &ply->bundle_id)!=0)
+  && message_ply_read_open(reader, &ply->bundle_id, NULL)!=0)
     return MESHMS_STATUS_ERROR;
   return MESHMS_STATUS_OK;
 }

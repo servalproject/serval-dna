@@ -70,7 +70,7 @@ static int app_meshmb_read(const struct cli_parsed *parsed, struct cli_context *
   struct message_ply_read read;
   bzero(&read, sizeof read);
 
-  if (message_ply_read_open(&read, &bid)==-1)
+  if (message_ply_read_open(&read, &bid, NULL)==-1)
     return -1;
 
   int ret=0;
@@ -177,58 +177,69 @@ static int app_meshmb_find(const struct cli_parsed *parsed, struct cli_context *
   return 0;
 }
 
+static struct meshmb_feeds * cli_feeds_open(const struct cli_parsed *parsed){
+  const char *idhex;
+  if (cli_arg(parsed, "id", &idhex, str_is_identity, "") == -1)
+    return NULL;
+
+  identity_t identity;
+  if (str_to_identity_t(&identity, idhex) == -1){
+    WHY("Invalid identity");
+    return NULL;
+  }
+
+  if (create_serval_instance_dir() == -1
+    || rhizome_opendb() == -1
+    || !(keyring = keyring_open_instance_cli(parsed)))
+    return NULL;
+
+  keyring_identity *id = keyring_find_identity(keyring, &identity);
+  if (!id){
+    WHY("Invalid identity");
+    return NULL;
+  }
+
+  struct meshmb_feeds *feeds = NULL;
+  if (meshmb_open(id, &feeds)==-1)
+    return NULL;
+
+  return feeds;
+}
 
 DEFINE_CMD(app_meshmb_follow, 0,
   "Start or stop following a broadcast feed",
   "meshmb", "follow|ignore" KEYRING_PIN_OPTIONS, "<id>", "<peer>");
 static int app_meshmb_follow(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  const char *idhex, *peerhex;
-  if (cli_arg(parsed, "id", &idhex, str_is_identity, "") == -1
-    ||cli_arg(parsed, "peer", &peerhex, str_is_identity, "") == -1)
+  const char *peerhex;
+  if (cli_arg(parsed, "peer", &peerhex, str_is_identity, "") == -1)
     return -1;
 
   int follow = cli_arg(parsed, "follow", NULL, NULL, NULL) == 0;
 
-  identity_t identity;
   identity_t peer;
-  if (str_to_identity_t(&identity, idhex) == -1
-    ||str_to_identity_t(&peer, peerhex) == -1)
+  if (str_to_identity_t(&peer, peerhex) == -1)
     return WHY("Invalid identity");
 
-  if (create_serval_instance_dir() == -1
-    || rhizome_opendb() == -1
-    || !(keyring = keyring_open_instance_cli(parsed)))
-    return -1;
+  struct meshmb_feeds *feeds = cli_feeds_open(parsed);
 
   int ret = -1;
-  struct meshmb_feeds *feeds = NULL;
+  if (feeds){
+    if (follow){
+      ret = meshmb_follow(feeds, &peer);
+    }else{
+      ret = meshmb_ignore(feeds, &peer);
+    }
 
-  keyring_identity *id = keyring_find_identity(keyring, &identity);
-  if (!id){
-    WHY("Invalid identity");
-    goto end;
-  }
+    if (ret!=-1){
+      ret = meshmb_flush(feeds);
+      if (ret!=-1)
+	ret=0;
+    }
 
-  if (meshmb_open(id, &feeds)==-1)
-    goto end;
-
-  if (follow){
-    if (meshmb_follow(feeds, &peer)==-1)
-      goto end;
-  }else{
-    if (meshmb_ignore(feeds, &peer)==-1)
-      goto end;
-  }
-
-  if (meshmb_flush(feeds)==-1)
-    goto end;
-
-  ret = 0;
-
-end:
-  if (feeds)
     meshmb_close(feeds);
+  }
+
   if (keyring)
     keyring_free(keyring);
   keyring = NULL;
@@ -258,64 +269,89 @@ DEFINE_CMD(app_meshmb_list, 0,
   "meshmb", "list", "following" KEYRING_PIN_OPTIONS, "<id>");
 static int app_meshmb_list(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  const char *idhex;
-  if (cli_arg(parsed, "id", &idhex, str_is_identity, "") == -1)
-    return -1;
-
-  identity_t identity;
-  if (str_to_identity_t(&identity, idhex) == -1)
-    return WHY("Invalid identity");
-
-  if (create_serval_instance_dir() == -1
-    || rhizome_opendb() == -1
-    || !(keyring = keyring_open_instance_cli(parsed)))
-    return -1;
-
+  struct meshmb_feeds *feeds = cli_feeds_open(parsed);
   int ret = -1;
-  struct meshmb_feeds *feeds = NULL;
 
-  keyring_identity *id = keyring_find_identity(keyring, &identity);
-  if (!id){
-    WHY("Invalid identity");
-    goto end;
+  if (feeds){
+    const char *names[]={
+      "_id",
+      "id",
+      "author",
+      "name",
+      "age",
+      "last_message"
+    };
+    cli_start_table(context, NELS(names), names);
+    struct cli_enum_context enum_context = {
+      .rowcount = 0,
+      .context = context,
+    };
+
+    meshmb_enum(feeds, NULL, list_callback, &enum_context);
+    meshmb_close(feeds);
+
+    cli_end_table(context, enum_context.rowcount);
+    ret = 0;
   }
 
-  if (meshmb_open(id, &feeds)==-1)
-    goto end;
-
-  const char *names[]={
-    "_id",
-    "id",
-    "author",
-    "name",
-    "age",
-    "last_message"
-  };
-  cli_start_table(context, NELS(names), names);
-  struct cli_enum_context enum_context = {
-    .rowcount = 0,
-    .context = context,
-  };
-
-  meshmb_enum(feeds, NULL, list_callback, &enum_context);
-
-  cli_end_table(context, enum_context.rowcount);
-  ret = 0;
-
-end:
-  if (feeds)
-    meshmb_close(feeds);
-  keyring_free(keyring);
+  if (keyring)
+    keyring_free(keyring);
   keyring = NULL;
-  return 0;
+  return ret;
 }
 
-/*
-DEFINE_CMD(app_meshmb_news, 0,
-  "",
-  "meshmb", "news" KEYRING_PIN_OPTIONS, "<id>");
-static int app_meshmb_news(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_meshmb_activity, 0,
+  "List messages from feeds that you are currently following",
+  "meshmb", "activity" KEYRING_PIN_OPTIONS, "<id>");
+static int app_meshmb_activity(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  return 0;
+  struct meshmb_feeds *feeds = cli_feeds_open(parsed);
+  int ret = -1;
+
+  if (feeds){
+    meshmb_update(feeds);
+    meshmb_flush(feeds);
+
+    struct meshmb_activity_iterator *iterator = meshmb_activity_open(feeds);
+
+    if (iterator){
+      const char *names[]={
+	"_id",
+	"id",
+	"author",
+	"name",
+	"age",
+	"offset",
+	"message"
+      };
+      cli_start_table(context, NELS(names), names);
+
+      unsigned rowcount=0;
+      time_s_t now = gettime();
+
+      while(meshmb_activity_next(iterator)==1){
+	switch(iterator->msg_reader.type){
+	  case MESSAGE_BLOCK_TYPE_MESSAGE:
+	    cli_put_long(context, rowcount++, ":");
+	    cli_put_string(context, alloca_tohex_rhizome_bid_t(iterator->msg_ply), ":");
+	    cli_put_string(context, alloca_tohex_identity_t(&iterator->msg_reader.author), ":");
+	    cli_put_string(context, iterator->msg_reader.name, ":");
+	    cli_put_long(context, iterator->ack_timestamp ? (long)(now - iterator->ack_timestamp) : (long)-1, ":");
+	    cli_put_long(context, iterator->msg_reader.record_end_offset, ":");
+	    cli_put_string(context, (const char *)iterator->msg_reader.record, "\n");
+	}
+      }
+
+      cli_end_table(context, rowcount);
+      meshmb_activity_close(iterator);
+      ret = 0;
+    }
+
+    meshmb_close(feeds);
+  }
+
+  if (keyring)
+    keyring_free(keyring);
+  keyring = NULL;
+  return ret;
 }
-*/

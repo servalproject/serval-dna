@@ -143,7 +143,7 @@ static int strn_to_position_token(const char *str, uint64_t *position, const cha
 
 static int next_ply_message(httpd_request *r){
   if (!message_ply_is_open(&r->u.plylist.ply_reader)){
-    if (message_ply_read_open(&r->u.plylist.ply_reader, &r->bid)==-1){
+    if (message_ply_read_open(&r->u.plylist.ply_reader, &r->bid, NULL)==-1){
       r->u.plylist.eof = 1;
       return -1;
     }
