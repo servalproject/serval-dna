@@ -716,6 +716,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	      goto pstatus_ok;
 	    case RHIZOME_PAYLOAD_STATUS_NEW:
 	    case RHIZOME_PAYLOAD_STATUS_ERROR:
+	    case RHIZOME_PAYLOAD_STATUS_BUSY:
 	    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
 	    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
 	    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:

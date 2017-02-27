@@ -448,6 +448,7 @@ enum rhizome_payload_status {
     RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL = 5, // cannot encrypt/decrypt (payload key unknown)
     RHIZOME_PAYLOAD_STATUS_TOO_BIG = 6, // payload will never fit in our store
     RHIZOME_PAYLOAD_STATUS_EVICTED = 7, // other payloads in our store are more important
+    RHIZOME_PAYLOAD_STATUS_BUSY = 8, // storage is currently busy, you may try again at a later time
 };
 
 // Useful for initialising a variable then checking later that it was set to a

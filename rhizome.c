@@ -702,6 +702,7 @@ const char *rhizome_payload_status_message(enum rhizome_payload_status status)
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:  return "Payload hash contradicts manifest";
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL: return "Incorrect bundle secret";
     case RHIZOME_PAYLOAD_STATUS_ERROR:       return "Internal error";
+    case RHIZOME_PAYLOAD_STATUS_BUSY:        return "busy storage";
   }
   return NULL;
 }

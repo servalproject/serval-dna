@@ -548,6 +548,7 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
 	RETURN(DONOTWANT);
       case RHIZOME_PAYLOAD_STATUS_NEW:
 	goto status_ok;
+      case RHIZOME_PAYLOAD_STATUS_BUSY:
       case RHIZOME_PAYLOAD_STATUS_ERROR:
 	RETURN(WHY("error writing new payload"));
       case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:

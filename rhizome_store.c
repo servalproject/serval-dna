@@ -734,9 +734,8 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
   // flush out any remaining buffered pieces to disk
   if (write->buffer_list){
     if (rhizome_random_write(write, 0, NULL, 0) || write->buffer_list) {
-      // TODO return busy?
-      WHYF("Failed to flush write buffer");
-      status = RHIZOME_PAYLOAD_STATUS_ERROR;
+      INFOF("Failed to flush write buffer");
+      status = RHIZOME_PAYLOAD_STATUS_BUSY;
       goto failure;
     }
   }
@@ -879,7 +878,8 @@ dbfailure:
   sqlite_exec_void_retry(&retry, "ROLLBACK;", END);
   status = RHIZOME_PAYLOAD_STATUS_ERROR;
 failure:
-  rhizome_fail_write(write);
+  if (status != RHIZOME_PAYLOAD_STATUS_BUSY)
+    rhizome_fail_write(write);
   return status;
 }
 
@@ -1017,6 +1017,7 @@ enum rhizome_payload_status rhizome_store_payload_file(rhizome_manifest *m, cons
     case RHIZOME_PAYLOAD_STATUS_NEW:
       status_ok = 1;
       break;
+    case RHIZOME_PAYLOAD_STATUS_BUSY:
     case RHIZOME_PAYLOAD_STATUS_STORED:
     case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
     case RHIZOME_PAYLOAD_STATUS_EVICTED:
@@ -1721,6 +1722,7 @@ enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *wri
       case RHIZOME_PAYLOAD_STATUS_STORED:
 	rstatus_valid = 1;
 	break;
+      case RHIZOME_PAYLOAD_STATUS_BUSY:
       case RHIZOME_PAYLOAD_STATUS_ERROR:
       case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
 	rstatus_valid = 1;
@@ -1778,6 +1780,7 @@ enum rhizome_payload_status rhizome_finish_store(struct rhizome_write *write, rh
   case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
   case RHIZOME_PAYLOAD_STATUS_EVICTED:
   case RHIZOME_PAYLOAD_STATUS_ERROR:
+  case RHIZOME_PAYLOAD_STATUS_BUSY:
     status_valid = 1;
     rhizome_fail_write(write);
     return status;

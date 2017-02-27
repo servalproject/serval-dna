@@ -267,6 +267,10 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
       result.status = RHIZOME_BUNDLE_STATUS_NO_ROOM;
       INFO("Insufficient space to store payload");
       break;
+    case RHIZOME_PAYLOAD_STATUS_BUSY:
+      pstatus_valid = 1;
+      result.status = RHIZOME_BUNDLE_STATUS_BUSY;
+      break;
     case RHIZOME_PAYLOAD_STATUS_ERROR:
       pstatus_valid = 1;
       result.status = RHIZOME_BUNDLE_STATUS_ERROR;

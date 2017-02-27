@@ -156,6 +156,7 @@ static int http_request_rhizome_response(struct httpd_request *r, uint16_t http_
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
       rhizome_http_status = 422; // Unprocessable Entity
       break;
+    case RHIZOME_PAYLOAD_STATUS_BUSY:
     case RHIZOME_PAYLOAD_STATUS_ERROR:
       rhizome_http_status = 500;
       break;
@@ -749,6 +750,9 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     case RHIZOME_PAYLOAD_STATUS_EVICTED:
       r->bundle_result = rhizome_bundle_result(RHIZOME_BUNDLE_STATUS_NO_ROOM);
       return http_request_rhizome_response(r, 0, NULL);
+    case RHIZOME_PAYLOAD_STATUS_BUSY:
+      r->bundle_result = rhizome_bundle_result(RHIZOME_BUNDLE_STATUS_BUSY);
+      return http_request_rhizome_response(r, 0, NULL);
     case RHIZOME_PAYLOAD_STATUS_ERROR:
       return http_request_rhizome_response(r, 500, "Payload store error");
   }
@@ -944,6 +948,7 @@ int rhizome_response_content_init_filehash(httpd_request *r, const rhizome_fileh
     case RHIZOME_PAYLOAD_STATUS_NEW:
       return http_request_rhizome_response(r, 404, "Payload not found");
     case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_BUSY:
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
@@ -969,6 +974,7 @@ int rhizome_response_content_init_payload(httpd_request *r, rhizome_manifest *m)
       return http_request_rhizome_response(r, 404, "Payload not found");
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
       return http_request_rhizome_response(r, 419, "Payload decryption error"); // Authentication Timeout
+    case RHIZOME_PAYLOAD_STATUS_BUSY:
     case RHIZOME_PAYLOAD_STATUS_ERROR:
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
