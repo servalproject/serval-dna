@@ -191,6 +191,7 @@ int message_ply_read_open(struct message_ply_read *ply, const rhizome_bid_t *bid
     && rhizome_open_decrypt_read(m, &ply->read) == RHIZOME_PAYLOAD_STATUS_STORED){
 
     assert(m->filesize != RHIZOME_SIZE_UNSET);
+    ply->bundle_id = m->keypair.public_key;
     ply->author = m->author;
     ply->read.offset = ply->read.length = m->filesize;
     if (m->name && *m->name)
@@ -281,17 +282,12 @@ int message_ply_parse_timestamp(struct message_ply_read *ply, time_s_t *timestam
   return 0;
 }
 
-int message_ply_parse_ack(struct message_ply_read *ply, uint64_t *end_offset, uint64_t *start_offset, rhizome_bid_t **bid)
+int message_ply_parse_ack(struct message_ply_read *ply, struct message_ply_ack *ack)
 {
   int ofs=0;
+  bzero(ack, sizeof *ack);
 
-  *end_offset=0;
-  if (start_offset)
-    *start_offset = 0;
-  if (bid)
-    *bid = NULL;
-
-  int r = unpack_uint(&ply->record[ofs], ply->record_length, end_offset);
+  int r = unpack_uint(&ply->record[ofs], ply->record_length, &ack->end_offset);
   if (r == -1)
     return -1;
   ofs+=r;
@@ -299,13 +295,11 @@ int message_ply_parse_ack(struct message_ply_read *ply, uint64_t *end_offset, ui
   r = unpack_uint(&ply->record[ofs], ply->record_length - ofs, &length);
   if (r == -1)
     return 0;
-  if (start_offset)
-    *start_offset = *end_offset - length;
+  ack->start_offset = ack->end_offset - length;
   ofs += r;
-
-  if (bid){
-    if (ofs + sizeof(rhizome_bid_t) <= ply->record_length)
-      *bid = (rhizome_bid_t*)&ply->record[ofs];
+  if (ofs < ply->record_length){
+    ack->binary = &ply->record[ofs];
+    ack->binary_length = ply->record_length - ofs;
   }
   return 0;
 }
@@ -336,15 +330,16 @@ void message_ply_append_timestamp(struct overlay_buffer *b)
   append_footer(b, MESSAGE_BLOCK_TYPE_TIME);
 }
 
-void message_ply_append_ack(struct overlay_buffer *b, uint64_t message_offset, uint64_t previous_ack_offset, const rhizome_bid_t *bid)
+void message_ply_append_ack(struct overlay_buffer *b, const struct message_ply_ack *ack)
 {
+  assert(ack->binary_length == 0 || ack->binary);
   ob_checkpoint(b);
-  ob_append_packed_ui64(b, message_offset);
+  ob_append_packed_ui64(b, ack->end_offset);
   // append the number of bytes acked (should be smaller than an absolute offset)
-  if (previous_ack_offset || bid)
-    ob_append_packed_ui64(b, message_offset - previous_ack_offset);
-  if (bid)
-    ob_append_bytes(b, bid->binary, sizeof *bid);
+  if (ack->start_offset || ack->binary_length)
+    ob_append_packed_ui64(b, ack->end_offset - ack->start_offset);
+  if (ack->binary_length)
+    ob_append_bytes(b, ack->binary, ack->binary_length);
   append_footer(b, MESSAGE_BLOCK_TYPE_ACK);
 }
 

@@ -333,7 +333,7 @@ static int app_meshmb_activity(const struct cli_parsed *parsed, struct cli_conte
 	switch(iterator->msg_reader.type){
 	  case MESSAGE_BLOCK_TYPE_MESSAGE:
 	    cli_put_long(context, rowcount++, ":");
-	    cli_put_string(context, alloca_tohex_rhizome_bid_t(iterator->msg_ply), ":");
+	    cli_put_string(context, alloca_tohex_rhizome_bid_t(iterator->msg_reader.bundle_id), ":");
 	    cli_put_string(context, alloca_tohex_identity_t(&iterator->msg_reader.author), ":");
 	    cli_put_string(context, iterator->msg_reader.name, ":");
 	    cli_put_long(context, iterator->ack_timestamp ? (long)(now - iterator->ack_timestamp) : (long)-1, ":");

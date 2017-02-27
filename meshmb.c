@@ -69,32 +69,31 @@ int meshmb_activity_next(struct meshmb_activity_iterator *i){
 	continue;
 
       case MESSAGE_BLOCK_TYPE_ACK:{
-	uint64_t ack_end;
-	rhizome_bid_t *bid;
-	if (message_ply_parse_ack(&i->ack_reader,
-	  &ack_end,
-	  &i->ack_start,
-	  &bid
-	) == -1)
+	struct message_ply_ack ack;
+	if (message_ply_parse_ack(&i->ack_reader, &ack) == -1)
 	  return -1;
 
 	DEBUGF(meshmb, "Found ack for %s, %u to %u",
-	  alloca_tohex_rhizome_bid_t(*bid), i->ack_start, ack_end);
+	  alloca_tohex(ack.binary, ack.binary_length), ack.start_offset, ack.end_offset);
 
-	if (bcmp(&i->msg_ply, bid, sizeof(*bid))==0){
-	  // shortcut for consecutive acks for the same incoming feed
-	  DEBUGF(meshmb, "Ply still open @%u",
-	    i->msg_reader.read.offset);
-	} else {
-	  message_ply_read_close(&i->msg_reader);
-	  if (message_ply_read_open(&i->msg_reader, bid, NULL)==-1){
-	    bzero(&i->msg_ply, sizeof i->msg_ply);
-	    continue;
+	struct feed_metadata *metadata;
+	if (tree_find(&i->feeds->root, (void**)&metadata, ack.binary, ack.binary_length, NULL, NULL)==TREE_FOUND){
+	  if (i->metadata == metadata){
+	    // shortcut for consecutive acks for the same incoming feed
+	    DEBUGF(meshmb, "Ply still open @%u",
+	      i->msg_reader.read.offset);
+	  }else{
+	    message_ply_read_close(&i->msg_reader);
+	    if (message_ply_read_open(&i->msg_reader, &metadata->ply.bundle_id, NULL)==-1){
+	      i->metadata = NULL;
+	      continue;
+	    }
+	    i->metadata = metadata;
 	  }
-	  i->msg_ply = *bid;
 	}
 
-	i->msg_reader.read.offset = ack_end;
+	i->ack_start = ack.start_offset;
+	i->msg_reader.read.offset = ack.end_offset;
       } break;
 
       default:
@@ -257,7 +256,15 @@ static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metada
     {
       struct overlay_buffer *b = ob_new();
 
-      message_ply_append_ack(b, metadata->ply.size, metadata->size, &metadata->ply.bundle_id);
+      struct message_ply_ack ack;
+      bzero(&ack, sizeof ack);
+
+      ack.start_offset = metadata->size;
+      ack.end_offset = metadata->ply.size;
+      ack.binary = metadata->ply.bundle_id.binary;
+      ack.binary_length = (metadata->tree_depth >> 3) + 3;
+
+      message_ply_append_ack(b, &ack);
       int r = rhizome_write_buffer(&feeds->ack_writer, ob_ptr(b), ob_position(b));
       DEBUGF(meshmb, "Acked incoming messages");
       ob_free(b);

@@ -23,7 +23,7 @@ struct meshmb_activity_iterator{
   struct message_ply_read ack_reader;
   time_s_t ack_timestamp;
   uint64_t ack_start;
-  rhizome_bid_t msg_ply;
+  struct feed_metadata *metadata;
   struct message_ply_read msg_reader;
 };
 

@@ -214,9 +214,9 @@ static enum meshms_status update_their_stats(struct meshms_metadata *metadata, s
 	  if (!found_their_ack){
 	    found_their_ack = 1;
 	    metadata->their_last_ack_offset = reader->record_end_offset;
-	    message_ply_parse_ack(reader,
-	      &metadata->their_last_ack,
-	      NULL, NULL);
+	    struct message_ply_ack ack;
+	    message_ply_parse_ack(reader, &ack);
+	    metadata->their_last_ack = ack.end_offset;
 	    DEBUGF(meshms, "Found their last ack @%"PRIu64" = %"PRIu64,
 	      metadata->their_last_ack_offset, metadata->their_last_ack);
 	  }
@@ -243,7 +243,9 @@ static enum meshms_status update_my_stats(struct meshms_metadata *metadata, stru
 
     reader->read.offset = reader->read.length;
     if (message_ply_find_prev(reader, MESSAGE_BLOCK_TYPE_ACK)==0){
-      message_ply_parse_ack(reader, &metadata->my_last_ack, NULL, NULL);
+      struct message_ply_ack ack;
+      message_ply_parse_ack(reader, &ack);
+      metadata->my_last_ack = ack.end_offset;
       DEBUGF(meshms, "Found my last ack %"PRId64, metadata->my_last_ack);
     }
     metadata->my_size = ply->size;
@@ -299,8 +301,11 @@ static enum meshms_status update_conversation(const keyring_identity *id, struct
   DEBUGF(meshms, "Creating ACK for %"PRId64" - %"PRId64, conv->metadata.my_last_ack, conv->metadata.their_last_message);
   unsigned char buffer[30];
   struct overlay_buffer *b = ob_static(buffer, sizeof buffer);
-
-  message_ply_append_ack(b, conv->metadata.their_last_message, conv->metadata.my_last_ack, NULL);
+  struct message_ply_ack ack;
+  bzero(&ack, sizeof ack);
+  ack.end_offset = conv->metadata.their_last_message;
+  ack.start_offset = conv->metadata.my_last_ack;
+  message_ply_append_ack(b, &ack);
   message_ply_append_timestamp(b);
   assert(!ob_overrun(b));
 
@@ -785,17 +790,17 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
 	iter->which_ply = THEIR_PLY;
 	if (iter->_their_reader.read.offset >= iter->_end_range) {
 	  switch (iter->_their_reader.type) {
-	    case MESSAGE_BLOCK_TYPE_ACK:
+	    case MESSAGE_BLOCK_TYPE_ACK:{
 	      iter->type = ACK_RECEIVED;
 	      iter->their_offset = iter->_their_reader.record_end_offset;
 	      iter->text = NULL;
 	      iter->text_length = 0;
-	      message_ply_parse_ack(&iter->_their_reader,
-		&iter->ack_offset,
-		NULL, NULL);
+	      struct message_ply_ack ack;
+	      message_ply_parse_ack(&iter->_their_reader, &ack);
+	      iter->ack_offset = ack.end_offset;
 	      iter->read = 0;
 	      return MESHMS_STATUS_UPDATED;
-	    case MESSAGE_BLOCK_TYPE_MESSAGE:
+	    }case MESSAGE_BLOCK_TYPE_MESSAGE:
 	      iter->type = MESSAGE_RECEIVED;
 	      iter->their_offset = iter->_their_reader.record_end_offset;
 	      iter->text = (const char *)iter->_their_reader.record;
@@ -832,15 +837,14 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
 	  // Read the received messages up to the ack'ed offset
 	  if (iter->their_ply.found) {
 	    iter->my_offset = iter->_my_reader.record_end_offset;
+	    struct message_ply_ack ack;
 
-	    if (message_ply_parse_ack(&iter->_my_reader,
-	      (uint64_t*)&iter->_their_reader.read.offset,
-	      &iter->_end_range,
-	      NULL
-	    ) == -1){
+	    if (message_ply_parse_ack(&iter->_my_reader, &ack) == -1){
 	      WHYF("Malformed ACK");
 	      return MESHMS_STATUS_PROTOCOL_FAULT;
 	    }
+	    iter->_their_reader.read.offset = ack.end_offset;
+	    iter->_end_range = ack.start_offset;
 	    // TODO tail
 	    iter->_in_ack = 1;
 	  }
@@ -910,9 +914,13 @@ enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipie
   // lets do that in one hit
   uint8_t ack = (c->metadata.my_last_ack < c->metadata.their_last_message) ? 1:0;
   DEBUGF(meshms,"Our ack %"PRIu64", their message %"PRIu64, c->metadata.my_last_ack, c->metadata.their_last_message);
-  if (ack)
-    message_ply_append_ack(b, c->metadata.their_last_message, c->metadata.my_last_ack, NULL);
-
+  if (ack){
+    struct message_ply_ack ack;
+    bzero(&ack, sizeof ack);
+    ack.end_offset = c->metadata.their_last_message;
+    ack.start_offset = c->metadata.my_last_ack;
+    message_ply_append_ack(b, &ack);
+  }
   message_ply_append_message(b, message, message_len);
   message_ply_append_timestamp(b);
 

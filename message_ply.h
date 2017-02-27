@@ -25,6 +25,7 @@ struct message_ply_read {
   struct rhizome_read read;
   // block buffer
   struct rhizome_read_buffer buff;
+  rhizome_bid_t bundle_id;
   // copy of the manifest name field
   const char *name;
   // copy of the manifest author
@@ -50,8 +51,15 @@ int message_ply_find_prev(struct message_ply_read *ply, char type);
 int message_ply_is_open(struct message_ply_read *ply);
 void message_ply_read_rewind(struct message_ply_read *ply);
 
+struct message_ply_ack{
+  uint64_t start_offset;
+  uint64_t end_offset;
+  const uint8_t *binary;
+  size_t binary_length;
+};
+
 int message_ply_parse_timestamp(struct message_ply_read *ply, time_s_t *timestamp);
-int message_ply_parse_ack(struct message_ply_read *ply, uint64_t *end_offset, uint64_t *start_offset, rhizome_bid_t **bid);
+int message_ply_parse_ack(struct message_ply_read *ply, struct message_ply_ack *ack);
 
 int message_ply_write_open(
   struct message_ply_write *ply_write,
@@ -67,7 +75,7 @@ int message_ply_write_open(
 int message_ply_write_finish(struct message_ply_write *write);
 void message_ply_write_close(struct message_ply_write *write);
 
-void message_ply_append_ack(struct overlay_buffer *b, uint64_t message_offset, uint64_t previous_ack_offset, const rhizome_bid_t *bid);
+void message_ply_append_ack(struct overlay_buffer *b, const struct message_ply_ack *ack);
 void message_ply_append_timestamp(struct overlay_buffer *b);
 void message_ply_append_message(struct overlay_buffer *b, const char *message, size_t message_len);
 int message_ply_append(const struct keyring_identity *id, const char *service, const sid_t *recipient, struct message_ply *ply, struct overlay_buffer *b,
