@@ -639,7 +639,11 @@ static int overlay_saw_mdp_frame(
   struct internal_binding *binding;
   for (binding = SECTION_START(bindings); binding < SECTION_END(bindings); ++binding) {
     if (binding->port == header->destination_port){
+      struct call_stats call_stats;
+      call_stats.totals = &binding->stats;
+      fd_func_enter(__HERE__, &call_stats);
       binding->function(header, payload);
+      fd_func_exit(__HERE__, &call_stats);
       goto end;
     }
   }

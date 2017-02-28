@@ -24,6 +24,7 @@
 #include "feature.h"
 #include "overlay_address.h"
 #include "section.h"
+#include "fdqueue.h"
 
 #define FRAME_NOT_SENT -1
 #define FRAME_DONT_SEND -2
@@ -139,6 +140,7 @@ int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *h
 struct internal_binding{
   mdp_port_t port;
   int (*function)(struct internal_mdp_header *header, struct overlay_buffer *payload);
+  struct profile_total stats;
 };
 
 DECLARE_SECTION(struct internal_binding, bindings);
@@ -149,6 +151,7 @@ DECLARE_SECTION(struct internal_binding, bindings);
   static struct internal_binding BIND ## FUNC IN_SECTION(bindings) = { \
     .port = PORT, \
     .function = FUNC, \
+    .stats.name = #FUNC, \
   }
 
 #endif //__SERVAL_DNA__OVERLAY_PACKET_H
