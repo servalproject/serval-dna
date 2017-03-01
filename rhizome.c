@@ -522,6 +522,8 @@ enum rhizome_bundle_status rhizome_bundle_import_files(rhizome_manifest *m, rhiz
       }
 
       pstatus = rhizome_finish_write(&write);
+      if (pstatus == RHIZOME_PAYLOAD_STATUS_BUSY)
+	rhizome_fail_write(&write);
     }
 
   }

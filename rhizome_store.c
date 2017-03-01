@@ -908,8 +908,12 @@ enum rhizome_payload_status rhizome_import_payload_from_file(rhizome_manifest *m
     rhizome_fail_write(&write);
     return RHIZOME_PAYLOAD_STATUS_ERROR;
   }
-  
-  return rhizome_finish_write(&write);
+
+  status = rhizome_finish_write(&write);
+  if (status == RHIZOME_PAYLOAD_STATUS_BUSY)
+    rhizome_fail_write(&write);
+
+  return status;
 }
 
 // store a whole payload from a single buffer
@@ -938,7 +942,11 @@ enum rhizome_payload_status rhizome_import_buffer(rhizome_manifest *m, uint8_t *
     return RHIZOME_PAYLOAD_STATUS_ERROR;
   }
   
-  return rhizome_finish_write(&write);
+  status = rhizome_finish_write(&write);
+  if (status == RHIZOME_PAYLOAD_STATUS_BUSY)
+    rhizome_fail_write(&write);
+
+  return status;
 }
 
 /* Checks the size of the file with the given path as a candidate payload for an existing manifest.
