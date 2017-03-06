@@ -843,19 +843,26 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
 	}
 
 	enum rhizome_bundle_status status = rhizome_retrieve_manifest_by_hash_prefix(key.key, sizeof(sync_key_t), m);
-	if (status == RHIZOME_BUNDLE_STATUS_NEW){
-	  // TODO We don't have this bundle anymore!
-	}
 	if (status != RHIZOME_BUNDLE_STATUS_SAME){
 	  rhizome_manifest_free(m);
+	  // TODO Tidy up. We don't have this bundle anymore!
+	  if (status != RHIZOME_BUNDLE_STATUS_NEW){
+	    ob_rewind(payload);
+	    return 1;
+	  }
 	  break;
 	}
 
 	struct rhizome_read *read = emalloc_zero(sizeof (struct rhizome_read));
-	
-	if (rhizome_open_read(read, &m->filehash) != RHIZOME_PAYLOAD_STATUS_STORED){
+
+	enum rhizome_payload_status pstatus;
+	if ((pstatus = rhizome_open_read(read, &m->filehash)) != RHIZOME_PAYLOAD_STATUS_STORED){
 	  free(read);
 	  rhizome_manifest_free(m);
+	  if (pstatus != RHIZOME_PAYLOAD_STATUS_NEW){
+	    ob_rewind(payload);
+	    return 1;
+	  }
 	  break;
 	}
 	rhizome_manifest_free(m);
