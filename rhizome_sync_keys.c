@@ -81,6 +81,7 @@ static const char *get_state_name(uint8_t state)
     case STATE_SEND_PAYLOAD: return "SEND_PAYLOAD";
     case STATE_RECV_PAYLOAD: return "RECV_PAYLOAD";
     case STATE_COMPLETING: return "COMPLETING";
+    case STATE_LOOKUP_BAR: return "LOOKUP_BAR";
   }
   return "Unknown";
 }
@@ -191,7 +192,6 @@ void sync_keys_status(struct sched_ent *alarm)
   if (!IF_DEBUG(rhizome_sync_keys))
     return;
   
-  DEBUGF(rhizome_sync_keys, "Sync state;");
   sync_enum_differences(sync_tree, sync_key_diffs);
   
   time_ms_t next = gettime_ms()+1000;
@@ -203,18 +203,36 @@ static int sync_complete_transfers(){
   while(completing){
     struct transfers *transfer = completing;
     assert(transfer->state == STATE_COMPLETING);
-    enum rhizome_payload_status status = rhizome_finish_write(transfer->write);
-    if (status == RHIZOME_PAYLOAD_STATUS_BUSY)
-      return 1;
 
-    DEBUGF(rhizome_sync_keys, "Write complete %s (%d)", alloca_sync_key(&transfer->key), status);
-    free(transfer->write);
-    transfer->write = NULL;
-    if (status == RHIZOME_PAYLOAD_STATUS_NEW || status == RHIZOME_PAYLOAD_STATUS_STORED){
-      enum rhizome_bundle_status add_state = rhizome_add_manifest_to_store(transfer->manifest, NULL);
-      DEBUGF(rhizome_sync_keys, "Import %s = %s",
-	alloca_sync_key(&transfer->key), rhizome_bundle_status_message_nonnull(add_state));
+    if (transfer->write){
+      enum rhizome_payload_status status = rhizome_finish_write(transfer->write);
+      if (status == RHIZOME_PAYLOAD_STATUS_BUSY)
+	return 1;
+
+      free(transfer->write);
+      transfer->write = NULL;
+
+      if (status != RHIZOME_PAYLOAD_STATUS_NEW && status != RHIZOME_PAYLOAD_STATUS_STORED){
+	WARNF("Write failed %s (hash %s)",
+	    rhizome_payload_status_message_nonnull(status),
+	    alloca_sync_key(&transfer->key));
+	goto cleanup;
+      }
     }
+
+    enum rhizome_bundle_status add_state = rhizome_add_manifest_to_store(transfer->manifest, NULL);
+    switch(add_state){
+      case RHIZOME_BUNDLE_STATUS_BUSY:
+	return 1;
+      case RHIZOME_BUNDLE_STATUS_NEW:
+      case RHIZOME_BUNDLE_STATUS_SAME:
+	break;
+      default:
+	WARNF("Import manifest (hash %s) failed %s",
+	  alloca_sync_key(&transfer->key), rhizome_bundle_status_message_nonnull(add_state));
+    }
+
+cleanup:
     if (transfer->manifest)
       rhizome_manifest_free(transfer->manifest);
     transfer->manifest=NULL;
@@ -379,6 +397,9 @@ static void sync_send_peer(struct subscriber *peer, struct rhizome_sync_keys *sy
 	      break;
 	    default:
 	      msg_complete = 0;
+	      DEBUGF(rhizome_sync_keys, "Can't send manifest right now, (hash %s) %s",
+		alloca_sync_key(&msg->key),
+		rhizome_bundle_status_message_nonnull(status));
 	    case RHIZOME_BUNDLE_STATUS_NEW:
 	      // TODO we don't have this bundle anymore!
 	      ob_rewind(payload);
@@ -492,7 +513,7 @@ void sync_send(struct sched_ent *alarm)
   
   time_ms_t next_action = msp_iterator_close(&iterator);
   if (sync_complete_transfers()==1){
-    time_ms_t try_again = gettime_ms()+100;
+    time_ms_t try_again = gettime_ms()+20;
     if (next_action > try_again)
       next_action = try_again;
   }
@@ -548,15 +569,20 @@ static void build_tree()
   sync_tree = sync_alloc_state(NULL, sync_peer_has, sync_peer_does_not_have, sync_peer_now_has);
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT manifest_hash FROM manifests "
+  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT id, version, manifest_hash FROM manifests "
     "WHERE manifests.filehash IS NULL OR EXISTS(SELECT 1 FROM files WHERE files.id = manifests.filehash);");
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
-    const char *hash = (const char *) sqlite3_column_text(statement, 0);
+    const char *q_id = (const char *) sqlite3_column_text(statement, 0);
+    uint64_t q_version = sqlite3_column_int64(statement, 1);
+    const char *hash = (const char *) sqlite3_column_text(statement, 2);
+
     rhizome_filehash_t manifest_hash;
     if (str_to_rhizome_filehash_t(&manifest_hash, hash)==0){
       sync_key_t key;
       memcpy(key.key, manifest_hash.binary, sizeof(sync_key_t));
-      DEBUGF(rhizome_sync_keys, "Adding %s to tree",
+      DEBUGF(rhizome_sync_keys, "Adding %s:%"PRIu64" (hash %s) to tree",
+	q_id,
+	q_version,
 	alloca_sync_key(&key));
       sync_add_key(sync_tree, &key, NULL);
     }
@@ -600,27 +626,26 @@ void sync_send_keys(struct sched_ent *alarm)
     DEBUG(rhizome_sync_keys,"Queueing next message for now");
     RESCHEDULE(alarm, now, now, now);
   }else{
-    DEBUG(rhizome_sync_keys,"Queueing next message for 5s");
     RESCHEDULE(alarm, now+5000, now+30000, TIME_MS_NEVER_WILL);
   }
 }
 
-static void process_transfer_message(struct subscriber *peer, struct rhizome_sync_keys *sync_state, struct overlay_buffer *payload)
+static int process_transfer_message(struct subscriber *peer, struct rhizome_sync_keys *sync_state, struct overlay_buffer *payload)
 {
   while(ob_remaining(payload)){
     ob_checkpoint(payload);
     int msg_state = ob_get(payload);
     if (msg_state<0)
-      return;
+      return 0;
     sync_key_t key;
     if (ob_get_bytes(payload, key.key, sizeof key)<0)
-      return;
+      return 0;
     
     int rank=-1;
     if (msg_state & STATE_REQ){
       rank = ob_get(payload);
       if (rank < 0)
-	return;
+	return 0;
     }
     
     DEBUGF(rhizome_sync_keys, "Processing sync message %s %s %d", 
@@ -629,19 +654,22 @@ static void process_transfer_message(struct subscriber *peer, struct rhizome_syn
       case STATE_SEND_BAR:{
 	rhizome_bar_t bar;
 	if (ob_get_bytes(payload, bar.binary, sizeof(rhizome_bar_t))<0)
-	  return;
-	
+	  return 0;
+
 	if (!config.rhizome.fetch)
 	  break;
-	int r = rhizome_is_bar_interesting(&bar);
-	if (r == 0){
-	  DEBUGF(rhizome_sync_keys, "Ignoring BAR for %s, (Uninteresting)", 
+
+	enum rhizome_bundle_status status = rhizome_is_bar_interesting(&bar);
+	if (status == RHIZOME_BUNDLE_STATUS_SAME){
+	  DEBUGF(rhizome_sync_keys, "Ignoring BAR %s:%"PRIu64" (hash %s), (Uninteresting)",
+	    alloca_tohex_rhizome_bar_prefix(&bar),
+	    rhizome_bar_version(&bar),
 	    alloca_sync_key(&key));
 	  break;
-        }else if (r==-1){
+        }else if (status != RHIZOME_BUNDLE_STATUS_NEW){
 	  // don't consume the payload
 	  ob_rewind(payload);
-	  return;
+	  return 1;
 	}
 	// send a request for the manifest
 	rank = rhizome_bar_log_size(&bar);
@@ -666,7 +694,7 @@ static void process_transfer_message(struct subscriber *peer, struct rhizome_syn
 	
 	struct rhizome_manifest_summary summ;
 	if (!rhizome_manifest_inspect((char *)data, len, &summ)){
-	  WHYF("Ignoring manifest for %s, (Malformed)", 
+	  WHYF("Ignoring manifest (hash %s), (Malformed)",
 	    alloca_sync_key(&key));
 	  break;
 	}
@@ -676,7 +704,7 @@ static void process_transfer_message(struct subscriber *peer, struct rhizome_syn
 	if (!m){
 	  // don't consume the payload
 	  ob_rewind(payload);
-	  return;
+	  return 1;
 	}
 	
 	memcpy(m->manifestdata, data, len);
@@ -684,23 +712,27 @@ static void process_transfer_message(struct subscriber *peer, struct rhizome_syn
 	if (   rhizome_manifest_parse(m) == -1
 	    || !rhizome_manifest_validate(m)
 	) {
-	  WHYF("Ignoring manifest for %s, (Malformed)", 
+	  WHYF("Ignoring manifest %s:%u"PRIu64" (hash %s), (Malformed)",
+	    alloca_tohex_rhizome_bid_t(m->keypair.public_key),
+	    m->version,
 	    alloca_sync_key(&key));
 	  rhizome_manifest_free(m);
 	  break;
 	}
 
-	int r = rhizome_is_manifest_interesting(m);
-	if (r == 0){
-	  DEBUGF(rhizome_sync_keys, "Ignoring manifest for %s, (Uninteresting)", 
+	enum rhizome_bundle_status bstatus = rhizome_is_manifest_interesting(m);
+	if (bstatus == RHIZOME_BUNDLE_STATUS_SAME){
+	  DEBUGF(rhizome_sync_keys, "Ignoring manifest %s:%u"PRIu64" (hash %s), (Uninteresting)",
+	    alloca_tohex_rhizome_bid_t(m->keypair.public_key),
+	    m->version,
 	    alloca_sync_key(&key));
 	  rhizome_manifest_free(m);
 	  break;
-	}else if (r == -1){
+	}else if (bstatus != RHIZOME_BUNDLE_STATUS_NEW){
 	  // don't consume the payload
 	  rhizome_manifest_free(m);
 	  ob_rewind(payload);
-	  return;
+	  return 1;
 	}
 	
 	// start writing the payload
@@ -723,7 +755,7 @@ static void process_transfer_message(struct subscriber *peer, struct rhizome_syn
 		rhizome_fail_write(write);
 		free(write);
 		ob_rewind(payload);
-		return;
+		return 1;
 	      }
 	      DEBUGF(rhizome_sync_keys, "Already have payload, imported manifest for %s, (%s)",
 		alloca_sync_key(&key), rhizome_bundle_status_message_nonnull(add_status));
@@ -736,14 +768,17 @@ static void process_transfer_message(struct subscriber *peer, struct rhizome_syn
 	    rhizome_fail_write(write);
 	    free(write);
 	    ob_rewind(payload);
-	    return;
+	    return 1;
 
 	  default:
-	    DEBUGF(rhizome_sync_keys, "Ignoring manifest for %s, (%s)",
-	      alloca_sync_key(&key), rhizome_payload_status_message_nonnull(status));
+	    break;
 	}
 	  
 	if (status!=RHIZOME_PAYLOAD_STATUS_NEW){
+	  DEBUGF(rhizome_sync_keys, "Ignoring manifest %s:%"PRIu64" (hash %s), (%s)",
+	    alloca_tohex_rhizome_bid_t(m->keypair.public_key),
+	    m->version,
+	    alloca_sync_key(&key), rhizome_payload_status_message_nonnull(status));
 	  rhizome_manifest_free(m);
 	  rhizome_fail_write(write);
 	  free(write);
@@ -771,14 +806,14 @@ static void process_transfer_message(struct subscriber *peer, struct rhizome_syn
 	    // no new content in the new version, we can import now
 	    enum rhizome_payload_status status = rhizome_finish_write(write);
 
-	    DEBUGF(rhizome_sync_keys, "Write complete %s (%d)", alloca_sync_key(&key), status);
-
 	    if (status == RHIZOME_PAYLOAD_STATUS_NEW || status == RHIZOME_PAYLOAD_STATUS_STORED){
 	      enum rhizome_bundle_status add_state = rhizome_add_manifest_to_store(m, NULL);
 	      DEBUGF(rhizome_sync_keys, "Import %s = %s", 
 		alloca_sync_key(&key), rhizome_bundle_status_message_nonnull(add_state));
-	    } else
+	    } else {
+	      WHYF("Failed to complete payload %s %s", alloca_sync_key(&key), rhizome_payload_status_message_nonnull(status));
 	      rhizome_fail_write(write);
+	    }
 	    free(write);
 	    rhizome_manifest_free(m);
 	    break;
@@ -804,7 +839,7 @@ static void process_transfer_message(struct subscriber *peer, struct rhizome_syn
 	rhizome_manifest *m = rhizome_new_manifest();
 	if (!m){
 	  ob_rewind(payload);
-	  return;
+	  return 1;
 	}
 
 	enum rhizome_bundle_status status = rhizome_retrieve_manifest_by_hash_prefix(key.key, sizeof(sync_key_t), m);
@@ -868,6 +903,7 @@ static void process_transfer_message(struct subscriber *peer, struct rhizome_syn
 	WHYF("Unknown message type %x", msg_state);
     }
   }
+  return 0;
 }
 
 
@@ -910,13 +946,14 @@ static int sync_keys_recv(struct internal_mdp_header *header, struct overlay_buf
       struct rhizome_sync_keys *sync_state = get_peer_sync_state(header->source);
       sync_state->connection = connection_state;
       
-      while(1){
+      int r = 0;
+      while(r == 0){
 	struct msp_packet *packet = msp_recv_next(connection_state);
 	if (!packet)
 	  break;
 	struct overlay_buffer *recv_payload = msp_unpack(connection_state, packet);
 	if (recv_payload)
-	  process_transfer_message(header->source, sync_state, recv_payload);
+	  r = process_transfer_message(header->source, sync_state, recv_payload);
 	msp_consumed(connection_state, packet, recv_payload);
       }
       
@@ -924,9 +961,14 @@ static int sync_keys_recv(struct internal_mdp_header *header, struct overlay_buf
 
       time_ms_t next_action = msp_next_action(connection_state);
       if (sync_complete_transfers()==1){
-	time_ms_t try_again = gettime_ms() + 100;
+	time_ms_t try_again = gettime_ms() + 20;
 	if (next_action > try_again)
 	  next_action = try_again;
+      }
+      if (r!=0){
+	time_ms_t wail_till = gettime_ms() + 20;
+	if (next_action < wail_till)
+	  next_action = wail_till;
       }
 
       struct sched_ent *alarm=&ALARM_STRUCT(sync_send);

@@ -470,7 +470,6 @@ void _rhizome_manifest_free(struct __sourceloc, rhizome_manifest *m);
 rhizome_manifest *_rhizome_new_manifest(struct __sourceloc);
 #define rhizome_new_manifest() _rhizome_new_manifest(__WHENCE__)
 
-int rhizome_store_manifest(rhizome_manifest *m);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
 
 int rhizome_parse_field_assignments(struct rhizome_manifest_field_assignment *fields, unsigned argc, const char *const *args);
@@ -552,11 +551,11 @@ sqlite3_stmt *_sqlite_prepare_bind(struct __sourceloc, int log_level, sqlite_ret
 int _sqlite_retry(struct __sourceloc, sqlite_retry_state *retry, const char *action);
 void _sqlite_retry_done(struct __sourceloc, sqlite_retry_state *retry, const char *action);
 int _sqlite_step(struct __sourceloc, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement);
+int _sqlite_exec_code(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement, int *rowcount);
 int _sqlite_exec(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement);
 int _sqlite_exec_void(struct __sourceloc, int log_level, const char *sqltext, ...);
 int _sqlite_exec_void_retry(struct __sourceloc, int log_level, sqlite_retry_state *retry, const char *sqltext, ...);
 int _sqlite_exec_changes_retry(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, int *rowcount, int *changes, const char *sqltext, ...);
-int _sqlite_exec_uint64(struct __sourceloc, uint64_t *result, const char *sqltext, ...);
 int _sqlite_exec_uint64_retry(struct __sourceloc, sqlite_retry_state *retry, uint64_t *result, const char *sqltext, ...);
 int _sqlite_exec_strbuf(struct __sourceloc, strbuf sb, const char *sqltext, ...);
 int _sqlite_exec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, strbuf sb, const char *sqltext, ...);
@@ -598,6 +597,8 @@ int _sqlite_blob_close(struct __sourceloc, int log_level, sqlite3_blob *blob);
 #define sqlite_exec(stmt)                               _sqlite_exec(__WHENCE__, LOG_LEVEL_ERROR, NULL, (stmt))
 #define sqlite_exec_retry(rs,stmt)                      _sqlite_exec(__WHENCE__, LOG_LEVEL_ERROR, (rs), (stmt))
 #define sqlite_exec_retry_loglevel(ll,rs,stmt)          _sqlite_exec(__WHENCE__, (ll), (rs), (stmt))
+#define sqlite_exec_code(stmt, rowcount)                _sqlite_exec_code(__WHENCE__, LOG_LEVEL_ERROR, NULL, (stmt), (rowcount))
+#define sqlite_exec_code_retry(rs, stmt, rowcount)      _sqlite_exec_code(__WHENCE__, LOG_LEVEL_ERROR, (rs), (stmt), (rowcount))
 #define sqlite_step(stmt)                               _sqlite_step(__WHENCE__, LOG_LEVEL_ERROR, NULL, (stmt))
 #define sqlite_step_retry(rs,stmt)                      _sqlite_step(__WHENCE__, LOG_LEVEL_ERROR, (rs), (stmt))
 #define sqlite_exec_void(sql,arg,...)                   _sqlite_exec_void(__WHENCE__, LOG_LEVEL_ERROR, (sql), arg, ##__VA_ARGS__)
@@ -606,7 +607,6 @@ int _sqlite_blob_close(struct __sourceloc, int log_level, sqlite3_blob *blob);
 #define sqlite_exec_changes_retry(rs,ROWS,CHANGES,sql,arg,...) _sqlite_exec_changes_retry(__WHENCE__, LOG_LEVEL_ERROR, (rs), (ROWS), (CHANGES), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_changes_retry_loglevel(ll,rs,ROWS,CHANGES,sql,arg,...) _sqlite_exec_changes_retry(__WHENCE__, (ll), (rs), (ROWS), (CHANGES), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_void_retry_loglevel(ll,rs,sql,arg,...) _sqlite_exec_void_retry(__WHENCE__, (ll), (rs), (sql), arg, ##__VA_ARGS__)
-#define sqlite_exec_uint64(res,sql,arg,...)             _sqlite_exec_uint64(__WHENCE__, (res), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_uint64_retry(rs,res,sql,arg,...)    _sqlite_exec_uint64_retry(__WHENCE__, (rs), (res), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_strbuf(sb,sql,arg,...)              _sqlite_exec_strbuf(__WHENCE__, (sb), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_strbuf_retry(rs,sb,sql,arg,...)     _sqlite_exec_strbuf_retry(__WHENCE__, (rs), (sb), (sql), arg, ##__VA_ARGS__)
@@ -619,8 +619,8 @@ double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_
 int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs);
 enum rhizome_bundle_status rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
 int rhizome_manifest_to_bar(rhizome_manifest *m, rhizome_bar_t *bar);
-int rhizome_is_bar_interesting(const rhizome_bar_t *bar);
-int rhizome_is_manifest_interesting(rhizome_manifest *m);
+enum rhizome_bundle_status rhizome_is_bar_interesting(const rhizome_bar_t *bar);
+enum rhizome_bundle_status rhizome_is_manifest_interesting(rhizome_manifest *m);
 enum rhizome_bundle_status rhizome_retrieve_manifest(const rhizome_bid_t *bid, rhizome_manifest *m);
 enum rhizome_bundle_status rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m);
 enum rhizome_bundle_status rhizome_retrieve_manifest_by_hash_prefix(const uint8_t *prefix, unsigned prefix_len, rhizome_manifest *m);
@@ -865,7 +865,7 @@ int rhizome_fetch_has_queue_space(unsigned char log2_size);
 
 /* Rhizome storage methods */
 
-int rhizome_exists(const rhizome_filehash_t *hashp);
+enum rhizome_payload_status rhizome_exists(const rhizome_filehash_t *hashp);
 enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, uint64_t file_length);
 int rhizome_write_buffer(struct rhizome_write *write_state, uint8_t *buffer, size_t data_size);
 int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uint8_t *buffer, size_t data_size);

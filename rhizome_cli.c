@@ -648,8 +648,6 @@ static int app_rhizome_export_file(const struct cli_parsed *parsed, struct cli_c
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-  if (!rhizome_exists(&hash))
-    return 1;
   uint64_t length;
   enum rhizome_payload_status pstatus = rhizome_dump_file(&hash, filepath, &length);
   switch (pstatus) {
@@ -658,6 +656,7 @@ static int app_rhizome_export_file(const struct cli_parsed *parsed, struct cli_c
       break;
     case RHIZOME_PAYLOAD_STATUS_NEW:
       return 1; // payload not found
+    case RHIZOME_PAYLOAD_STATUS_BUSY:
     case RHIZOME_PAYLOAD_STATUS_ERROR:
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:

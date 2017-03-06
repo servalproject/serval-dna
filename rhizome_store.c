@@ -41,31 +41,39 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 uint64_t rhizome_copy_file_to_blob(int fd, uint64_t id, size_t size);
 
-int rhizome_exists(const rhizome_filehash_t *hashp)
+enum rhizome_payload_status rhizome_exists(const rhizome_filehash_t *hashp)
 {
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   uint64_t gotfile = 0;
-  if (sqlite_exec_uint64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE id = ? and datavalid = 1;", RHIZOME_FILEHASH_T, hashp, END) != 1)
-    return 0;
+  int stepcode = sqlite_exec_uint64_retry(&retry, &gotfile, "SELECT COUNT(*) FROM FILES WHERE id = ? and datavalid = 1;",
+	RHIZOME_FILEHASH_T, hashp, END);
+  if (sqlite_code_busy(stepcode))
+    return RHIZOME_PAYLOAD_STATUS_BUSY;
+  if (!sqlite_code_ok(stepcode))
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
   if (gotfile==0)
-    return 0;
-  uint64_t blob_rowid;
-  if (sqlite_exec_uint64(&blob_rowid,
-      "SELECT rowid "
-      "FROM FILEBLOBS "
-      "WHERE id = ?", RHIZOME_FILEHASH_T, hashp, END) == -1)
-    return 0;
-  if (blob_rowid !=0)
-    return 1;
-  
-  // No row in FILEBLOBS, look for an external blob file.
+    return RHIZOME_PAYLOAD_STATUS_NEW;
+
   char blob_path[1024];
-  if (!FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(*hashp)))
-    return 0;
-  
-  struct stat st;
-  if (stat(blob_path, &st) == -1)
-    return 0;
-  return 1;
+  if (FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(*hashp))){
+    struct stat st;
+    if (stat(blob_path, &st) == 0)
+      return RHIZOME_PAYLOAD_STATUS_STORED;
+  }
+
+  uint64_t blob_rowid = 0;
+  stepcode = sqlite_exec_uint64_retry(&retry, &blob_rowid,
+	"SELECT rowid "
+	"FROM FILEBLOBS "
+	"WHERE id = ?", RHIZOME_FILEHASH_T, hashp, END);
+
+  if (sqlite_code_busy(stepcode))
+    return RHIZOME_PAYLOAD_STATUS_BUSY;
+  if (!sqlite_code_ok(stepcode))
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
+  if (blob_rowid!=0)
+    return RHIZOME_PAYLOAD_STATUS_STORED;
+  return RHIZOME_PAYLOAD_STATUS_NEW;
 }
 
 /* Creates a row in the FILEBLOBS table and return the ROWID.  Returns 0 if unsuccessful (error
@@ -213,33 +221,37 @@ static uint64_t store_space_limit(uint64_t current_size)
 // TODO readonly version?
 static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizome_cleanup_report *report)
 {
-  uint64_t external_bytes;
-  uint64_t db_page_size;
-  uint64_t db_page_count;
-  uint64_t db_free_page_count;
-  
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  uint64_t external_bytes=0;
+  uint64_t db_page_size=0;
+  uint64_t db_page_count=0;
+  uint64_t db_free_page_count=0;
   
   // No limit?
   if (config.rhizome.database_size==UINT64_MAX && config.rhizome.min_free_space==0)
     return RHIZOME_PAYLOAD_STATUS_NEW;
-    
-  // TODO index external_bytes calculation and/or cache result
   
-  if (	sqlite_exec_uint64_retry(&retry, &db_page_size, "PRAGMA page_size;", END) == -1LL
-    ||  sqlite_exec_uint64_retry(&retry, &db_page_count, "PRAGMA page_count;", END) == -1LL
-    ||	sqlite_exec_uint64_retry(&retry, &db_free_page_count, "PRAGMA freelist_count;", END) == -1LL
-    ||  sqlite_exec_uint64_retry(&retry, &external_bytes, 
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  int stepcode = sqlite_exec_uint64_retry(&retry, &db_page_size, "PRAGMA page_size;", END);
+  if (sqlite_code_ok(stepcode))
+    stepcode = sqlite_exec_uint64_retry(&retry, &db_page_count, "PRAGMA page_count;", END);
+  if (sqlite_code_ok(stepcode))
+    stepcode = sqlite_exec_uint64_retry(&retry, &db_free_page_count, "PRAGMA freelist_count;", END);
+  if (sqlite_code_ok(stepcode))
+    // TODO index and/or cache result?
+    stepcode = sqlite_exec_uint64_retry(&retry, &external_bytes,
 	  "SELECT SUM(length) "
 	  "FROM FILES  "
 	  "WHERE NOT EXISTS( "
 	    "SELECT 1  "
 	    "FROM FILEBLOBS "
 	    "WHERE FILES.ID = FILEBLOBS.ID "
-	  ");", END) == -1LL
-  )
-    return WHY("Cannot measure database used bytes");
-  
+	  ");", END);
+
+  if (sqlite_code_busy(stepcode))
+    return RHIZOME_PAYLOAD_STATUS_BUSY;
+  if (!sqlite_code_ok(stepcode))
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
+
   uint64_t db_used = external_bytes + db_page_size * (db_page_count - db_free_page_count);
   const uint64_t limit = store_space_limit(db_used);
 
@@ -272,8 +284,7 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizo
   if (!statement)
     return RHIZOME_PAYLOAD_STATUS_ERROR;
   
-  int r=0;
-  while (db_used + bytes > limit && (r=sqlite_step_retry(&retry, statement)) == SQLITE_ROW) {
+  while (db_used + bytes > limit && (stepcode=sqlite_step_retry(&retry, statement)) == SQLITE_ROW) {
     const char *id=(const char *) sqlite3_column_text(statement, 0);
     uint64_t length = sqlite3_column_int(statement, 1);
     time_ms_t inserttime = sqlite3_column_int64(statement, 2);
@@ -289,34 +300,41 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizo
     // drop the existing content and recalculate used space
     if (rhizome_delete_external(id)==0)
       external_bytes -= length;
-    
+
+    int rowcount=0;
     sqlite3_stmt *s = sqlite_prepare_bind(&retry, "DELETE FROM fileblobs WHERE id = ?", STATIC_TEXT, id, END);
-    if (s)
-      sqlite_exec_retry(&retry, s);
+    if (s && !sqlite_code_ok(stepcode = sqlite_exec_code_retry(&retry, s, &rowcount)))
+      break;
+
     s = sqlite_prepare_bind(&retry, "DELETE FROM files WHERE id = ?", STATIC_TEXT, id, END);
-    if (s)
-      sqlite_exec_retry(&retry, s);
-      
-    sqlite_exec_uint64_retry(&retry, &db_page_count, "PRAGMA page_count;", END);
-    sqlite_exec_uint64_retry(&retry, &db_free_page_count, "PRAGMA freelist_count;", END);
+    if (s && !sqlite_code_ok(stepcode = sqlite_exec_code_retry(&retry, s, &rowcount)))
+      break;
+
+    if (!sqlite_code_ok(stepcode = sqlite_exec_uint64_retry(&retry, &db_page_count, "PRAGMA page_count;", END)))
+      break;
+    if (!sqlite_code_ok(stepcode = sqlite_exec_uint64_retry(&retry, &db_free_page_count, "PRAGMA freelist_count;", END)))
+      break;
+
     if (report)
       report->deleted_expired_files++;
     db_used = external_bytes + db_page_size * (db_page_count - db_free_page_count);
   }
   sqlite3_finalize(statement);
 
+  if (sqlite_code_busy(stepcode))
+    return RHIZOME_PAYLOAD_STATUS_BUSY;
+  if (!sqlite_code_ok(stepcode))
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
+
   rhizome_vacuum_db(&retry);
-  
+
   if (db_used + bytes <= limit)
     return RHIZOME_PAYLOAD_STATUS_NEW;
-    
-  if (sqlite_code_ok(r)){
-    DEBUGF(rhizome, "Not enough space for %"PRIu64". Used; %"PRIu64" = %"PRIu64" + %"PRIu64" * (%"PRIu64" - %"PRIu64"), Limit; %"PRIu64, 
-	   bytes, db_used, external_bytes, db_page_size, db_page_count, db_free_page_count, limit);
-	
-    return RHIZOME_PAYLOAD_STATUS_EVICTED;
-  }
-  return RHIZOME_PAYLOAD_STATUS_ERROR;
+
+  DEBUGF(rhizome, "Not enough space for %"PRIu64". Used; %"PRIu64" = %"PRIu64" + %"PRIu64" * (%"PRIu64" - %"PRIu64"), Limit; %"PRIu64,
+	 bytes, db_used, external_bytes, db_page_size, db_page_count, db_free_page_count, limit);
+
+  return RHIZOME_PAYLOAD_STATUS_EVICTED;
 }
 
 int rhizome_store_cleanup(struct rhizome_cleanup_report *report)
@@ -335,7 +353,7 @@ enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, cons
   write->sql_blob=NULL;
   
   if (expectedHashp){
-    if (rhizome_exists(expectedHashp))
+    if (rhizome_exists(expectedHashp) == RHIZOME_PAYLOAD_STATUS_STORED)
       return RHIZOME_PAYLOAD_STATUS_STORED;
     write->id = *expectedHashp;
     write->id_known=1;
@@ -1057,49 +1075,60 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
   read->offset = 0;
   read->hash_offset = 0;
 
-  int r = sqlite_exec_uint64(&read->length,"SELECT length FROM FILES WHERE id = ?",
-    RHIZOME_FILEHASH_T, &read->id, END);
-  if (r == -1)
-    return RHIZOME_PAYLOAD_STATUS_ERROR;
-  if (r == 0)
-    return RHIZOME_PAYLOAD_STATUS_NEW;
-  assert(read->length>0);
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
-  if (sqlite_exec_uint64(&read->blob_rowid,
+  int stepcode = sqlite_exec_uint64_retry(&retry, &read->length,"SELECT length FROM FILES WHERE id = ?",
+    RHIZOME_FILEHASH_T, &read->id, END);
+  if (sqlite_code_busy(stepcode))
+    return RHIZOME_PAYLOAD_STATUS_BUSY;
+  if (stepcode != SQLITE_ROW){
+    if (sqlite_code_ok(stepcode))
+      return RHIZOME_PAYLOAD_STATUS_NEW;
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
+  }
+
+  assert(read->length>0);
+  crypto_hash_sha512_init(&read->sha512_context);
+
+  char blob_path[1024];
+  if (FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(read->id))){
+    int fd = open(blob_path, O_RDONLY);
+    DEBUGF(rhizome_store, "open(%s) = %d", alloca_str_toprint(blob_path), fd);
+    if (fd == -1){
+      if (errno!=ENOENT)
+	WHYF_perror("open(%s)", alloca_str_toprint(blob_path));
+    }else{
+      off64_t pos = lseek64(fd, 0, SEEK_END);
+      if (pos == -1)
+	WHYF_perror("lseek64(%s,0,SEEK_END)", alloca_str_toprint(blob_path));
+      if (read->length <= (uint64_t)pos){
+	read->blob_fd = fd;
+	DEBUGF(rhizome_store, "Opened stored file %s as fd %d, len %"PRIu64, blob_path, read->blob_fd, read->length);
+	return RHIZOME_PAYLOAD_STATUS_STORED;
+      }
+      DEBUGF(rhizome_store, "Ignoring file? %s fd %d, len %"PRIu64", seek %zd", blob_path, fd, read->length, pos);
+      close(fd);
+    }
+  }
+
+  stepcode = sqlite_exec_uint64_retry(&retry, &read->blob_rowid,
       "SELECT rowid "
       "FROM FILEBLOBS "
-      "WHERE id = ?", RHIZOME_FILEHASH_T, &read->id, END) == -1)
-    return RHIZOME_PAYLOAD_STATUS_ERROR;
+      "WHERE id = ?", RHIZOME_FILEHASH_T, &read->id, END);
+
+  if (sqlite_code_busy(stepcode))
+    return RHIZOME_PAYLOAD_STATUS_BUSY;
   
-  if (read->blob_rowid == 0) {
-    // No row in FILEBLOBS, look for an external blob file.
-    char blob_path[1024];
-    if (!FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(read->id)))
-      return RHIZOME_PAYLOAD_STATUS_ERROR;
-    read->blob_fd = open(blob_path, O_RDONLY);
-    if (read->blob_fd == -1) {
-      if (errno == ENOENT) {
-	DEBUGF(rhizome_store, "Stored file does not exist: %s", blob_path);
-	// make sure we remove an orphan file row
-	rhizome_delete_file(&read->id);
-	return RHIZOME_PAYLOAD_STATUS_NEW;
-      }
-      WHYF_perror("open(%s)", alloca_str_toprint(blob_path));
-      return RHIZOME_PAYLOAD_STATUS_ERROR;
-    }
-    off64_t pos = lseek64(read->blob_fd, 0, SEEK_END);
-    if (pos == -1) {
-      WHYF_perror("lseek64(%s,0,SEEK_END)", alloca_str_toprint(blob_path));
-      return RHIZOME_PAYLOAD_STATUS_ERROR;
-    }
-    if (read->length != (uint64_t)pos){
-      WHYF("Length mismatch");
-      return RHIZOME_PAYLOAD_STATUS_ERROR;
-    }
-    DEBUGF(rhizome_store, "Opened stored file %s as fd %d, len %"PRIx64, blob_path, read->blob_fd, read->length);
+  if (!sqlite_code_ok(stepcode))
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
+
+  if (stepcode == SQLITE_ROW){
+    DEBUGF(rhizome_store, "Opened stored blob, rowid %d", read->blob_rowid);
+    return RHIZOME_PAYLOAD_STATUS_STORED;
   }
-  crypto_hash_sha512_init(&read->sha512_context);
-  return RHIZOME_PAYLOAD_STATUS_STORED;
+  // database is inconsistent, clean it up
+  rhizome_delete_file(&read->id);
+  return RHIZOME_PAYLOAD_STATUS_NEW;
 }
 
 static ssize_t rhizome_read_retry(sqlite_retry_state *retry, struct rhizome_read *read_state, unsigned char *buffer, size_t bufsz)

@@ -134,10 +134,8 @@ void sqlite_log(void *UNUSED(ignored), int result, const char *msg)
 void verify_bundles()
 {
   // assume that only the manifest itself can be trusted
-  // fetch all manifests and reinsert them.
+  // fetch all manifests, parse and update or delete them.
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  // This cursor must be ordered descending as re-inserting the manifests will give them a new higher manifest id.
-  // If we didn't, we'd get stuck in an infinite loop.
   sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT ROWID, MANIFEST FROM MANIFESTS ORDER BY ROWID DESC;");
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     sqlite3_int64 rowid = sqlite3_column_int64(statement, 0);
@@ -153,9 +151,46 @@ void verify_bundles()
 	  && rhizome_manifest_verify(m)
       ) {
 	assert(m->finalised);
-	// Store it again, to ensure that MANIFESTS columns are up to date.
-	ret = rhizome_store_manifest(m);
+
+	if (m->filesize == 0 || rhizome_exists(&m->filehash) == RHIZOME_PAYLOAD_STATUS_STORED){
+	  // Attempt to update the manifest
+	  rhizome_bar_t bar;
+	  rhizome_manifest_to_bar(m, &bar);
+	  rhizome_authenticate_author(m);
+
+	  if (sqlite_exec_void("UPDATE MANIFESTS SET"
+	      "id = ?,"
+	      "version = ?,"
+	      "bar = ?,"
+	      "filesize = ?,"
+	      "filehash = ?,"
+	      "author = ?,"
+	      "service = ?,"
+	      "name = ?,"
+	      "sender = ?,"
+	      "recipient = ?,"
+	      "tail = ?,"
+	      "manifest_hash = ?"
+	    "WHERE ROWID = ?;",
+	    RHIZOME_BID_T, &m->keypair.public_key,
+	    INT64, m->version,
+	    RHIZOME_BAR_T, &bar,
+	    INT64, m->filesize,
+	    RHIZOME_FILEHASH_T|NUL, m->filesize > 0 ? &m->filehash : NULL,
+	    SID_T|NUL, m->authorship == AUTHOR_AUTHENTIC ? &m->author : NULL,
+	    STATIC_TEXT, m->service,
+	    STATIC_TEXT|NUL, m->name,
+	    SID_T|NUL, m->has_sender ? &m->sender : NULL,
+	    SID_T|NUL, m->has_recipient ? &m->recipient : NULL,
+	    INT64, m->tail,
+	    RHIZOME_FILEHASH_T, &m->manifesthash,
+	    INT64, rowid,
+	    END
+	  )!=-1)
+	    ret = 0;
+	}
       }
+
       if (ret) {
 	DEBUGF(rhizome, "Removing invalid manifest entry @%lld", rowid);
 	sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE ROWID = ?;", INT64, rowid, END);
@@ -249,7 +284,7 @@ int rhizome_opendb()
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
   uint64_t version;
-  if (sqlite_exec_uint64_retry(&retry, &version, "PRAGMA user_version;", END) == -1)
+  if (sqlite_exec_uint64_retry(&retry, &version, "PRAGMA user_version;", END) != SQLITE_ROW)
     RETURN(-1);
   
   if (version<1){
@@ -1040,47 +1075,34 @@ static int _sqlite_vexec_uint64(struct __sourceloc __whence, sqlite_retry_state 
     return -1;
   if (_sqlite_vbind(__whence, LOG_LEVEL_ERROR, retry, statement, ap) == -1)
     return -1;
-  int ret = 0;
-  int rowcount = 0;
+  int rows = 0;
   int stepcode;
   while ((stepcode = _sqlite_step(__whence, LOG_LEVEL_ERROR, retry, statement)) == SQLITE_ROW) {
     int columncount = sqlite3_column_count(statement);
     if (columncount != 1)
-      ret = WHYF("incorrect column count %d (should be 1): %s", columncount, sqlite3_sql(statement));
-    else if (++rowcount == 1)
+      FATALF("incorrect column count %d (should be 1): %s", columncount, sqlite3_sql(statement));
+    else if (++rows == 1)
       *result = sqlite3_column_int64(statement, 0);
   }
-  if (rowcount > 1)
-    WARNF("query unexpectedly returned %d rows, ignored all but first", rowcount);
+  if (rows > 1)
+    FATALF("query unexpectedly returned %d rows", rows);
   sqlite3_finalize(statement);
-  if (!sqlite_code_ok(stepcode) || ret == -1)
-    return -1;
   if (sqlite_trace_func())
-    _DEBUGF("rowcount=%d changes=%d result=%"PRIu64, rowcount, sqlite3_changes(rhizome_db), *result);
-  return rowcount;
+    _DEBUGF("rowcount=%d changes=%d result=%"PRIu64, rows, sqlite3_changes(rhizome_db), *result);
+  if (sqlite_code_ok(stepcode) && rows>0)
+    return SQLITE_ROW;
+  return stepcode;
 }
 
 /*
  * Convenience wrapper for executing an SQL command that returns a single int64 value.
  * Logs an error and returns -1 if an error occurs.
- * If no row is found, then returns 0 and does not alter *result.
- * If exactly one row is found, the assigns its value to *result and returns 1.
- * If more than one row is found, then logs a warning, assigns the value of the first row to *result
- * and returns the number of rows.
+ * If no row is found, then returns SQLITE_OK / SQLITE_DONE and does not alter *result.
+ * If exactly one row is found, the assigns its value to *result and returns SQLITE_ROW.
+ * Otherwise an SQLITE_ stepcode will be returned
+ * If more than one row is found, or the query returns more that one column then this function asserts
  *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-int _sqlite_exec_uint64(struct __sourceloc __whence, uint64_t *result, const char *sqlformat,...)
-{
-  va_list ap;
-  va_start(ap, sqlformat);
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  int ret = _sqlite_vexec_uint64(__whence, &retry, result, sqlformat, ap);
-  va_end(ap);
-  return ret;
-}
-
-/* Same as sqlite_exec_uint64() but if the statement cannot be executed because the database is
+ * if the statement cannot be executed because the database is
  * currently locked for updates, then will call sqlite_retry() on the supplied retry state variable
  * instead of its own, internal one.  If 'retry' is passed as NULL, then will not sleep and retry at
  * all in the event of a busy condition, but will log it as an error and return immediately.
@@ -1355,39 +1377,62 @@ end:
   mdp_close(mdpsock);
 }
 
-/*
-  Store the specified manifest into the sqlite database.
-  We assume that sufficient space has been made for us.
-  The manifest should be finalised, and so we don't need to
-  look at the underlying manifest file, but can just write m->manifest_data
-  as a blob.
-
-  associated_filename needs to be read in and stored as a blob.  Hopefully that
-  can be done in pieces so that we don't have memory exhaustion issues on small
-  architectures.  However, we do know it's hash apriori from m, and so we can
-  skip loading the file in if it is already stored.  mmap() apparently works on
-  Linux FAT file systems, and is probably the best choice since it doesn't need
-  all pages to be in RAM at the same time.
-
-  SQLite does allow modifying of blobs once stored in the database.
-  The trick is to insert the blob as all zeroes using a special function, and then
-  substitute bytes in the blog progressively.
-
-  We need to also need to create the appropriate row(s) in the MANIFESTS, FILES tables.
+/* Insert the manifest 'm' into the Rhizome store.  This function encapsulates all the invariants
+ * that a manifest must satisfy before it is allowed into the store, so it is used by both the sync
+ * protocol and the application layer.
+ *
+ *  - If the manifest is not valid then returns RHIZOME_BUNDLE_STATUS_INVALID.  A valid manifest is
+ *    one with all the core (transport) fields present and consistent ('id', 'version', 'filesize',
+ *    'filehash', 'tail'), all mandatory application fields present and consistent ('service',
+ *    'date') and any other service-dependent mandatory fields present (eg, 'sender', 'recipient').
+ *
+ *  - If the manifest's signature does not verify, then returns RHIZOME_BUNDLE_STATUS_FAKE.
+ *
+ *  - If the manifest has a payload (filesize != 0) but the payload is not present in the store
+ *    (filehash), then returns an internal error RHIZOME_BUNDLE_STATUS_ERROR (-1).
+ *
+ *  - If the store will not accept the manifest because there is already the same or a newer
+ *    manifest in the store, then returns RHIZOME_BUNDLE_STATUS_SAME or RHIZOME_BUNDLE_STATUS_OLD.
+ *
+ * This function then attempts to store the manifest.  If this fails due to an internal error,
+ * then returns RHIZOME_BUNDLE_STATUS_ERROR (-1), otherwise returns RHIZOME_BUNDLE_STATUS_NEW to
+ * indicate that the manifest was successfully stored.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_store_manifest(rhizome_manifest *m)
+enum rhizome_bundle_status rhizome_add_manifest_to_store(rhizome_manifest *m, rhizome_manifest **mout)
 {
+  if (mout == NULL)
+    DEBUGF(rhizome, "%s(m=manifest %p, mout=NULL)", __func__, m);
+  else
+    DEBUGF(rhizome, "%s(m=manifest %p, *mout=manifest %p)", __func__, m, *mout);
+  if (!m->finalised && !rhizome_manifest_validate(m))
+    return RHIZOME_BUNDLE_STATUS_INVALID;
   assert(m->finalised);
-  assert(m->haveSecret || m->selfSigned); // should not store an invalid or fake manifest
+  if (!m->selfSigned && !rhizome_manifest_verify(m))
+    return RHIZOME_BUNDLE_STATUS_FAKE;
+
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
+  if (m->filesize > 0){
+    switch (rhizome_exists(&m->filehash)){
+      case RHIZOME_PAYLOAD_STATUS_BUSY:
+	return RHIZOME_BUNDLE_STATUS_BUSY;
+      case RHIZOME_PAYLOAD_STATUS_STORED:
+	break;
+      default:
+	return WHY("Payload has not been stored");
+    }
+  }
+
+  enum rhizome_bundle_status status = rhizome_manifest_check_stored(m, mout);
+  if (status != RHIZOME_BUNDLE_STATUS_NEW)
+    return status;
+
+  // manifest is complete, and not already stored
 
   /* Bind BAR to data field */
   rhizome_bar_t bar;
   rhizome_manifest_to_bar(m, &bar);
-
-  /* Store the file (but not if it is already in the database) */
-  assert(m->filesize != RHIZOME_SIZE_UNSET);
-  if (m->filesize > 0 && !rhizome_exists(&m->filehash))
-    return WHY("File should already be stored by now");
 
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
@@ -1464,14 +1509,15 @@ int rhizome_store_manifest(rhizome_manifest *m)
     }else{
       sync_rhizome();
     }
-    return 0;
+    return RHIZOME_BUNDLE_STATUS_NEW;
   }
+
 rollback:
   if (stmt)
     sqlite3_finalize(stmt);
   WHYF("Failed to store bundle bid=%s", alloca_tohex_rhizome_bid_t(m->keypair.public_key));
   sqlite_exec_void_retry(&retry, "ROLLBACK;", END);
-  return -1;
+  return RHIZOME_BUNDLE_STATUS_ERROR;
 }
 
 static void trigger_rhizome_bundle_added_debug(rhizome_manifest *m)
@@ -1988,7 +2034,7 @@ int rhizome_delete_manifest(const rhizome_bid_t *bidp)
   return rhizome_delete_manifest_retry(&retry, bidp);
 }
 
-static int is_interesting(const char *id_hex, uint64_t version)
+static enum rhizome_bundle_status is_interesting(const char *id_hex, uint64_t version)
 {
   IN();
 
@@ -2000,29 +2046,50 @@ static int is_interesting(const char *id_hex, uint64_t version)
     INT64, version,
     END);
   if (!statement)
-    RETURN(-1);
-  int ret=1;
-  int r = sqlite_step_retry(&retry, statement);
-  if (r == SQLITE_ROW){
+    RETURN(RHIZOME_BUNDLE_STATUS_ERROR);
+
+  enum rhizome_bundle_status status = RHIZOME_BUNDLE_STATUS_ERROR;
+  int stepcode;
+  if ((stepcode = sqlite_step_retry(&retry, statement)) == SQLITE_ROW){
     const char *q_filehash = (const char *) sqlite3_column_text(statement, 0);
     if (q_filehash && *q_filehash) {
       rhizome_filehash_t hash;
       if (str_to_rhizome_filehash_t(&hash, q_filehash) == -1) {
-	WARNF("invalid field MANIFESTS.filehash=%s -- ignored", alloca_str_toprint(q_filehash));
-      } else if (rhizome_exists(&hash))
-	ret=0;
-    }else
-      ret=0;
-  }else if(sqlite_code_ok(r))
-    ret=1;
-  else
-    ret=-1;
+	WHYF("Malformed filehash %s", q_filehash);
+	status = RHIZOME_BUNDLE_STATUS_ERROR;
+      }else{
+	enum rhizome_payload_status pstatus;
+	switch((pstatus = rhizome_exists(&hash))){
+	  case RHIZOME_PAYLOAD_STATUS_NEW:
+	    status = RHIZOME_BUNDLE_STATUS_NEW;
+	    break;
+	  case RHIZOME_PAYLOAD_STATUS_STORED:
+	    status = RHIZOME_BUNDLE_STATUS_SAME;
+	    break;
+	  case RHIZOME_PAYLOAD_STATUS_BUSY:
+	    status = RHIZOME_BUNDLE_STATUS_BUSY;
+	    break;
+	  default:
+	    status = RHIZOME_BUNDLE_STATUS_ERROR;
+	    break;
+	}
+      }
+    }else{
+      status = RHIZOME_BUNDLE_STATUS_SAME;
+    }
+  }else if (sqlite_code_busy(stepcode)){
+    status = RHIZOME_BUNDLE_STATUS_BUSY;
+  }else if (!sqlite_code_ok(stepcode)){
+    status = RHIZOME_BUNDLE_STATUS_ERROR;
+  }else{
+    status = RHIZOME_BUNDLE_STATUS_NEW;
+  }
   sqlite3_finalize(statement);
-  RETURN(ret);
+  RETURN(status);
   OUT();
 }
 
-int rhizome_is_bar_interesting(const rhizome_bar_t *bar)
+enum rhizome_bundle_status rhizome_is_bar_interesting(const rhizome_bar_t *bar)
 {
   char id_hex[RHIZOME_BAR_PREFIX_BYTES *2 + 2];
   tohex(id_hex, RHIZOME_BAR_PREFIX_BYTES * 2, rhizome_bar_prefix(bar));
@@ -2030,7 +2097,7 @@ int rhizome_is_bar_interesting(const rhizome_bar_t *bar)
   return is_interesting(id_hex, rhizome_bar_version(bar));
 }
 
-int rhizome_is_manifest_interesting(rhizome_manifest *m)
+enum rhizome_bundle_status rhizome_is_manifest_interesting(rhizome_manifest *m)
 {
   return is_interesting(alloca_tohex_rhizome_bid_t(m->keypair.public_key), m->version);
 }

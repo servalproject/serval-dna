@@ -43,11 +43,11 @@ default_config() {
       set debug.http_server on \
       set debug.httpd on \
       set debug.rhizome_manifest on \
-      set debug.rhizome_ads on \
+      set debug.rhizome_ads off \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
       set debug.rhizome_sync_keys on \
-      set debug.msp on
+      set debug.msp off
 }
 
 # Called by start_servald_instances for each instance.

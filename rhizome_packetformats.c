@@ -328,7 +328,7 @@ next:
     if (bar_count > max_tests && random()%bar_count >= max_tests)
       continue;
     test_count++;
-    if (rhizome_is_bar_interesting(bars[index])==1){
+    if (rhizome_is_bar_interesting(bars[index])==RHIZOME_BUNDLE_STATUS_NEW){
       // add a request for the manifest
       if (!payload){
 	header.source = get_my_subscriber(1);
