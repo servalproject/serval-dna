@@ -91,6 +91,19 @@ test_FileTransfer() {
    receive_and_update_bundle
 }
 
+doc_FirstFileTransfer="First bundle added to running daemon transfers to one node"
+setup_FirstFileTransfer() {
+   setup_common
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+}
+test_FirstFileTransfer(){
+   set_instance +A
+   rhizome_add_file file1 250000
+   receive_and_update_bundle
+}
+
 doc_EncryptedTransfer="Encrypted payload can be opened by destination"
 setup_EncryptedTransfer() {
    setup_common

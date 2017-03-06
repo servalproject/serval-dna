@@ -65,8 +65,6 @@ struct rhizome_sync
   int bar_count;
 };
 
-static uint64_t max_token=0;
-
 DEFINE_ALARM(rhizome_sync_announce);
 
 void rhizome_sync_status_html(struct strbuf *b, struct subscriber *subscriber)
@@ -252,45 +250,8 @@ static int sync_bundle_inserted(void **record, void *context)
   return 0;
 }
 
-static void annouce_cli_bundle_add(uint64_t row_id)
-{
-  if (row_id<=max_token)
-    return;
-    
-  if (max_token!=0){
-    sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-    sqlite3_stmt *statement = sqlite_prepare_bind(&retry, 
-      "SELECT manifest FROM manifests WHERE rowid > ? AND rowid <= ? ORDER BY rowid ASC;",
-      INT64, max_token, INT64, row_id, END);
-    while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
-      const void *blob = sqlite3_column_blob(statement, 0);
-      size_t blob_length = sqlite3_column_bytes(statement, 0);
-      rhizome_manifest *m = rhizome_new_manifest();
-      if (m) {
-	memcpy(m->manifestdata, blob, blob_length);
-	m->manifest_all_bytes = blob_length;
-	if (   rhizome_manifest_parse(m) != -1
-	    && rhizome_manifest_validate(m)
-	    && rhizome_manifest_verify(m)
-	) {
-	  assert(m->finalised);
-	  CALL_TRIGGER(bundle_add, m);
-	}
-	rhizome_manifest_free(m);
-      }
-    }
-    sqlite3_finalize(statement);
-  }
-  
-  max_token = row_id;
-}
-
 static void rhizome_sync_bundle_inserted(rhizome_manifest *m)
 {
-  annouce_cli_bundle_add(m->rowid - 1);
-  if (m->rowid > max_token)
-    max_token = m->rowid;
-  
   rhizome_bar_t bar;
   rhizome_manifest_to_bar(m, &bar);
   enum_subscribers(NULL, sync_bundle_inserted, (void *)&bar);
@@ -311,20 +272,25 @@ static int sync_cache_bar(struct rhizome_sync *state, const rhizome_bar_t *bar, 
   if (state->bar_count>=CACHE_BARS)
     return 0;
   // check the database before adding the BAR to the list
-  if (token!=0 && rhizome_is_bar_interesting(bar)!=0){
-    if (!state->bars){
-      state->bars = emalloc(sizeof(struct bar_entry) * CACHE_BARS);
-      if (!state->bars)
-	return -1;
+  if (token!=0){
+    enum rhizome_bundle_status status = rhizome_is_bar_interesting(bar);
+    if (status == RHIZOME_BUNDLE_STATUS_NEW){
+      if (!state->bars){
+	state->bars = emalloc(sizeof(struct bar_entry) * CACHE_BARS);
+	if (!state->bars)
+	  return -1;
+      }
+
+      DEBUGF(rhizome_sync, "Remembering BAR %s", alloca_tohex_rhizome_bar_t(bar));
+
+      state->bars[state->bar_count].bar = *bar;
+      state->bars[state->bar_count].next_request = gettime_ms();
+      state->bars[state->bar_count].tries = MAX_TRIES;
+      state->bar_count++;
+      ret=1;
+    }else if(status != RHIZOME_BUNDLE_STATUS_SAME){
+      return -1;
     }
-    
-    DEBUGF(rhizome_sync, "Remembering BAR %s", alloca_tohex_rhizome_bar_t(bar));
-    
-    state->bars[state->bar_count].bar = *bar;
-    state->bars[state->bar_count].next_request = gettime_ms();
-    state->bars[state->bar_count].tries = MAX_TRIES;
-    state->bar_count++;
-    ret=1;
   }
   if (state->sync_end < token){
     state->sync_end = token;
@@ -490,7 +456,7 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
   ob_append_byte(b, MSG_TYPE_BARS);
   ob_checkpoint(b);
 
-  while(sqlite_step_retry(&retry, statement)==SQLITE_ROW){
+  while(count < max_count && sqlite_step_retry(&retry, statement)==SQLITE_ROW){
     uint64_t rowid = sqlite3_column_int64(statement, 0);
     const unsigned char *bar = sqlite3_column_blob(statement, 1);
     size_t bar_size = sqlite3_column_bytes(statement, 1);
@@ -504,34 +470,27 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
         if (token!=HEAD_FLAG){
 	  ob_checkpoint(b);
           append_response(b, token, NULL);
-	  if (ob_overrun(b))
+	  if (ob_overrun(b)){
 	    ob_rewind(b);
-	  else {
-            count++;
-            last = token;
+	    break;
 	  }
+	  count++;
+	  last = token;
         }else
           token = rowid;
       }
       ob_checkpoint(b);
       append_response(b, rowid, bar);
-      if (ob_overrun(b))
+      if (ob_overrun(b)){
 	ob_rewind(b);
-      else {
-        last = rowid;
-        count++;
+	break;
       }
+      last = rowid;
+      count++;
     }
-    if (count >= max_count && rowid <= max_token)
-      break;
   }
 
   sqlite3_finalize(statement);
-
-  if (token != HEAD_FLAG && token > max_token){
-    // report bundles added by cli
-    annouce_cli_bundle_add(token);
-  }
 
   // send a zero lower bound if we reached the end of our manifest list
   if (count && count < max_count && !forwards){

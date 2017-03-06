@@ -102,6 +102,9 @@ struct mdp_identity_request {
 
 #define MDP_ROUTE_TABLE 5
 
+/* Tell the daemon to check for new manifests after adding a bundle from any other process */
+#define MDP_SYNC_RHIZOME 6
+
 struct overlay_mdp_scan{
   struct in_addr addr;
 };

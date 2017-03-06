@@ -46,4 +46,6 @@ int server_bind();
 
 void server_loop(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeup)());
 
+void server_rhizome_add_bundle(uint64_t rowid);
+
 #endif // __SERVAL_DNA__SERVER_H

@@ -1569,6 +1569,11 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	server_config_reload(NULL);
 	mdp_reply_ok(client, header);
 	break;
+      case MDP_SYNC_RHIZOME:
+	DEBUGF(mdprequests, "Processing MDP_SYNC_RHIZOME from %s", alloca_socket_address(client));
+	server_rhizome_add_bundle(INT64_MAX);
+	mdp_reply_ok(client, header);
+	break;
       case MDP_INTERFACE:
 	DEBUGF(mdprequests, "Processing MDP_INTERFACE from %s", alloca_socket_address(client));
 	mdp_interface_packet(client, header, payload);

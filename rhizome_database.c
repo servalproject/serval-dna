@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "keyring.h"
 #include "server.h"
 #include "commandline.h"
+#include "mdp_client.h"
 
 static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 
@@ -60,6 +61,7 @@ int is_debug_rhizome_ads()
 static int (*sqlite_trace_func)() = is_debug_rhizome;
 const struct __sourceloc *sqlite_trace_whence = NULL;
 static int sqlite_trace_done;
+static uint64_t max_rowid=0;
 
 /* This callback conditionally logs all rendered SQL statements.  This function is registered with
  * SQLite as the 'trace callback'.  SQLite invokes it with mask == SQLITE_TRACE_STMT when about to
@@ -370,6 +372,13 @@ int rhizome_opendb()
   // We can't delete a file that is being transferred in another process at this very moment...
   if (config.rhizome.clean_on_open)
     rhizome_cleanup(NULL);
+
+  if (serverMode){
+    sqlite_exec_uint64_retry(&retry, &max_rowid,
+	"SELECT max(rowid) "
+	"FROM manifests", END);
+  }
+
   INFOF("Opened Rhizome database %s, UUID=%s", dbpath, alloca_uuid_str(rhizome_db_uuid));
   RETURN(0);
   OUT();
@@ -1312,6 +1321,40 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   OUT();
 }
 
+static void sync_rhizome(){
+  if (server_pid()<=0)
+    return;
+  /* Bind to MDP socket and await confirmation */
+  struct mdp_header mdp_header = {
+      .remote.port = MDP_SYNC_RHIZOME,
+    };
+  int mdpsock = mdp_socket();
+  if (mdpsock == -1)
+    WARN("cannot create MDP socket");
+  set_nonblock(mdpsock);
+  int r = mdp_send(mdpsock, &mdp_header, NULL, 0);
+  if (r == -1)
+    goto end;
+  time_ms_t deadline = gettime_ms() + 10000; // TODO add --timeout option?
+  struct mdp_header rev_header;
+  do {
+    ssize_t len = mdp_poll_recv(mdpsock, deadline, &rev_header, NULL, 0);
+    if (len == -1){
+      r = -1;
+      goto end;
+    }
+    if (len == -2) {
+      WHYF("timeout while synchronising daemon bundle list");
+      r = -1;
+      goto end;
+    }
+  } while (!(rev_header.flags & MDP_FLAG_CLOSE));
+  r = 0;
+
+end:
+  mdp_close(mdpsock);
+}
+
 /*
   Store the specified manifest into the sqlite database.
   We assume that sufficient space has been made for us.
@@ -1409,8 +1452,18 @@ int rhizome_store_manifest(rhizome_manifest *m)
 	  alloca_tohex_rhizome_bid_t(m->keypair.public_key),
 	  m->version
 	);
-    if (serverMode)
+    if (serverMode){
+      assert(max_rowid < m->rowid);
+      // detect any bundles added by the CLI
+      // due to potential race conditions, we have to do this here
+      // even though the CLI will try to send us a MDP_SYNC_RHIZOME message
+      if (m->rowid > max_rowid+1)
+	server_rhizome_add_bundle(m->rowid);
+      max_rowid = m->rowid;
       CALL_TRIGGER(bundle_add, m);
+    }else{
+      sync_rhizome();
+    }
     return 0;
   }
 rollback:
@@ -1710,16 +1763,7 @@ next:
  * Returns RHIZOME_BUNDLE_STATUS_BUSY if the database is locked
  * Caller is responsible for allocating and freeing rhizome_manifest
  */
-static enum rhizome_bundle_status unpack_manifest_row(sqlite_retry_state *retry, rhizome_manifest *m, sqlite3_stmt *statement)
-{
-  int r=sqlite_step_retry(retry, statement);
-  if (sqlite_code_busy(r))
-    return RHIZOME_BUNDLE_STATUS_BUSY;
-  if (!sqlite_code_ok(r))
-    return RHIZOME_BUNDLE_STATUS_ERROR;
-  if (r!=SQLITE_ROW)
-    return RHIZOME_BUNDLE_STATUS_NEW;
-  
+static int unpack_manifest_row(rhizome_manifest *m, sqlite3_stmt *statement){
   const char *q_id = (const char *) sqlite3_column_text(statement, 0);
   const char *q_blob = (char *) sqlite3_column_blob(statement, 1);
   uint64_t q_version = sqlite3_column_int64(statement, 2);
@@ -1742,6 +1786,21 @@ static enum rhizome_bundle_status unpack_manifest_row(sqlite_retry_state *retry,
     WARNF("Version mismatch, manifest is %"PRIu64", database is %"PRIu64, m->version, q_version);
   rhizome_manifest_set_rowid(m, q_rowid);
   rhizome_manifest_set_inserttime(m, q_inserttime);
+  return 0;
+}
+
+static enum rhizome_bundle_status step_unpack_manifest_row(sqlite_retry_state *retry, rhizome_manifest *m, sqlite3_stmt *statement)
+{
+  int r=sqlite_step_retry(retry, statement);
+  if (sqlite_code_busy(r))
+    return RHIZOME_BUNDLE_STATUS_BUSY;
+  if (!sqlite_code_ok(r))
+    return RHIZOME_BUNDLE_STATUS_ERROR;
+  if (r!=SQLITE_ROW)
+    return RHIZOME_BUNDLE_STATUS_NEW;
+
+  if (unpack_manifest_row(m, statement)==-1)
+    return RHIZOME_BUNDLE_STATUS_ERROR;
   return RHIZOME_BUNDLE_STATUS_SAME;
 }
 
@@ -1763,7 +1822,7 @@ enum rhizome_bundle_status rhizome_retrieve_manifest(const rhizome_bid_t *bidp, 
       END);
   if (!statement)
     return RHIZOME_BUNDLE_STATUS_ERROR;
-  enum rhizome_bundle_status ret = unpack_manifest_row(&retry, m, statement);
+  enum rhizome_bundle_status ret = step_unpack_manifest_row(&retry, m, statement);
   sqlite3_finalize(statement);
   return ret;
 }
@@ -1790,7 +1849,7 @@ enum rhizome_bundle_status rhizome_retrieve_manifest_by_prefix(const unsigned ch
       END);
   if (!statement)
     return RHIZOME_BUNDLE_STATUS_ERROR;
-  enum rhizome_bundle_status ret = unpack_manifest_row(&retry, m, statement);
+  enum rhizome_bundle_status ret = step_unpack_manifest_row(&retry, m, statement);
   sqlite3_finalize(statement);
   return ret;
 }
@@ -1809,7 +1868,7 @@ enum rhizome_bundle_status rhizome_retrieve_manifest_by_hash_prefix(const uint8_
       END);
   if (!statement)
     return RHIZOME_BUNDLE_STATUS_ERROR;
-  enum rhizome_bundle_status ret = unpack_manifest_row(&retry, m, statement);
+  enum rhizome_bundle_status ret = step_unpack_manifest_row(&retry, m, statement);
   sqlite3_finalize(statement);
   return ret;
 }
@@ -1858,6 +1917,30 @@ enum rhizome_bundle_status rhizome_retrieve_bar_by_hash_prefix(const uint8_t *pr
 end:
   sqlite3_finalize(statement);
   return ret;
+}
+
+// Detect bundles added from the cmdline, and call trigger functions
+void server_rhizome_add_bundle(uint64_t rowid){
+  assert(serverMode);
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+    "SELECT id, manifest, version, inserttime, author, rowid FROM manifests WHERE rowid > ? AND rowid < ?"
+    "ORDER BY rowid",
+    INT64, max_rowid, INT64, rowid, END);
+  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
+    rhizome_manifest *m = rhizome_new_manifest();
+    if (!m)
+      break;
+    if (unpack_manifest_row(m, statement)!=-1){
+      if (rhizome_manifest_verify(m)){
+	assert(max_rowid < m->rowid);
+	max_rowid = m->rowid;
+	CALL_TRIGGER(bundle_add, m);
+      }
+    }
+    rhizome_manifest_free(m);
+  }
+  sqlite3_finalize(statement);
 }
 
 static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
