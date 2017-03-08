@@ -1103,7 +1103,7 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
 	WHYF_perror("lseek64(%s,0,SEEK_END)", alloca_str_toprint(blob_path));
       if (read->length <= (uint64_t)pos){
 	read->blob_fd = fd;
-	DEBUGF(rhizome_store, "Opened stored file %s as fd %d, len %"PRIu64, blob_path, read->blob_fd, read->length);
+	DEBUGF(rhizome_store, "Opened stored file %s as fd %d, len %"PRIu64" (%"PRIu64")", blob_path, read->blob_fd, read->length, pos);
 	return RHIZOME_PAYLOAD_STATUS_STORED;
       }
       DEBUGF(rhizome_store, "Ignoring file? %s fd %d, len %"PRIu64", seek %zd", blob_path, fd, read->length, pos);
@@ -1135,8 +1135,11 @@ static ssize_t rhizome_read_retry(sqlite_retry_state *retry, struct rhizome_read
 {
   IN();
   if (read_state->blob_fd != -1) {
+    assert(read_state->offset <= read_state->length);
     if (lseek64(read_state->blob_fd, (off64_t) read_state->offset, SEEK_SET) == -1)
       RETURN(WHYF_perror("lseek64(%d,%"PRIu64",SEEK_SET)", read_state->blob_fd, read_state->offset));
+    if (bufsz + read_state->offset > read_state->length)
+      bufsz = read_state->length - read_state->offset;
     if (bufsz == 0)
       RETURN(0);
     ssize_t rd = read(read_state->blob_fd, buffer, bufsz);
