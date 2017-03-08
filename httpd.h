@@ -220,6 +220,7 @@ typedef struct httpd_request
 
     struct {
       rhizome_bid_t bundle_id;
+      struct meshmb_activity_iterator *iterator;
       struct meshmb_session *session;
       uint8_t generation;
       enum list_phase phase;

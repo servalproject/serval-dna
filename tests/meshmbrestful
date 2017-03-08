@@ -174,5 +174,58 @@ test_MeshMBRestFeeds() {
             ])"
 }
 
+doc_MeshMBRestActivity="Restful thread incoming activity"
+setup_MeshMBRestActivity() {
+   IDENTITY_COUNT=5
+   setup
+   executeOk_servald keyring set did $SIDA1 "" "Feed A"
+   executeOk_servald keyring set did $SIDA2 "" "Feed B"
+   executeOk_servald keyring set did $SIDA3 "" "Feed C"
+   executeOk_servald keyring set did $SIDA4 "" "Feed D"
+   executeOk_servald keyring set did $SIDA5 "" "Feed E"
+   executeOk_servald meshmb send $IDA2 "Message 2"
+   executeOk_servald meshmb send $IDA3 "Message 3"
+   executeOk_servald meshmb follow $IDA1 $IDA2
+   executeOk_servald meshmb follow $IDA1 $IDA3
+   executeOk_servald meshmb send $IDA4 "Message 4"
+   executeOk_servald meshmb follow $IDA1 $IDA4
+   executeOk_servald meshmb send $IDA4 "Message 5"
+   executeOk_servald meshmb activity $IDA1
+   executeOk_servald meshmb send $IDA5 "Message 6"
+   executeOk_servald meshmb follow $IDA1 $IDA5
+   executeOk_servald meshmb send $IDA2 "Message 7"
+   executeOk_servald meshmb activity $IDA1
+   executeOk_servald meshmb send $IDA3 "Message 8"
+   executeOk_servald meshmb activity $IDA1
+   executeOk_servald meshmb send $IDA4 "Message 9"
+   executeOk_servald meshmb activity $IDA1
+   executeOk_servald meshmb send $IDA5 "Message 10"
+   executeOk_servald meshmb activity $IDA1
+}
+test_MeshMBRestActivity() {
+   executeOk curl \
+         -H "Expect:" \
+         --silent --fail --show-error \
+         --output activity.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/activity.json"
+   tfw_cat http.headers activity.json
+   tfw_preserve activity.json
+   assert [ "$(jq '.rows | length' activity.json)" = 9 ]
+   transform_list_json activity.json list.json
+   tfw_preserve list.json
+
+   assertJq list.json "contains([{ __index: 0, id: \"$IDA5\", author: \"$SIDA5\", name: \"Feed E\", message: \"Message 10\"}])"
+   assertJq list.json "contains([{ __index: 1, id: \"$IDA4\", author: \"$SIDA4\", name: \"Feed D\", message: \"Message 9\"}])"
+   assertJq list.json "contains([{ __index: 2, id: \"$IDA3\", author: \"$SIDA3\", name: \"Feed C\", message: \"Message 8\"}])"
+   assertJq list.json "contains([{ __index: 3, id: \"$IDA2\", author: \"$SIDA2\", name: \"Feed B\", message: \"Message 7\"}])"
+   assertJq list.json "contains([{ __index: 4, id: \"$IDA5\", author: \"$SIDA5\", name: \"Feed E\", message: \"Message 6\"}])"
+   assertJq list.json "contains([{ __index: 5, id: \"$IDA4\", author: \"$SIDA4\", name: \"Feed D\", message: \"Message 5\"}])"
+   assertJq list.json "contains([{ __index: 6, id: \"$IDA4\", author: \"$SIDA4\", name: \"Feed D\", message: \"Message 4\"}])"
+   assertJq list.json "contains([{ __index: 7, id: \"$IDA3\", author: \"$SIDA3\", name: \"Feed C\", message: \"Message 3\"}])"
+   assertJq list.json "contains([{ __index: 8, id: \"$IDA2\", author: \"$SIDA2\", name: \"Feed B\", message: \"Message 2\"}])"
+}
+
 runTests "$@"
 

@@ -595,6 +595,10 @@ static void feedlist_on_rhizome_add(httpd_request *r, rhizome_manifest *m)
 
 static void feedlist_finalise(httpd_request *r)
 {
+  if (r->u.meshmb_feeds.iterator){
+    meshmb_activity_close(r->u.meshmb_feeds.iterator);
+    r->u.meshmb_feeds.iterator = NULL;
+  }
   close_session(r->u.meshmb_feeds.session);
 }
 
@@ -619,6 +623,129 @@ static int restful_meshmb_feedlist(httpd_request *r, const char *remainder)
 
   http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshmb_feedlist_json_content);
   return 1;
+}
+
+static int restful_meshmb_activity_json_content_chunk(struct http_request *hr, strbuf b)
+{
+  httpd_request *r = (httpd_request *) hr;
+  const char *headers[] = {
+    "token",
+    "id",
+    "author",
+    "name",
+    "timestamp",
+    "offset",
+    "message"
+  };
+
+  DEBUGF(httpd, "Phase %d", r->u.meshmb_feeds.phase);
+
+  struct meshmb_activity_iterator *iterator = r->u.meshmb_feeds.iterator;
+
+  switch (r->u.meshmb_feeds.phase) {
+    case LIST_HEADER:
+      strbuf_puts(b, "{\n\"header\":[");
+      unsigned i;
+      for (i = 0; i != NELS(headers); ++i) {
+	if (i)
+	  strbuf_putc(b, ',');
+	strbuf_json_string(b, headers[i]);
+      }
+      strbuf_puts(b, "],\n\"rows\":[");
+      if (strbuf_overrun(b))
+	return 1;
+
+      if(meshmb_activity_next(iterator)==1)
+	r->u.meshmb_feeds.phase = LIST_ROWS;
+      else{
+	r->u.meshmb_feeds.phase = LIST_END;
+	return 1;
+      }
+      // fallthrough
+    case LIST_ROWS:
+    case LIST_FIRST:
+      {
+	size_t checkpoint = strbuf_len(b);
+
+	while(r->u.meshmb_feeds.phase == LIST_ROWS){
+	  switch(iterator->msg_reader.type){
+	    case MESSAGE_BLOCK_TYPE_MESSAGE:
+	      if (r->u.meshmb_feeds.rowcount!=0)
+		strbuf_putc(b, ',');
+	      strbuf_puts(b, "\n[");
+	      strbuf_sprintf(b, "%zu", r->u.meshmb_feeds.rowcount);
+	      strbuf_puts(b, ",");
+	      strbuf_json_hex(b, iterator->msg_reader.bundle_id.binary, sizeof iterator->msg_reader.bundle_id.binary);
+	      strbuf_puts(b, ",");
+	      strbuf_json_hex(b, iterator->msg_reader.author.binary, sizeof iterator->msg_reader.author.binary);
+	      strbuf_puts(b, ",");
+	      strbuf_json_string(b, iterator->msg_reader.name);
+	      strbuf_puts(b, ",");
+	      strbuf_sprintf(b, "%d", iterator->ack_timestamp);
+	      strbuf_puts(b, ",");
+	      strbuf_sprintf(b, "%lu", iterator->msg_reader.record_end_offset);
+	      strbuf_puts(b, ",");
+	      strbuf_json_string(b, (const char *)iterator->msg_reader.record);
+	      strbuf_puts(b, "]");
+	      if (strbuf_overrun(b)){
+		strbuf_trunc(b, checkpoint);
+		return 1;
+	      }
+	      checkpoint = strbuf_len(b);
+	      r->u.meshmb_feeds.rowcount++;
+	  }
+	  if(meshmb_activity_next(iterator)==1)
+	    r->u.meshmb_feeds.phase = LIST_ROWS;
+	  else
+	    r->u.meshmb_feeds.phase = LIST_END;
+	}
+      }
+
+      // fallthrough
+    case LIST_END:
+      strbuf_puts(b, "\n]\n}\n");
+      if (!strbuf_overrun(b))
+	r->u.plylist.phase = LIST_DONE;
+
+      // fall through...
+    case LIST_DONE:
+      return 0;
+  }
+}
+
+static int restful_meshmb_activity_json_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
+{
+  return generate_http_content_from_strbuf_chunks(hr, (char *)buf, bufsz, result, restful_meshmb_activity_json_content_chunk);
+}
+
+static int restful_meshmb_activity(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+
+  struct meshmb_session *session = open_session(&r->bid);
+  if (!session){
+    http_request_simple_response(&r->http, 500, "TODO, detailed response");
+    return 500;
+  }
+  struct meshmb_activity_iterator *iterator = meshmb_activity_open(session->feeds);
+  if (!iterator){
+    close_session(session);
+    http_request_simple_response(&r->http, 500, "TODO, detailed response");
+    return 500;
+  }
+  assert(r->finalise_union == NULL);
+  r->finalise_union = feedlist_finalise;
+  r->trigger_rhizome_bundle_added = feedlist_on_rhizome_add;
+  r->u.meshmb_feeds.phase = LIST_HEADER;
+  r->u.meshmb_feeds.session = session;
+  r->u.meshmb_feeds.iterator = iterator;
+  r->u.meshmb_feeds.generation = meshmb_flush(session->feeds);
+  bzero(&r->u.meshmb_feeds.bundle_id, sizeof r->u.meshmb_feeds.bundle_id);
+
+  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshmb_activity_json_content);
+  return 1;
+
 }
 
 DECLARE_HANDLER("/restful/meshmb/", restful_meshmb_);
@@ -647,6 +774,10 @@ static int restful_meshmb_(httpd_request *r, const char *remainder)
       r->ui64 = 0;
     } else if (strcmp(remainder, "/feedlist.json") == 0) {
       handler = restful_meshmb_feedlist;
+      remainder = "";
+      r->ui64 = 0;
+    } else if (strcmp(remainder, "/activity.json") == 0) {
+      handler = restful_meshmb_activity;
       remainder = "";
       r->ui64 = 0;
     } else if (   str_startswith(remainder, "/newsince/", &end)
