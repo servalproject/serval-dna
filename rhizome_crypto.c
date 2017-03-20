@@ -49,8 +49,8 @@ struct rhizome_bundle_result rhizome_private_bundle(rhizome_manifest *m, const s
       rhizome_manifest_set_id(m, &keypair->public_key); // zerofills m->keypair.binary
       m->keypair = *keypair;
       m->haveSecret = NEW_BUNDLE_ID;
-      rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
-      rhizome_manifest_set_name(m, "");
+      rhizome_manifest_set_service(m, RHIZOME_SERVICE_PRIVATE);
+      rhizome_manifest_del_name(m);
       // always consider the content encrypted, we don't need to rely on the manifest itself.
       rhizome_manifest_set_crypt(m, PAYLOAD_ENCRYPTED);
       // setting the author would imply needing a BK, which we don't need since the private key is seeded above.
@@ -58,10 +58,9 @@ struct rhizome_bundle_result rhizome_private_bundle(rhizome_manifest *m, const s
     case RHIZOME_BUNDLE_STATUS_SAME:
       m->haveSecret = EXISTING_BUNDLE_ID;
       m->keypair = *keypair;
-      // always consider the content encrypted, we don't need to rely on the manifest itself.
       rhizome_manifest_set_crypt(m, PAYLOAD_ENCRYPTED);
-      if (strcmp(m->service, RHIZOME_SERVICE_FILE) != 0)
-	return rhizome_bundle_result(RHIZOME_BUNDLE_STATUS_ERROR);
+      rhizome_manifest_set_service(m, RHIZOME_SERVICE_PRIVATE);
+      rhizome_manifest_del_name(m);
       // fallthrough
     default:
       return rhizome_bundle_result(ret);

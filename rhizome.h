@@ -328,6 +328,7 @@ int rhizome_manifest_remove_field(rhizome_manifest *, const char *field_label, s
 #define     RHIZOME_SERVICE_MESHMS  "MeshMS1"
 #define     RHIZOME_SERVICE_MESHMS2  "MeshMS2"
 #define     RHIZOME_SERVICE_MESHMB  "MeshMB1"
+#define     RHIZOME_SERVICE_PRIVATE    "private"
 
 extern int64_t rhizome_space;
 
