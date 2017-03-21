@@ -47,18 +47,8 @@ struct meshmb_activity_iterator *meshmb_activity_open(struct meshmb_feeds *feeds
   return ret;
 }
 
-int meshmb_activity_next(struct meshmb_activity_iterator *i){
+static int activity_next_ack(struct meshmb_activity_iterator *i){
   while(1){
-    // can we read another message?
-    if (message_ply_is_open(&i->msg_reader)
-      && i->msg_reader.read.offset > i->ack_start){
-      DEBUGF(meshmb, "Reading next incoming record from %u",
-	i->msg_reader.read.offset);
-      if (message_ply_read_prev(&i->msg_reader)!=-1
-      && i->msg_reader.read.offset >= i->ack_start)
-	return 1;
-    }
-
     // read the next ack
     if (message_ply_read_prev(&i->ack_reader)==-1)
       return 0;
@@ -94,11 +84,44 @@ int meshmb_activity_next(struct meshmb_activity_iterator *i){
 
 	i->ack_start = ack.start_offset;
 	i->msg_reader.read.offset = ack.end_offset;
+	return 1;
+
       } break;
 
       default:
 	continue;
     }
+  }
+}
+
+int meshmb_activity_seek(struct meshmb_activity_iterator *i, uint64_t ack_offset, uint64_t msg_offset){
+  if (ack_offset)
+    i->ack_reader.read.offset = ack_offset;
+  int r;
+  if ((r = activity_next_ack(i))!=1)
+    return r;
+  if (msg_offset){
+    if (msg_offset > i->msg_reader.read.offset || msg_offset < i->ack_start)
+      return -1;
+    i->msg_reader.read.offset = msg_offset;
+  }
+  return meshmb_activity_next(i);
+}
+
+int meshmb_activity_next(struct meshmb_activity_iterator *i){
+  while(1){
+    // can we read another message?
+    if (message_ply_is_open(&i->msg_reader)
+      && i->msg_reader.read.offset > i->ack_start){
+      DEBUGF(meshmb, "Reading next incoming record from %u",
+	i->msg_reader.read.offset);
+      if (message_ply_read_prev(&i->msg_reader)!=-1
+      && i->msg_reader.read.offset >= i->ack_start)
+	return 1;
+    }
+    int r;
+    if ((r = activity_next_ack(i))!=1)
+      return r;
   }
 }
 
@@ -293,17 +316,21 @@ static int update_stats_tree(void **record, void *context)
 }
 
 // eg, if a bundle_add trigger occurs while the feed list is open
-void meshmb_bundle_update(struct meshmb_feeds *feeds, rhizome_manifest *m, struct message_ply_read *reader)
+int meshmb_bundle_update(struct meshmb_feeds *feeds, rhizome_manifest *m, struct message_ply_read *reader)
 {
   struct feed_metadata *metadata;
   if (strcmp(m->service, RHIZOME_SERVICE_MESHMB) == 0
     && tree_find(&feeds->root, (void**)&metadata, m->keypair.public_key.binary, sizeof m->keypair.public_key.binary, NULL, NULL)==0){
 
     metadata->ply.found = 1;
-    metadata->ply.size = m->filesize;
-
-    update_stats(feeds, metadata, reader);
+    if (metadata->ply.size != m->filesize){
+      metadata->ply.size = m->filesize;
+      if (update_stats(feeds, metadata, reader)==-1)
+	return -1;
+    }
+    return 1;
   }
+  return 0;
 }
 
 int meshmb_update(struct meshmb_feeds *feeds)

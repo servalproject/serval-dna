@@ -225,6 +225,12 @@ typedef struct httpd_request
       uint8_t generation;
       enum list_phase phase;
       size_t rowcount;
+      time_ms_t end_time;
+      uint64_t start_ack_offset;
+      uint64_t current_ack_offset;
+      uint64_t current_msg_offset;
+      uint64_t end_ack_offset;
+      uint64_t end_msg_offset;
     } meshmb_feeds;
     
     struct {

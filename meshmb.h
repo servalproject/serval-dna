@@ -50,12 +50,13 @@ int meshmb_enum(struct meshmb_feeds *feeds, rhizome_bid_t *restart_from, meshmb_
 // enumerate messages, starting with the most recently received
 struct meshmb_activity_iterator *meshmb_activity_open(struct meshmb_feeds *feeds);
 int meshmb_activity_next(struct meshmb_activity_iterator *i);
+int meshmb_activity_seek(struct meshmb_activity_iterator *i, uint64_t ack_offset, uint64_t msg_offset);
 void meshmb_activity_close(struct meshmb_activity_iterator *i);
 
 // update metadata of all feeds based on current rhizome contents (optionally call after opening)
 int meshmb_update(struct meshmb_feeds *feeds);
 // update metadata of a single feed, eg because of a new bundle or when about to read a single ply.
 // it is the callers reponsibility to supply a reader and close it
-void meshmb_bundle_update(struct meshmb_feeds *feeds, rhizome_manifest *m, struct message_ply_read *reader);
+int meshmb_bundle_update(struct meshmb_feeds *feeds, rhizome_manifest *m, struct message_ply_read *reader);
 
 #endif

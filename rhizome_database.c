@@ -1979,9 +1979,10 @@ void server_rhizome_add_bundle(uint64_t rowid){
       break;
     if (unpack_manifest_row(m, statement)!=-1){
       if (rhizome_manifest_verify(m)){
-	assert(max_rowid < m->rowid);
-	max_rowid = m->rowid;
+	if (max_rowid < m->rowid)
+	  max_rowid = m->rowid;
 	CALL_TRIGGER(bundle_add, m);
+	// Note that a trigger might cause a new bundle to be added, and max_rowid to jump
       }
     }
     rhizome_manifest_free(m);

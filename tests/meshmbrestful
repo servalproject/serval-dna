@@ -174,6 +174,26 @@ test_MeshMBRestFeeds() {
             ])"
 }
 
+doc_MeshMBRestEmptyActivity="Restful activity with no content"
+setup_MeshMBRestEmptyActivity() {
+   IDENTITY_COUNT=1
+   setup
+}
+test_MeshMBRestEmptyActivity() {
+   executeOk --timeout=10 curl \
+         -H "Expect:" \
+         --silent --fail --show-error \
+         --output activity.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/activity.json"
+   tfw_cat http.headers activity.json
+   tfw_preserve activity.json
+   assert [ "$(jq '.rows | length' activity.json)" = 0 ]
+   transform_list_json activity.json list.json
+   tfw_preserve list.json
+}
+
 doc_MeshMBRestActivity="Restful thread incoming activity"
 setup_MeshMBRestActivity() {
    IDENTITY_COUNT=5
@@ -226,6 +246,70 @@ test_MeshMBRestActivity() {
    assertJq list.json "contains([{ __index: 7, id: \"$IDA3\", author: \"$SIDA3\", name: \"Feed C\", message: \"Message 3\"}])"
    assertJq list.json "contains([{ __index: 8, id: \"$IDA2\", author: \"$SIDA2\", name: \"Feed B\", message: \"Message 2\"}])"
 }
+
+doc_MeshMBRestNewActivity="Restful newsince incoming activity"
+setup_MeshMBRestNewActivity() {
+   IDENTITY_COUNT=3
+   setup
+   executeOk_servald keyring set did $SIDA1 "" "Feed A"
+   executeOk_servald keyring set did $SIDA2 "" "Feed B"
+   executeOk_servald keyring set did $SIDA3 "" "Feed C"
+   executeOk_servald meshmb send $IDA2 "Message 1"
+   executeOk_servald meshmb send $IDA3 "Message 2"
+   executeOk_servald meshmb follow $IDA1 $IDA2
+   executeOk_servald meshmb follow $IDA1 $IDA3
+   executeOk curl \
+         -H "Expect:" \
+         --silent --fail --show-error \
+         --output activity.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/activity.json"
+   assert [ "$(jq '.rows | length' activity.json)" = 2 ]
+   transform_list_json activity.json array_of_objects.json
+   tfw_preserve array_of_objects.json
+   token=$(jq --raw-output '.[0][".token"]' array_of_objects.json)
+   assert [ -n "$token" ]
+}
+test_MeshMBRestNewActivity() {
+   for i in 1 2 3; do
+      fork %curl$i curl \
+            --silent --fail --show-error \
+            --no-buffer \
+            --output newsince$i.json \
+            --basic --user harry:potter \
+            "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/activity/$token/activity.json"
+   done
+   wait_until [ -e newsince1.json -a -e newsince2.json -a -e newsince3.json ]
+   executeOk_servald meshmb send $IDA2 "Message 3"
+   executeOk_servald meshmb send $IDA3 "Message 4"
+   executeOk_servald meshmb send $IDA2 "Message 5"
+   executeOk_servald meshmb send $IDA3 "Message 6"
+   for i in 1 2 3; do
+      wait_until grep "Message 3" newsince$i.json
+      wait_until grep "Message 4" newsince$i.json
+      wait_until grep "Message 5" newsince$i.json
+      wait_until grep "Message 6" newsince$i.json
+   done
+   fork_terminate_all
+   fork_wait_all
+   for i in 1 2 3; do
+      if [ $(jq . newsince$i | wc -c) -eq 0 ]; then
+         echo ']}' >>newsince$i.json
+         assert [ $(jq . newsince$i.json | wc -c) -ne 0 ]
+      fi
+      transform_list_json newsince$i.json objects$i.json
+      tfw_preserve newsince$i.json objects$i.json
+   done
+   for i in 1 2 3; do
+      assert [ "$(jq '.rows | length' newsince$i.json)" = 4 ]
+      assertJq objects$i.json "contains([{ id: \"$IDA2\", author: \"$SIDA2\", name: \"Feed B\", message: \"Message 3\"}])"
+      assertJq objects$i.json "contains([{ id: \"$IDA3\", author: \"$SIDA3\", name: \"Feed C\", message: \"Message 4\"}])"
+      assertJq objects$i.json "contains([{ id: \"$IDA2\", author: \"$SIDA2\", name: \"Feed B\", message: \"Message 5\"}])"
+      assertJq objects$i.json "contains([{ id: \"$IDA3\", author: \"$SIDA3\", name: \"Feed C\", message: \"Message 6\"}])"
+   done
+}
+
 
 runTests "$@"
 
