@@ -137,7 +137,7 @@ test_keyringAdd() {
          --output add.json \
          --dump-header http.headers \
          --basic --user harry:potter \
-         "http://$addr_localhost:$PORTA/restful/keyring/add"
+         "http://$addr_localhost:$PORTA/restful/keyring/add?did="
    tfw_cat http.headers add.json
    tfw_preserve add.json
    assertStdoutIs '201'

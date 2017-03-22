@@ -304,7 +304,7 @@ static int _reserve_str(struct http_request *r, const char **resp, const char *s
 static void _mover_www_form_uri_decode(char *, const char *, size_t);
 static int _reserve_www_form_uriencoded(struct http_request *r, const char **resp, struct substring str)
 {
-  assert(str.end > str.start);
+  assert(str.end >= str.start);
   const char *after = NULL;
   size_t len = www_form_uri_decode(NULL, -1, (char *)str.start, str.end - str.start, &after);
   assert(len <= (size_t)(str.end - str.start)); // decoded must not be longer than encoded
