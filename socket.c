@@ -85,7 +85,7 @@ int _make_local_sockaddr(struct __sourceloc __whence, struct socket_address *add
 int real_sockaddr(const struct socket_address *src_addr, struct socket_address *dst_addr)
 {
   DEBUGF2(io, verbose_io, "real_sockaddr(src_addr=%p %s, dst_addr=%p)", src_addr, alloca_socket_address(src_addr), dst_addr);
-  assert(src_addr->addrlen > sizeof src_addr->local.sun_family);
+  assert(src_addr->addrlen > (socklen_t)sizeof src_addr->local.sun_family);
   size_t src_path_len = src_addr->addrlen - sizeof src_addr->local.sun_family;
   if (	 (size_t)src_addr->addrlen >= sizeof src_addr->local.sun_family + 1
       && src_addr->local.sun_family == AF_UNIX
@@ -218,7 +218,7 @@ int _socket_connect(struct __sourceloc __whence, int sock, const struct socket_a
 
 int _socket_bind(struct __sourceloc __whence, int sock, const struct socket_address *addr)
 {
-  assert(addr->addrlen > sizeof addr->addr.sa_family);
+  assert(addr->addrlen > (socklen_t)sizeof addr->addr.sa_family);
   if (addr->addr.sa_family == AF_UNIX && addr->local.sun_path[0] != '\0') {
     assert(addr->local.sun_path[addr->addrlen - sizeof addr->local.sun_family - 1] == '\0');
     // make sure the path exists, create it if we can
