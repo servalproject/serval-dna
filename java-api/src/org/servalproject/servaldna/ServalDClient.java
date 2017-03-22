@@ -24,6 +24,7 @@ import org.servalproject.codec.Base64;
 import org.servalproject.servaldna.keyring.KeyringCommon;
 import org.servalproject.servaldna.keyring.KeyringIdentity;
 import org.servalproject.servaldna.keyring.KeyringIdentityList;
+import org.servalproject.servaldna.meshmb.MeshMBActivityList;
 import org.servalproject.servaldna.meshmb.MeshMBCommon;
 import org.servalproject.servaldna.meshmb.MeshMBSubscriptionList;
 import org.servalproject.servaldna.meshmb.MessagePlyList;
@@ -215,6 +216,16 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 
 	public MeshMBSubscriptionList meshmbSubscriptions(Subscriber identity) throws IOException, ServalDInterfaceException {
 		MeshMBSubscriptionList list = new MeshMBSubscriptionList(this, identity);
+		list.connect();
+		return list;
+	}
+
+	public MeshMBActivityList meshmbActivity(Subscriber identity) throws IOException, ServalDInterfaceException {
+		return meshmbActivity(identity, null);
+	}
+
+	public MeshMBActivityList meshmbActivity(Subscriber identity, String token) throws IOException, ServalDInterfaceException {
+		MeshMBActivityList list = new MeshMBActivityList(this, identity, token);
 		list.connect();
 		return list;
 	}

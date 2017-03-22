@@ -21,6 +21,8 @@ public class PlyMessage implements Comparable<PlyMessage>{
 
     @Override
     public int compareTo(PlyMessage plyMessage) {
-        return (this.offset < plyMessage.offset) ? -1 : 0;
+        if (this.offset == plyMessage.offset)
+            return 0;
+        return (this.offset < plyMessage.offset) ? 1 : -1;
     }
 }

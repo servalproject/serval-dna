@@ -256,8 +256,8 @@ static int list_callback(struct meshmb_feed_details *details, void *context)
   struct cli_enum_context *enum_context = context;
   enum_context->rowcount++;
   cli_put_long(enum_context->context, enum_context->rowcount, ":");
-  cli_put_string(enum_context->context, alloca_tohex_rhizome_bid_t(details->bundle_id), ":");
-  cli_put_string(enum_context->context, alloca_tohex_sid_t(details->author), ":");
+  cli_put_string(enum_context->context, alloca_tohex_rhizome_bid_t(details->ply.bundle_id), ":");
+  cli_put_string(enum_context->context, alloca_tohex_sid_t(details->ply.author), ":");
   cli_put_string(enum_context->context, details->name, ":");
   cli_put_long(enum_context->context, details->timestamp ? (long)(gettime() - details->timestamp) : (long)-1, ":");
   cli_put_string(enum_context->context, details->last_message, "\n");

@@ -157,8 +157,12 @@ int message_ply_append(const keyring_identity *id, const char *service, const si
   struct message_ply_write write;
   int ret=-1;
 
+  assert(!ob_overrun(b));
+
   if (message_ply_write_open(&write, id, service, recipient, ply, name, nassignments, assignments, 0) == -1)
     goto end;
+  DEBUGF2(meshms, meshmb, "Appending %zu bytes @%"PRIu64,
+    ob_position(b), write.write.written_offset);
   if (rhizome_write_buffer(&write.write, ob_ptr(b), ob_position(b)) == -1)
     goto end;
   ret = message_ply_write_finish(&write);
@@ -249,7 +253,8 @@ int message_ply_read_prev(struct message_ply_read *ply)
     ply->type = r & 0xF;
     ply->record_length = r >> 4;
   }
-  DEBUGF2(meshms, meshmb, "Found record %d, length %d @%"PRId64, ply->type, ply->record_length, ply->record_end_offset);
+  DEBUGF2(meshms, meshmb, "Found record %d, length %d @%"PRId64" - @%"PRId64,
+    ply->type, ply->record_length, ply->record_end_offset - (ply->record_length + sizeof footer), ply->record_end_offset);
   // need to allow for advancing the tail and cutting a message in half.
   if (ply->record_length + sizeof footer > ply->read.offset){
     DEBUGF2(meshms, meshmb, "EOF");

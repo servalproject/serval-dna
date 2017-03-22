@@ -29,14 +29,14 @@ public class MeshMBCommon {
     }
 
     public static int ignore(ServalDHttpConnectionFactory connector, Subscriber id, SigningKey peer) throws ServalDInterfaceException, IOException {
-        HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshmb/" + id.signingKey.toHex() + "/follow/" + peer.toHex());
+        HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshmb/" + id.signingKey.toHex() + "/ignore/" + peer.toHex());
         conn.setRequestMethod("POST");
         conn.connect();
         return conn.getResponseCode();
     }
 
     public static int follow(ServalDHttpConnectionFactory connector, Subscriber id, SigningKey peer) throws ServalDInterfaceException, IOException {
-        HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshmb/" + id.signingKey.toHex() + "/ignore/" + peer.toHex());
+        HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshmb/" + id.signingKey.toHex() + "/follow/" + peer.toHex());
         conn.setRequestMethod("POST");
         conn.connect();
         return conn.getResponseCode();

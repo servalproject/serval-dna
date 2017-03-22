@@ -12,7 +12,7 @@
 
 struct feed_metadata{
   size_t tree_depth;
-  struct message_ply ply; // (ply starts with a rhizome_bid_t, so this is consistent with a nibble tree)
+  rhizome_bid_t bundle_id;
   struct meshmb_feed_details details;
   // what is the offset of their last message
   uint64_t last_message_offset;
@@ -63,23 +63,25 @@ static int activity_next_ack(struct meshmb_activity_iterator *i){
 	if (message_ply_parse_ack(&i->ack_reader, &ack) == -1)
 	  return -1;
 
-	DEBUGF(meshmb, "Found ack for %s, %u to %u",
+	DEBUGF(meshmb, "Found ack for %s, %"PRIu64" to %"PRIu64,
 	  alloca_tohex(ack.binary, ack.binary_length), ack.start_offset, ack.end_offset);
 
 	struct feed_metadata *metadata;
 	if (tree_find(&i->feeds->root, (void**)&metadata, ack.binary, ack.binary_length, NULL, NULL)==TREE_FOUND){
 	  if (i->metadata == metadata){
 	    // shortcut for consecutive acks for the same incoming feed
-	    DEBUGF(meshmb, "Ply still open @%u",
+	    DEBUGF(meshmb, "Ply still open @%"PRIu64,
 	      i->msg_reader.read.offset);
 	  }else{
 	    message_ply_read_close(&i->msg_reader);
-	    if (message_ply_read_open(&i->msg_reader, &metadata->ply.bundle_id, NULL)==-1){
+	    if (message_ply_read_open(&i->msg_reader, &metadata->bundle_id, NULL)==-1){
 	      i->metadata = NULL;
 	      continue;
 	    }
 	    i->metadata = metadata;
 	  }
+	}else{
+	  WARNF("Failed to find metadata for %s", alloca_tohex(ack.binary, ack.binary_length));
 	}
 
 	i->ack_start = ack.start_offset;
@@ -113,7 +115,7 @@ int meshmb_activity_next(struct meshmb_activity_iterator *i){
     // can we read another message?
     if (message_ply_is_open(&i->msg_reader)
       && i->msg_reader.read.offset > i->ack_start){
-      DEBUGF(meshmb, "Reading next incoming record from %u",
+      DEBUGF(meshmb, "Reading next incoming record from %"PRIu64,
 	i->msg_reader.read.offset);
       if (message_ply_read_prev(&i->msg_reader)!=-1
       && i->msg_reader.read.offset >= i->ack_start)
@@ -146,6 +148,9 @@ static int finish_ack_writing(struct meshmb_feeds *feeds){
   {
     struct overlay_buffer *b = ob_new();
     message_ply_append_timestamp(b);
+    assert(!ob_overrun(b));
+    DEBUGF2(meshms, meshmb, "Appending %zu bytes @%"PRIu64,
+      ob_position(b), feeds->ack_writer.file_offset);
     ret = rhizome_write_buffer(&feeds->ack_writer, ob_ptr(b), ob_position(b));
     ob_free(b);
   }
@@ -178,24 +183,27 @@ static int finish_ack_writing(struct meshmb_feeds *feeds){
 
 static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metadata, struct message_ply_read *reader)
 {
-  if (!metadata->ply.found){
+  if (!metadata->details.ply.found){
     // get the current size from the db
     sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-    if (sqlite_exec_uint64_retry(&retry, &metadata->ply.size,
+    if (sqlite_exec_uint64_retry(&retry, &metadata->details.ply.size,
       "SELECT filesize FROM manifests WHERE id = ?",
-      RHIZOME_BID_T, &metadata->ply.bundle_id,
-      END) == SQLITE_ROW)
-	metadata->ply.found = 1;
+      RHIZOME_BID_T, &metadata->bundle_id,
+      END) == SQLITE_ROW){
+      metadata->details.ply.found = 1;
+    }
     else
       return -1;
   }
 
-  DEBUGF(meshmb, "Size from %u to %u", metadata->size, metadata->ply.size);
-  if (metadata->size == metadata->ply.size)
+  DEBUGF(meshmb, "Size of %s from %"PRIu64" to %"PRIu64,
+    alloca_tohex_rhizome_bid_t(metadata->bundle_id),
+    metadata->size, metadata->details.ply.size);
+  if (metadata->size == metadata->details.ply.size)
     return 0;
 
   if (!message_ply_is_open(reader)
-    && message_ply_read_open(reader, &metadata->ply.bundle_id, NULL)!=0)
+    && message_ply_read_open(reader, &metadata->bundle_id, NULL)!=0)
     return -1;
 
   // TODO allow the user to specify an overridden name?
@@ -203,7 +211,7 @@ static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metada
     free((void*)metadata->details.name);
     metadata->details.name = NULL;
   }
-  metadata->details.author = reader->author;
+  metadata->details.ply.author = reader->author;
 
   if (reader->name){
     size_t len = strlen(reader->name);
@@ -242,7 +250,7 @@ static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metada
     }
   }
 
-  DEBUGF(meshmb, "Last message from %u to %u", metadata->last_message_offset, last_offset);
+  DEBUGF(meshmb, "Last message from %"PRIu64" to %"PRIu64, metadata->last_message_offset, last_offset);
   if (last_offset > metadata->last_message_offset){
     // add an ack to our journal to thread new messages
     if (!feeds->ack_manifest){
@@ -283,11 +291,14 @@ static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metada
       bzero(&ack, sizeof ack);
 
       ack.start_offset = metadata->size;
-      ack.end_offset = metadata->ply.size;
-      ack.binary = metadata->ply.bundle_id.binary;
+      ack.end_offset = metadata->details.ply.size;
+      ack.binary = metadata->bundle_id.binary;
       ack.binary_length = (metadata->tree_depth >> 3) + 3;
 
       message_ply_append_ack(b, &ack);
+      assert(!ob_overrun(b));
+      DEBUGF2(meshms, meshmb, "Appending %zu bytes @%"PRIu64,
+	ob_position(b), feeds->ack_writer.file_offset);
       int r = rhizome_write_buffer(&feeds->ack_writer, ob_ptr(b), ob_position(b));
       DEBUGF(meshmb, "Acked incoming messages");
       ob_free(b);
@@ -297,7 +308,7 @@ static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metada
   }
 
   metadata->last_message_offset = last_offset;
-  metadata->size = metadata->ply.size;
+  metadata->size = metadata->details.ply.size;
 
   feeds->dirty=1;
   return 1;
@@ -320,11 +331,11 @@ int meshmb_bundle_update(struct meshmb_feeds *feeds, rhizome_manifest *m, struct
 {
   struct feed_metadata *metadata;
   if (strcmp(m->service, RHIZOME_SERVICE_MESHMB) == 0
-    && tree_find(&feeds->root, (void**)&metadata, m->keypair.public_key.binary, sizeof m->keypair.public_key.binary, NULL, NULL)==0){
+    && tree_find(&feeds->root, (void**)&metadata, m->keypair.public_key.binary, sizeof m->keypair.public_key.binary, NULL, NULL)==TREE_FOUND){
 
-    metadata->ply.found = 1;
-    if (metadata->ply.size != m->filesize){
-      metadata->ply.size = m->filesize;
+    metadata->details.ply.found = 1;
+    if (metadata->details.ply.size != m->filesize){
+      metadata->details.ply.size = m->filesize;
       if (update_stats(feeds, metadata, reader)==-1)
 	return -1;
     }
@@ -352,9 +363,9 @@ static int write_metadata(void **record, void *context)
 
   uint8_t buffer[sizeof (rhizome_bid_t) + sizeof (sid_t) + 1 + 12*4 + name_len + msg_len];
   size_t len = 0;
-  bcopy(metadata->ply.bundle_id.binary, &buffer[len], sizeof (rhizome_bid_t));
+  bcopy(metadata->bundle_id.binary, &buffer[len], sizeof (rhizome_bid_t));
   len += sizeof (rhizome_bid_t);
-  bcopy(metadata->details.author.binary, &buffer[len], sizeof (sid_t));
+  bcopy(metadata->details.ply.author.binary, &buffer[len], sizeof (sid_t));
   len += sizeof (sid_t);
   buffer[len++]=0;// flags?
   len+=pack_uint(&buffer[len], metadata->size);
@@ -372,10 +383,10 @@ static int write_metadata(void **record, void *context)
     buffer[len]=0;
   len+=msg_len;
   assert(len < sizeof buffer);
-  DEBUGF(meshmb, "Write %u bytes of metadata for %s/%s",
+  DEBUGF(meshmb, "Write %zu bytes of metadata for %s/%s",
     len,
-    alloca_tohex_rhizome_bid_t(metadata->ply.bundle_id),
-    alloca_tohex_sid_t(metadata->details.author)
+    alloca_tohex_rhizome_bid_t(metadata->bundle_id),
+    alloca_tohex_sid_t(metadata->details.ply.author)
   );
   return rhizome_write_buffer(write, buffer, len);
 }
@@ -468,7 +479,10 @@ static void* alloc_feed(void *context, const uint8_t *binary, size_t UNUSED(bin_
   struct meshmb_feeds *feeds = (struct meshmb_feeds *)context;
   struct feed_metadata *feed = emalloc_zero(sizeof(struct feed_metadata));
   if (feed){
-    feed->ply.bundle_id = *(rhizome_bid_t *)binary;
+    struct tree_record *tree = (struct tree_record *)feed;
+    assert(&tree->binary[0] == &feed->bundle_id.binary[0]);
+    feed->details.ply.bundle_id = *(rhizome_bid_t *)binary;
+    feed->bundle_id = *(rhizome_bid_t *)binary;
     feeds->dirty = 1;
     DEBUGF(meshmb, "Allocated feed");
   }
@@ -490,7 +504,7 @@ static int read_metadata(struct meshmb_feeds *feeds, struct rhizome_read *read)
 
   while(1){
     ssize_t bytes = rhizome_read_buffered(read, &buff, buffer, sizeof buffer);
-    if (bytes==0)
+    if (bytes<=0)
       break;
 
     uint64_t delta=0;
@@ -545,7 +559,9 @@ static int read_metadata(struct meshmb_feeds *feeds, struct rhizome_read *read)
 	goto error;
     }
 
-    read->offset += offset - bytes;
+    DEBUGF(meshmb, "Seeking backwards %"PRIu64", %u, %zu", read->offset, offset, bytes);
+    read->offset = (read->offset - bytes) + offset;
+
     struct feed_metadata *result;
     if (tree_find(&feeds->root, (void**)&result, bid->binary, sizeof *bid, alloc_feed, feeds)<0)
       return WHY("Failed to allocate metadata");
@@ -553,16 +569,15 @@ static int read_metadata(struct meshmb_feeds *feeds, struct rhizome_read *read)
     result->last_message_offset = last_message_offset;
     result->last_seen = last_seen;
     result->size = size;
-    result->details.bundle_id = *bid;
-    result->details.author = *author;
+    result->details.ply.author = *author;
     result->details.name = (name && *name) ? str_edup(name) : NULL;
     result->details.last_message = (msg && *msg) ? str_edup(msg) : NULL;
     result->details.timestamp = timestamp;
 
-    DEBUGF(meshmb, "Processed %u bytes of metadata for %s",
+    DEBUGF(meshmb, "Processed %u bytes of metadata for %s (%s)",
       offset,
-      alloca_tohex_rhizome_bid_t(result->ply.bundle_id),
-      alloca_tohex_sid_t(result->details.author)
+      alloca_tohex_rhizome_bid_t(*bid),
+      alloca_tohex_sid_t(*author)
     );
   }
   feeds->dirty = 0;
@@ -698,7 +713,6 @@ int meshmb_send(const keyring_identity *id, const char *message, size_t message_
   struct overlay_buffer *b = ob_new();
   message_ply_append_message(b, message, message_len);
   message_ply_append_timestamp(b);
-  assert(!ob_overrun(b));
 
   keyring_identity_extract(id, &did, &name);
   int ret = message_ply_append(id, RHIZOME_SERVICE_MESHMB, NULL, &ply, b, name, nassignments, assignments);
