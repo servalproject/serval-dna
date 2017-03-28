@@ -1664,11 +1664,97 @@ fail:
   return 0;
 }
 
+static int append_existing_journal_file(struct rhizome_write *write, const rhizome_filehash_t *hashp, uint64_t length){
+  // Try to append directly into the previous journal file, linking them together
+  DEBUGF(rhizome, "Attempting to append into journal blob");
+  // First, we need to read a previous partial hash state
+  char *filehash = alloca_tohex_rhizome_filehash_t(*hashp);
+  char existing_path[1024];
+  if (!FORMF_RHIZOME_STORE_PATH(existing_path, "%s/%s", RHIZOME_BLOB_SUBDIR, filehash))
+    return WHYF("existing path too long?");
+
+  int payloadfd = open(existing_path, O_RDWR, 0664);
+  if (payloadfd<0){
+    if (errno != ENOENT)
+      WHYF_perror("Failed to open existing journal payload %s", existing_path);
+    else
+      DEBUGF(rhizome, "No existing journal payloadpartial hash state");
+    return -1;
+  }
+
+  off64_t pos = lseek64(payloadfd, 0, SEEK_END);
+  if ((uint64_t)pos != length){
+    DEBUGF(rhizome, "Existing journal file is not the right length");
+    close(payloadfd);
+    return -1;
+  }
+
+  char hash_path[1024];
+  if (!FORMF_RHIZOME_STORE_PATH(hash_path, "%s/%s", RHIZOME_HASH_SUBDIR, filehash)){
+    close(payloadfd);
+    return WHYF("hash path too long?");
+  }
+
+  int hashfd = open(hash_path, O_RDONLY);
+  if (hashfd < 0){
+    if (errno != ENOENT)
+      WHYF_perror("Failed to open partial hash state %s", hash_path);
+    else
+      DEBUGF(rhizome, "No partial hash state");
+    close(payloadfd);
+    return -1;
+  }
+
+  struct crypto_hash_sha512_state hash_state;
+  ssize_t r = read(hashfd, &hash_state, sizeof hash_state);
+  close(hashfd);
+
+  if (r != sizeof hash_state){
+    close(payloadfd);
+    return WHYF("Expected %u bytes", (unsigned)sizeof hash_state);
+  }
+
+  char new_path[1024];
+  if (!FORMF_RHIZOME_STORE_PATH(new_path, "%s/%"PRIu64, RHIZOME_BLOB_SUBDIR, write->temp_id)){
+    close(payloadfd);
+    return WHYF("Temp path too long?");
+  }
+
+  if (link(existing_path, new_path)==-1){
+    close(payloadfd);
+    return WHYF_perror("Failed to link journal payloads together");
+  }
+
+  // (write_data always seeks so we don't have to)
+  write->written_offset = write->file_offset = length;
+  write->blob_fd = payloadfd;
+  bcopy(&hash_state, &write->sha512_context, sizeof hash_state);
+
+  // Used by tests
+  DEBUGF(rhizome,"Reusing journal payload file, keeping %"PRIu64" existing bytes", length);
+  return 1;
+}
+
 enum rhizome_payload_status rhizome_journal_pipe(struct rhizome_write *write, const rhizome_filehash_t *hashp, uint64_t start_offset, uint64_t length)
 {
+  if (length==0)
+    return RHIZOME_PAYLOAD_STATUS_EMPTY;
+
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
+  assert(!write->crypt);
+
+  DEBUGF(rhizome, "Piping journal from %"PRIu64", len %"PRIu64" to %"PRIu64,
+    start_offset, length, write->file_offset);
+
+  if (start_offset == 0 && write->file_offset == 0
+    && append_existing_journal_file(write, hashp, length)!=-1){
+    return RHIZOME_PAYLOAD_STATUS_STORED;
+  }
+
   enum rhizome_payload_status status = rhizome_open_read(&read_state, hashp);
+  if (status == RHIZOME_PAYLOAD_STATUS_NEW || status == RHIZOME_PAYLOAD_STATUS_EMPTY)
+    status = RHIZOME_PAYLOAD_STATUS_ERROR;
   if (status == RHIZOME_PAYLOAD_STATUS_STORED) {
     read_state.offset = start_offset;
     if (rhizome_pipe(&read_state, write, length) == -1)
@@ -1676,54 +1762,6 @@ enum rhizome_payload_status rhizome_journal_pipe(struct rhizome_write *write, co
   }
   rhizome_read_close(&read_state);
   return status;
-}
-
-static int append_existing_journal_file(struct rhizome_write *write, rhizome_manifest *m){
-  // Try to append directly into the previous journal file, linking them together
-  DEBUGF(rhizome, "Attempting to append into journal blob");
-  // First, we need to read a previous partial hash state
-  char *filehash = alloca_tohex_rhizome_filehash_t(m->filehash);
-  char existing_path[1024];
-  if (!FORMF_RHIZOME_STORE_PATH(existing_path, "%s/%s", RHIZOME_BLOB_SUBDIR, filehash))
-    return WHYF("existing path too long?");
-
-  char hash_path[1024];
-  if (!FORMF_RHIZOME_STORE_PATH(hash_path, "%s/%s", RHIZOME_HASH_SUBDIR, filehash))
-    return WHYF("hash path too long?");
-
-  int fd = open(hash_path, O_RDONLY);
-  if (fd < 0){
-    if (errno != ENOENT)
-      WHYF_perror("Failed to open partial hash state %s", hash_path);
-    return -1;
-  }
-
-  struct crypto_hash_sha512_state hash_state;
-  ssize_t r = read(fd, &hash_state, sizeof hash_state);
-  close(fd);
-
-  if (r != sizeof hash_state)
-    return WHYF("Expected %u bytes", (unsigned)sizeof hash_state);
-
-  char new_path[1024];
-  if (!FORMF_RHIZOME_STORE_PATH(new_path, "%s/%"PRIu64, RHIZOME_BLOB_SUBDIR, write->temp_id))
-    return WHYF("Temp path too long?");
-
-  if (link(existing_path, new_path)==-1)
-    return WHYF_perror("Failed to link journal payloads together");
-
-  fd = open(new_path, O_RDWR, 0664);
-  if (fd<0)
-    return WHYF_perror("Failed to open new journal file");
-
-  // (write_data always seeks so we don't have to)
-  write->written_offset = write->file_offset = m->filesize;
-  write->blob_fd = fd;
-  bcopy(&hash_state, &write->sha512_context, sizeof hash_state);
-
-  // Used by tests
-  DEBUGF(rhizome,"Reusing journal payload file, keeping %"PRIu64" existing bytes", m->filesize);
-  return 1;
 }
 
 // open an existing journal bundle, advance the head pointer, duplicate the existing content and get ready to add more.
@@ -1745,11 +1783,6 @@ enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *wri
   DEBUGF(rhizome, "rhizome_open_write() returned %d %s", status, rhizome_payload_status_message(status));
   if (status == RHIZOME_PAYLOAD_STATUS_NEW) {
     write->journal=1;
-
-    if (copy_length > 0 && advance_by == 0){
-      if (append_existing_journal_file(write, m)!=-1)
-	copy_length = 0;
-    }
 
     if (copy_length > 0){
       // we don't need to bother decrypting the existing journal payload
@@ -1780,6 +1813,7 @@ enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *wri
     }
   }
   if (status == RHIZOME_PAYLOAD_STATUS_NEW) {
+    assert(write->file_offset == copy_length);
     status = rhizome_write_derive_key(m, write);
     DEBUGF(rhizome, "rhizome_write_derive_key() returned %d %s", status, rhizome_payload_status_message(status));
   }
