@@ -24,6 +24,8 @@ import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.ServalDInterfaceException;
 
+import java.util.Date;
+
 public class MeshMSMessage implements Comparable<MeshMSMessage>{
 
 	public enum Type {
@@ -47,6 +49,7 @@ public class MeshMSMessage implements Comparable<MeshMSMessage>{
 	public final boolean isDelivered;
 	public final boolean isRead;
 	public final Long timestamp;
+	public final Date date;
 	public final Long ackOffset;
 
 	protected MeshMSMessage(int rowNumber,
@@ -87,6 +90,7 @@ public class MeshMSMessage implements Comparable<MeshMSMessage>{
 		this.isDelivered = delivered;
 		this.isRead = read;
 		this.timestamp = timestamp;
+		this.date = new Date((timestamp ==null?0:timestamp * 1000));
 		this.ackOffset = ack_offset;
 	}
 
