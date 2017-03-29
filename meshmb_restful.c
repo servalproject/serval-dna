@@ -592,6 +592,9 @@ static int restful_meshmb_feedlist_json_content_chunk(struct http_request *hr, s
 	  .request = r,
 	  .buffer = b
 	};
+	int gen = meshmb_flush(r->u.meshmb_feeds.session->feeds);
+	if (gen>=0 && gen != r->u.meshmb_feeds.generation)
+	  r->u.meshmb_feeds.generation = gen;
 	if (meshmb_enum(r->u.meshmb_feeds.session->feeds, &r->u.meshmb_feeds.bundle_id, restful_feedlist_enum, &state)!=0)
 	  return 0;
       }
@@ -622,16 +625,7 @@ static void feedlist_on_rhizome_add(httpd_request *r, rhizome_manifest *m)
   if (ret!=1)
     return;
 
-  // TODO delay until resumed?
-  int gen = meshmb_flush(r->u.meshmb_feeds.session->feeds);
-  if (gen>=0 && gen != r->u.meshmb_feeds.generation){
-    if (r->u.meshmb_feeds.iterator){
-      meshmb_activity_close(r->u.meshmb_feeds.iterator);
-      r->u.meshmb_feeds.iterator = NULL;
-    }
-    r->u.meshmb_feeds.generation = gen;
-    http_request_resume_response(&r->http);
-  }
+  http_request_resume_response(&r->http);
 }
 
 static void feedlist_finalise(httpd_request *r)
@@ -701,6 +695,15 @@ static void activity_next(httpd_request *r){
 }
 
 static void activity_iterator_open(httpd_request *r){
+  int gen = meshmb_flush(r->u.meshmb_feeds.session->feeds);
+  if (gen>=0 && gen != r->u.meshmb_feeds.generation){
+    if (r->u.meshmb_feeds.iterator){
+      meshmb_activity_close(r->u.meshmb_feeds.iterator);
+      r->u.meshmb_feeds.iterator = NULL;
+    }
+    r->u.meshmb_feeds.generation = gen;
+  }
+
   if (r->u.meshmb_feeds.iterator)
     return;
   struct meshmb_activity_iterator *iterator = meshmb_activity_open(r->u.meshmb_feeds.session->feeds);
