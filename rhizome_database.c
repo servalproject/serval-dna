@@ -158,19 +158,19 @@ void verify_bundles()
 	  rhizome_manifest_to_bar(m, &bar);
 	  rhizome_authenticate_author(m);
 
-	  if (sqlite_exec_void("UPDATE MANIFESTS SET"
-	      "id = ?,"
-	      "version = ?,"
-	      "bar = ?,"
-	      "filesize = ?,"
-	      "filehash = ?,"
-	      "author = ?,"
-	      "service = ?,"
-	      "name = ?,"
-	      "sender = ?,"
-	      "recipient = ?,"
-	      "tail = ?,"
-	      "manifest_hash = ?"
+	  if (sqlite_exec_void("UPDATE MANIFESTS SET "
+	      "id = ?, "
+	      "version = ?, "
+	      "bar = ?, "
+	      "filesize = ?, "
+	      "filehash = ?, "
+	      "author = ?, "
+	      "service = ?, "
+	      "name = ?, "
+	      "sender = ?, "
+	      "recipient = ?, "
+	      "tail = ?, "
+	      "manifest_hash = ? "
 	    "WHERE ROWID = ?;",
 	    RHIZOME_BID_T, &m->keypair.public_key,
 	    INT64, m->version,

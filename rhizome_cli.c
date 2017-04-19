@@ -469,7 +469,7 @@ static int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_contex
 
 DEFINE_CMD(app_rhizome_clean, 0,
   "Remove stale and orphaned content from the Rhizome store",
-  "rhizome","clean","[verify]");
+  "rhizome","clean","[verify]" KEYRING_PIN_OPTIONS);
 static int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context *context)
 {
   DEBUG_cli_parsed(verbose, parsed);
@@ -481,8 +481,10 @@ static int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context
   if (rhizome_opendb() == -1)
     return -1;
   
-  if (verify)
+  if (verify){
+    keyring = keyring_open_instance_cli(parsed);
     verify_bundles();
+  }
   struct rhizome_cleanup_report report;
   if (rhizome_cleanup(&report) == -1)
     return -1;

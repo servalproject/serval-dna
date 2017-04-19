@@ -156,11 +156,12 @@ static enum rhizome_bundle_authorship set_authentic(rhizome_manifest *m, const k
  * and finally update the database with the result.
 */
 static enum rhizome_bundle_authorship try_author(rhizome_manifest *m, const keyring_identity *id, const sid_t *sid){
-  assert(keyring != NULL);
   if (!sid)
     return AUTHOR_UNKNOWN;
 
   if (!id){
+    if (!keyring)
+      return AUTHOR_UNKNOWN;
     id = keyring_find_identity_sid(keyring, sid);
     if (!id)
       return AUTHOR_UNKNOWN;
@@ -230,7 +231,6 @@ static enum rhizome_bundle_authorship try_author(rhizome_manifest *m, const keyr
 void rhizome_authenticate_author(rhizome_manifest *m)
 {
   IN();
-  assert(keyring != NULL);
   DEBUGF(rhizome, "authenticate author for bid=%s", m->has_id ? alloca_tohex_rhizome_bid_t(m->keypair.public_key) : "(none)");
   switch (m->authorship) {
     case ANONYMOUS:
@@ -242,8 +242,8 @@ void rhizome_authenticate_author(rhizome_manifest *m)
 	if (crypto_sign_to_sid(&m->keypair.public_key, &test_sid)==0){
 	  if (cmp_sid_t(&test_sid, &m->sender)==0){
 	    // self signed bundle, is it ours?
-	    keyring_identity *id = keyring_find_identity(keyring, &m->keypair.public_key);
-	    if (id){
+	    keyring_identity *id;
+	    if (keyring && (id = keyring_find_identity(keyring, &m->keypair.public_key))){
 	      set_authentic(m, id, &m->sender);
 	      RETURNVOID;
 	    }else{
@@ -259,15 +259,17 @@ void rhizome_authenticate_author(rhizome_manifest *m)
       if (m->has_sender && try_author(m, NULL, &m->sender) == AUTHOR_AUTHENTIC)
 	RETURNVOID;
 
-      keyring_iterator it;
-      keyring_iterator_start(keyring, &it);
-      keyring_identity *id;
-      while((id = keyring_next_identity(&it))){
-	// skip the sender if we've already tried it.
-	if (m->has_sender && cmp_sid_t(&m->sender, id->box_pk)==0)
-	  continue;
-	if (try_author(m, id, id->box_pk) == AUTHOR_AUTHENTIC)
-	  RETURNVOID;
+      if (keyring){
+	keyring_iterator it;
+	keyring_iterator_start(keyring, &it);
+	keyring_identity *id;
+	while((id = keyring_next_identity(&it))){
+	  // skip the sender if we've already tried it.
+	  if (m->has_sender && cmp_sid_t(&m->sender, id->box_pk)==0)
+	    continue;
+	  if (try_author(m, id, id->box_pk) == AUTHOR_AUTHENTIC)
+	    RETURNVOID;
+	}
       }
 
       RETURNVOID;

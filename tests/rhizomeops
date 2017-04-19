@@ -285,6 +285,32 @@ test_AddThenList() {
    assert_rhizome_list --fromhere=1 --author=$SIDA file1 file2
 }
 
+doc_CleanVerify="Verify all bundles"
+setup_CleanVerify() {
+   setup_servald
+   setup_rhizome
+   echo "File1" > file1
+   echo "File2" > file2
+   echo "File3" > file3
+   echo "File4" > file4
+   executeOk_servald rhizome add file '' file1 file1.manifest
+   assert_stdout_add_file file1 !.author !BK
+   executeOk_servald rhizome add file '' file2 file2.manifest
+   assert_stdout_add_file file2 !.author !BK
+   executeOk_servald rhizome add file '' file3 file3.manifest
+   assert_stdout_add_file file3 !.author !BK
+   executeOk_servald rhizome add file '' file4 file4.manifest
+   assert_stdout_add_file file4 !.author !BK
+   executeOk_servald rhizome list file
+   assert_rhizome_list file1 file2 file3 file4
+}
+test_CleanVerify() {
+   executeOk_servald rhizome clean verify
+   tfw_cat --stdout --stderr
+   executeOk_servald rhizome list file
+   assert_rhizome_list file1 file2 file3 file4
+}
+
 doc_ExtractManifestAfterAdd="Export manifest after one add"
 setup_ExtractManifestAfterAdd() {
    setup_servald
