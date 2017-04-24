@@ -40,6 +40,7 @@ public class MeshMBSubscriptionList extends AbstractJsonList<MeshMBSubscription,
 				new Subscriber((SubscriberId)row.get("author"),
 						(SigningKey) row.get("id"),
 						true),
+				false,
 				(String) row.get("name"),
 				(Long) row.get("timestamp"),
 				(String) row.get("last_message")

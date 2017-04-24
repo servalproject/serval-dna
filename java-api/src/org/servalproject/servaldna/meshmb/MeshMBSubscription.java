@@ -9,11 +9,13 @@ import org.servalproject.servaldna.Subscriber;
  */
 public class MeshMBSubscription {
 	public final Subscriber subscriber;
+	public final boolean blocked;
 	public final String name;
 	public final long timestamp;
 	public final String lastMessage;
 
-	public MeshMBSubscription(Subscriber subscriber, String name, long timestamp, String lastMessage){
+	public MeshMBSubscription(Subscriber subscriber, boolean blocked, String name, long timestamp, String lastMessage){
+		this.blocked = blocked;
 		this.subscriber = subscriber;
 		this.name = name;
 		this.lastMessage = lastMessage;
