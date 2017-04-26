@@ -108,13 +108,13 @@ public class MeshMSMessage implements Comparable<MeshMSMessage>{
 	@Override
 	public int compareTo(MeshMSMessage meshMSMessage) {
 		if (this.myOffset < meshMSMessage.myOffset)
-			return -1;
+			return 1;
 		if (this.myOffset > meshMSMessage.myOffset)
-			return 1;
-		if (this.theirOffset < meshMSMessage.theirOffset)
 			return -1;
-		if (this.theirOffset > meshMSMessage.theirOffset)
+		if (this.theirOffset < meshMSMessage.theirOffset)
 			return 1;
+		if (this.theirOffset > meshMSMessage.theirOffset)
+			return -1;
 		return 0;
 	}
 }
