@@ -915,7 +915,7 @@ static int send_local_packet(int fd, const uint8_t *bytes, size_t len, const cha
     return 1;
     
   addr.local.sun_family = AF_UNIX;
-  addr.addrlen = sizeof(addr.local.sun_family) + strlen(addr.local.sun_path)+1;
+  addr.addrlen = offsetof(struct sockaddr_un, sun_path) + strlen(addr.local.sun_path)+1;
   
   ssize_t sent = sendto(fd, bytes, len, 0, 
 	    &addr.addr, addr.addrlen);
@@ -1392,12 +1392,12 @@ static void file_interface_init(const struct config_network_interface *ifconfig)
       addr.local.sun_family=AF_UNIX;
       size_t len = strlen(addr.local.sun_path);
       
-      addr.addrlen=sizeof addr.local.sun_family + len + 1;
+      addr.addrlen = offsetof(struct sockaddr_un, sun_path) + len + 1;
       
       broadcast = addr;
       while(len && broadcast.local.sun_path[len]!='/')
 	broadcast.local.sun_path[len--]='\0';
-      broadcast.addrlen = sizeof addr.local.sun_family + len + 2;
+      broadcast.addrlen = offsetof(struct sockaddr_un, sun_path) + len + 2;
       break;
     }
     

@@ -55,7 +55,7 @@ int _make_local_sockaddr(struct __sourceloc __whence, struct socket_address *add
   va_end(ap);
   if (!r)
     return WHY("socket name overflow");
-  addr->addrlen=sizeof addr->local - sizeof addr->local.sun_path + strlen(addr->local.sun_path) + 1;
+  addr->addrlen = offsetof(struct sockaddr_un, sun_path) + strlen(addr->local.sun_path) + 1;
 // TODO perform real path transformation in making the serval instance path
 //  if (real_sockaddr(addr, addr) == -1)
 //    return -1;
@@ -85,9 +85,9 @@ int _make_local_sockaddr(struct __sourceloc __whence, struct socket_address *add
 int real_sockaddr(const struct socket_address *src_addr, struct socket_address *dst_addr)
 {
   DEBUGF2(io, verbose_io, "real_sockaddr(src_addr=%p %s, dst_addr=%p)", src_addr, alloca_socket_address(src_addr), dst_addr);
-  assert(src_addr->addrlen > (socklen_t)sizeof src_addr->local.sun_family);
-  size_t src_path_len = src_addr->addrlen - sizeof src_addr->local.sun_family;
-  if (	 (size_t)src_addr->addrlen >= sizeof src_addr->local.sun_family + 1
+  assert(src_addr->addrlen > (socklen_t)offsetof(struct sockaddr_un, sun_path));
+  size_t src_path_len = src_addr->addrlen - offsetof(struct sockaddr_un, sun_path);
+  if (	 src_path_len > 1
       && src_addr->local.sun_family == AF_UNIX
       && src_addr->local.sun_path[0] != '\0'
       && src_addr->local.sun_path[src_path_len - 1] == '\0'
@@ -103,7 +103,7 @@ int real_sockaddr(const struct socket_address *src_addr, struct socket_address *
 	     || memcmp(real_path, src_addr->local.sun_path, src_path_len) != 0
     ) {
       memcpy(dst_addr->local.sun_path, real_path, real_path_len);
-      dst_addr->addrlen = real_path_len + sizeof dst_addr->local.sun_family;
+      dst_addr->addrlen = real_path_len + offsetof(struct sockaddr_un, sun_path);
       DEBUGF2(io, verbose_io, "   --> return %s", alloca_socket_address(dst_addr));
       return 1;
     }
@@ -152,8 +152,8 @@ int cmp_sockaddr(const struct socket_address *addrA, const struct socket_address
       return 0;
     }break;
   case AF_UNIX: {
-      unsigned pathlenA = addrA->addrlen - sizeof (addrA->local.sun_family);
-      unsigned pathlenB = addrB->addrlen - sizeof (addrB->local.sun_family);
+      unsigned pathlenA = addrA->addrlen - offsetof(struct sockaddr_un, sun_path);
+      unsigned pathlenB = addrB->addrlen - offsetof(struct sockaddr_un, sun_path);
       int c;
       if (   pathlenA > 1 && pathlenB > 1
 	  && addrA->local.sun_path[0] == '\0'
@@ -220,7 +220,7 @@ int _socket_bind(struct __sourceloc __whence, int sock, const struct socket_addr
 {
   assert(addr->addrlen > (socklen_t)sizeof addr->addr.sa_family);
   if (addr->addr.sa_family == AF_UNIX && addr->local.sun_path[0] != '\0') {
-    assert(addr->local.sun_path[addr->addrlen - sizeof addr->local.sun_family - 1] == '\0');
+    assert(addr->local.sun_path[addr->addrlen - offsetof(struct sockaddr_un, sun_path) -1] == '\0');
     // make sure the path exists, create it if we can
     size_t dirsiz = strlen(addr->local.sun_path) + 1;
     char dir_buf[dirsiz];
@@ -275,7 +275,7 @@ int socket_unlink_close(int sock)
   if (getsockname(sock, &addr.addr, &addr.addrlen))
     WHYF_perror("getsockname(%d)", sock);
   else if (addr.addr.sa_family==AF_UNIX 
-    && (size_t)addr.addrlen > sizeof addr.local.sun_family
+    && (size_t)addr.addrlen >= offsetof(struct sockaddr_un, sun_path)
     && (size_t)addr.addrlen <= sizeof addr.local
     && addr.local.sun_path[0] != '\0') {
     if (unlink(addr.local.sun_path) == -1)

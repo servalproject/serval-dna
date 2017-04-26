@@ -160,7 +160,7 @@ static void recv_packet(int fd, struct network *network, struct peer *destinatio
       return;
     }
 
-    unicast_addr.addrlen=sizeof unicast_addr.local - sizeof unicast_addr.local.sun_path + strlen(unicast_addr.local.sun_path) + 1;
+    unicast_addr.addrlen=offsetof(struct sockaddr_un, sun_path) + strlen(unicast_addr.local.sun_path) + 1;
 
     peer = emalloc_zero(sizeof(struct peer));
     if (!peer) {
@@ -414,7 +414,7 @@ static int console_create(const struct cli_parsed *parsed, struct cli_context *U
   if (strbuf_overrun(b))
     return WHY("Path too long");
 
-  addr.addrlen=sizeof addr.local.sun_family + strlen(addr.local.sun_path) + 1;
+  addr.addrlen = offsetof(struct sockaddr_un, sun_path) + strlen(addr.local.sun_path) + 1;
   int fd = esocket(AF_UNIX, SOCK_DGRAM, 0);
   if (fd==-1)
     return -1;
