@@ -211,8 +211,8 @@ void overlay_address_append(struct decode_context *context, struct overlay_buffe
     }else{
       // always send 8-12 extra bits to disambiguate abbreviations
       unsigned len=(subscriber->tree_depth >> 3) + 1;
-      // add another 8 bits for our own packet headers
-      if (context && (context->flags & DECODE_FLAG_ENCODING_HEADER))
+      // add another 8 bits when we need more certainty
+      if (context && (context->flags & DECODE_FLAG_EXTRA_BITS))
 	len++;
       if (len>SID_SIZE)
 	len=SID_SIZE;

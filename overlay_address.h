@@ -104,6 +104,7 @@ struct broadcast{
 #define DECODE_FLAG_ENCODING_HEADER (1<<0)
 #define DECODE_FLAG_INVALID_ADDRESS (1<<1)
 #define DECODE_FLAG_DONT_EXPLAIN (1<<2)
+#define DECODE_FLAG_EXTRA_BITS (1<<3)
 
 struct decode_context{
   struct overlay_interface *interface;

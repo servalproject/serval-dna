@@ -458,7 +458,7 @@ next:
   RETURN(best_link);
 }
 
-static int append_link_state(struct overlay_buffer *payload, char flags, 
+static int append_link_state(struct overlay_buffer *payload, struct decode_context *context, char flags,
                              struct subscriber *transmitter, struct subscriber *receiver, 
                              int interface, int version, int ack_sequence, uint32_t ack_mask, 
                              int drop_rate)
@@ -474,10 +474,14 @@ static int append_link_state(struct overlay_buffer *payload, char flags,
   size_t length_pos = ob_position(payload);
   ob_append_byte(payload, 0);
   ob_append_byte(payload, flags);
-  overlay_address_append(NULL, payload, receiver);
+
+  context->flags = DECODE_FLAG_EXTRA_BITS;
+  overlay_address_append(context, payload, receiver);
+  context->flags = 0;
+
   ob_append_byte(payload, version);
   if (transmitter)
-    overlay_address_append(NULL, payload, transmitter);
+    overlay_address_append(context, payload, transmitter);
   if (interface != -1)
     ob_append_byte(payload, interface);
   if (ack_sequence != -1){
@@ -496,6 +500,11 @@ static int append_link_state(struct overlay_buffer *payload, char flags,
   return 0;
 }
 
+struct append_context{
+  struct overlay_buffer *payload;
+  struct decode_context context;
+};
+
 static int append_link(void **record, void *context)
 {
   struct subscriber *subscriber = *record;
@@ -507,14 +516,14 @@ static int append_link(void **record, void *context)
   
   if (!context)
     return 0;
-    
-  struct overlay_buffer *payload = context;
+
+  struct append_context *append_context = context;
   time_ms_t now = gettime_ms();
 
   if (subscriber->reachable==REACHABLE_SELF){
     if (state->next_update - 20 <= now){
       // Other entries in our keyring are always one hop away from us.
-      if (append_link_state(payload, 0, get_my_subscriber(1), subscriber, -1, 1, -1, 0, 0)){
+      if (append_link_state(append_context->payload, &append_context->context, 0, get_my_subscriber(1), subscriber, -1, 1, -1, 0, 0)){
         ALARM_STRUCT(link_send).alarm = now+5;
         return 1;
       }
@@ -532,7 +541,7 @@ static int append_link(void **record, void *context)
       state->next_update = TIME_MS_NEVER_WILL;
     }else{
       if (state->next_update - 20 <= now){
-	if (append_link_state(payload, 0, state->transmitter, subscriber, -1, 
+	if (append_link_state(append_context->payload, &append_context->context, 0, state->transmitter, subscriber, -1,
 	    best_link?best_link->link_version:-1, -1, 0, best_link?best_link->drop_rate:32)){
 	  ALARM_STRUCT(link_send).alarm = now+5;
 	  return 1;
@@ -867,8 +876,11 @@ static int send_neighbour_link(struct neighbour *n)
       flags|=FLAG_BROADCAST;
 
     DEBUGF(ack, "LINK STATE; Sending ack to %s for seq %d", alloca_tohex_sid_t(n->subscriber->sid), n->best_link->ack_sequence);
-    
-    append_link_state(frame->payload, flags, n->subscriber, get_my_subscriber(1), n->best_link->neighbour_interface, 1,
+    struct decode_context context;
+    bzero(&context, sizeof context);
+    context.sender = get_my_subscriber(1);
+
+    append_link_state(frame->payload, &context, flags, n->subscriber, context.sender, n->best_link->neighbour_interface, 1,
 	              n->best_link->ack_sequence, n->best_link->ack_mask, -1);
     if (overlay_payload_enqueue(frame) == -1)
       op_free(frame);
@@ -935,14 +947,18 @@ void link_send(struct sched_ent *alarm)
   // TODO use a separate alarm?
   link_send_neighbours();
 
-  struct overlay_buffer *payload = ob_new();
-  if (!payload){
+  struct append_context context;
+  bzero(&context, sizeof(context));
+
+  context.payload = ob_new();
+  if (!context.payload){
     WHY("Cannot send link details");
     alarm->alarm = gettime_ms()+20;
   }else{
     struct internal_mdp_header header;
+
     bzero(&header, sizeof(header));
-    header.source = get_my_subscriber(1);
+    context.context.sender = header.source = get_my_subscriber(1);
     header.source_port = MDP_PORT_LINKSTATE;
     header.destination_port = MDP_PORT_LINKSTATE;
     header.ttl = 1;
@@ -950,18 +966,18 @@ void link_send(struct sched_ent *alarm)
     header.crypt_flags = MDP_FLAG_NO_CRYPT|MDP_FLAG_NO_SIGN;
     header.resend = -1;
     
-    ob_limitsize(payload, 400);
+    ob_limitsize(context.payload, 400);
     
-    ob_checkpoint(payload);
-    size_t pos = ob_position(payload);
-    enum_subscribers(NULL, append_link, payload);
-    ob_rewind(payload);
+    ob_checkpoint(context.payload);
+    size_t pos = ob_position(context.payload);
+    enum_subscribers(NULL, append_link, &context);
+    ob_rewind(context.payload);
     
-    if (ob_position(payload) != pos){
-      ob_flip(payload);
-      overlay_send_frame(&header, payload);
+    if (ob_position(context.payload) != pos){
+      ob_flip(context.payload);
+      overlay_send_frame(&header, context.payload);
     }
-    ob_free(payload);
+    ob_free(context.payload);
   }
   time_ms_t allowed=gettime_ms()+5;
   if (alarm->alarm < allowed)

@@ -54,7 +54,7 @@ int overlay_packet_init_header(int packet_version, int encapsulation,
       && packet_version>=1
   )
     context->point_to_point_device = context->interface->other_device;
-  context->flags = DECODE_FLAG_ENCODING_HEADER;
+  context->flags = DECODE_FLAG_ENCODING_HEADER | DECODE_FLAG_EXTRA_BITS;
   overlay_address_append(context, buff, get_my_subscriber(1));
   
   context->flags = 0;
