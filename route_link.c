@@ -505,18 +505,30 @@ struct append_context{
   struct decode_context context;
 };
 
+static int free_subscriber_link_state(void **record, void *UNUSED(context))
+{
+  struct subscriber *subscriber = *record;
+
+  if (subscriber->reachable && !(subscriber->reachable & REACHABLE_SELF))
+    set_reachable(subscriber, NULL, NULL, 99, NULL);
+
+  if (subscriber->link_state){
+    free(subscriber->link_state);
+    subscriber->link_state = NULL;
+  }
+  return 0;
+}
+
 static int append_link(void **record, void *context)
 {
   struct subscriber *subscriber = *record;
+
   if (subscriber == get_my_subscriber(1))
     return 0;
 
   struct link_state *state = get_link_state(subscriber);
   struct link *best_link = find_best_link(subscriber);
   
-  if (!context)
-    return 0;
-
   struct append_context *append_context = context;
   time_ms_t now = gettime_ms();
 
@@ -596,7 +608,8 @@ static void clean_neighbours(time_ms_t now)
     while(*list){
       struct link_in *link = *list;
       if (link->interface->state!=INTERFACE_STATE_UP || link->link_timeout < now){
-	DEBUGF(linkstate, "LINK STATE; link expired from neighbour %s on interface %s",
+	DEBUGF(linkstate, "LINK STATE; %s link expired from neighbour %s on interface %s",
+	       link->unicast? "unicast":"broadcast",
 	       alloca_tohex_sid_t(subscriber->sid),
 	       link->interface->name);
         *list=link->_next;
@@ -634,8 +647,8 @@ static void clean_neighbours(time_ms_t now)
       neighbour_count--;
       CALL_TRIGGER(nbr_change, subscriber, 0, neighbour_count);
       if (neighbour_count==0){
-	// one last re-scan of network paths to clean up the routing table
-	enum_subscribers(NULL, append_link, NULL);
+	// clean up the routing table
+	enum_subscribers(NULL, free_subscriber_link_state, NULL);
 	RESCHEDULE(&ALARM_STRUCT(link_send), 
 	  TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
       }

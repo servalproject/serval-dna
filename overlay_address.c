@@ -89,9 +89,11 @@ static int free_node(void **record, void *UNUSED(context))
 {
   struct subscriber *subscriber = (struct subscriber *)*record;
   if (subscriber->link_state || subscriber->destination)
-    FATAL("Can't free a subscriber that is being used in routing");
+    FATALF("Can't free a subscriber that is being used in routing (%s, %p, %p)",
+      alloca_tohex_sid_t(subscriber->sid), subscriber->link_state, subscriber->destination);
   if (subscriber->sync_state)
-    FATAL("Can't free a subscriber that is being used by rhizome");
+    FATALF("Can't free a subscriber that is being used by rhizome (%s, %p)",
+      alloca_tohex_sid_t(subscriber->sid), subscriber->sync_state);
   if (subscriber->identity)
     FATAL("Can't free a subscriber that is unlocked in the keyring");
   free(subscriber);
