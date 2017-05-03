@@ -420,10 +420,15 @@ static int server_write_pid()
 	return 1;
       }
     } else {
-      WHYF_perror("Cannot link temporary pidfile %s to %s", tmpfile_path, pidfile_path);
-      close(fd);
-      unlink(tmpfile_path);
-      return -1;
+      WARNF_perror("Cannot link temporary pidfile %s to %s", tmpfile_path, pidfile_path);
+      // Android 6 wont let us link, giving a permission error (sigh), lets just rename it then
+      if (rename(tmpfile_path, pidfile_path)==-1){
+	WHYF_perror("Cannot link or rename temporary pidfile %s to %s", tmpfile_path, pidfile_path);
+	close(fd);
+	unlink(tmpfile_path);
+	return -1;
+      }
+      break;
     }
   }
   DEBUGF(server, "Created pidfile %s", pidfile_path);
