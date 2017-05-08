@@ -37,6 +37,8 @@ public class RhizomeBundleList extends AbstractJsonList<RhizomeListBundle, IOExc
 	private String sinceToken;
 	private String service;
 	private String name;
+	private SubscriberId sender;
+	private SubscriberId recipient;
 
 	public RhizomeBundleList(ServalDHttpConnectionFactory connector)
 	{
@@ -48,6 +50,12 @@ public class RhizomeBundleList extends AbstractJsonList<RhizomeListBundle, IOExc
 	}
 	public void setNameFilter(String name){
 		this.name = name;
+	}
+	public void setSenderFilter(SubscriberId sender){
+		this.sender = sender;
+	}
+	public void setRecipientFilter(SubscriberId recipient){
+		this.recipient = recipient;
 	}
 
 	public RhizomeBundleList(ServalDHttpConnectionFactory connector, String since_token)
@@ -72,24 +80,30 @@ public class RhizomeBundleList extends AbstractJsonList<RhizomeListBundle, IOExc
 
 	@Override
 	protected String getUrl() {
-		String url;
+		StringBuilder sb = new StringBuilder();
 		if (this.sinceToken == null)
-			url = "/restful/rhizome/bundlelist.json";
+			sb.append("/restful/rhizome/bundlelist.json");
 		else if(this.sinceToken.equals(""))
-			url = "/restful/rhizome/newsince/bundlelist.json";
+			sb.append("/restful/rhizome/newsince/bundlelist.json");
 		else
-			url = "/restful/rhizome/newsince/" + this.sinceToken + "/bundlelist.json";
-		String parms="";
-		if (service != null)
-			parms += "service="+service;
-		if (name!=null) {
-			if (!"".equals(parms))
-				parms+="&";
-			parms += "name=" + name;
+			sb.append("/restful/rhizome/newsince/").append(this.sinceToken).append("/bundlelist.json");
+
+		char parmDelim = '?';
+		if (service != null){
+			sb.append(parmDelim).append("service=").append(service);
+			parmDelim='&';
 		}
-		if (!"".equals(parms))
-			url+="?"+parms;
-		return url;
+		if (name!=null) {
+			sb.append(parmDelim).append("name=").append(name);
+			parmDelim='&';
+		}
+		if (sender!=null) {
+			sb.append(parmDelim).append("sender=").append(sender.toHex());
+			parmDelim='&';
+		}
+		if (recipient!=null)
+			sb.append(parmDelim).append("recipient=").append(recipient.toHex());
+		return sb.toString();
 	}
 
 	@Override

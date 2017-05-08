@@ -206,6 +206,20 @@ static int restful_open_cursor(httpd_request *r)
     // TODO fail?
   }
 
+  const char *sender = http_request_get_query_param(&r->http, "sender");
+  if (sender && *sender){
+    if (str_to_sid_t(&r->u.rhlist.cursor.sender, sender) != -1)
+      r->u.rhlist.cursor.is_sender_set = 1;
+    // TODO fail?
+  }
+
+  const char *recipient = http_request_get_query_param(&r->http, "recipient");
+  if (recipient && *recipient){
+    if (str_to_sid_t(&r->u.rhlist.cursor.recipient, recipient) != -1)
+      r->u.rhlist.cursor.is_recipient_set = 1;
+    // TODO fail?
+  }
+
   int ret = rhizome_list_open(&r->u.rhlist.cursor);
   if (ret == -1)
     return http_request_rhizome_response(r, 500, "Failed to open list");
