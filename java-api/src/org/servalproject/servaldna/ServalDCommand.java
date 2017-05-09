@@ -21,6 +21,8 @@
 
 package org.servalproject.servaldna;
 
+import org.servalproject.servaldna.rhizome.RhizomeBundleStatus;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
@@ -346,6 +348,10 @@ public class ServalDCommand
 		public SubscriberId author;
 		public long rowId;
 		public long insertTime;
+
+		public RhizomeBundleStatus getBundleStatus() throws RhizomeBundleStatus.InvalidException {
+			return RhizomeBundleStatus.fromCode(result);
+		}
 
 		@Override
 		public void putString(String value) {

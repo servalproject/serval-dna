@@ -34,7 +34,9 @@ public enum RhizomeBundleStatus {
     FAKE(5),			// manifest signature not valid
     INCONSISTENT(6),	// manifest filesize/filehash does not match supplied payload
     NO_ROOM(7),			// doesn't fit; store may contain more important bundles
-    READONLY(8)			// cannot modify manifest; secret unknown
+    READONLY(8),		// cannot modify manifest; secret unknown
+	BUSY(9),			// the backend was busy, you can try again
+	TOO_BIG(10)			// manifest is too large
 	;
 
 	final public int code;

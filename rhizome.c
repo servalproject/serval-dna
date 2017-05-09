@@ -429,7 +429,8 @@ enum rhizome_bundle_status rhizome_bundle_import_files(rhizome_manifest *m, rhiz
       }
 
       if (!EOCD){
-	ret=WHY("Expected zip EOCD marker 0x504b0506 near end of file");
+	WHY("Expected zip EOCD marker 0x504b0506 near end of file");
+	ret = RHIZOME_BUNDLE_STATUS_INVALID;
 	goto end;
       }
 
@@ -438,7 +439,8 @@ enum rhizome_bundle_status rhizome_bundle_import_files(rhizome_manifest *m, rhiz
 
     }else{
       if (buff[read_len-2]!=0x41 || buff[read_len-1]!=0x10){
-	ret=WHYF("Expected 0x4110 marker at end of file");
+	WHYF("Expected 0x4110 marker at end of file");
+	ret = RHIZOME_BUNDLE_STATUS_INVALID;
 	goto end;
       }
       m->manifest_all_bytes = read_uint16(&buff[read_len-4]);
@@ -450,11 +452,13 @@ enum rhizome_bundle_status rhizome_bundle_import_files(rhizome_manifest *m, rhiz
   }
 
   if (m->manifest_all_bytes < 1 || m->manifest_all_bytes > MAX_MANIFEST_BYTES){
-    ret=WHYF("Invalid manifest length %zu", m->manifest_all_bytes);
+    WHYF("Invalid manifest length %zu", m->manifest_all_bytes);
+    ret = RHIZOME_BUNDLE_STATUS_INVALID;
     goto end;
   }
   if (manifest_ptr < buff || manifest_ptr + m->manifest_all_bytes > buff + read_len){
-    ret=WHY("Invalid manifest offset");
+    WHY("Invalid manifest offset");
+    ret = RHIZOME_BUNDLE_STATUS_INVALID;
     goto end;
   }
   bcopy(manifest_ptr, m->manifestdata, m->manifest_all_bytes);
