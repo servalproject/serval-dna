@@ -72,7 +72,7 @@ int message_ply_write_open(
   const struct rhizome_manifest_field_assignment *assignments,
   uint64_t advance_by);
 
-int message_ply_write_finish(struct message_ply_write *write);
+int message_ply_write_finish(struct message_ply_write *write, struct message_ply *ply);
 void message_ply_write_close(struct message_ply_write *write);
 
 void message_ply_append_ack(struct overlay_buffer *b, const struct message_ply_ack *ack);

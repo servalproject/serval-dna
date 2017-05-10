@@ -132,11 +132,15 @@ test_meshmbThreading() {
    executeOk_servald meshmb activity $IDA1
    executeOk_servald meshmb send $IDA5 "Message 10"
    executeOk_servald meshmb activity $IDA1
-   assertStdoutGrep --matches=1 "0:$IDA5:$SIDA5:Feed E:[0-9]\+:[0-9]\+:Message 10\$"
-   assertStdoutGrep --matches=1 "1:$IDA4:$SIDA4:Feed D:[0-9]\+:[0-9]\+:Message 9\$"
-   assertStdoutGrep --matches=1 "2:$IDA3:$SIDA3:Feed C:[0-9]\+:[0-9]\+:Message 8\$"
-   assertStdoutGrep --matches=1 "3:$IDA2:$SIDA2:Feed B:[0-9]\+:[0-9]\+:Message 7\$"
-   assertStdoutGrep --matches=1 "4:$IDA5:$SIDA5:Feed E:[0-9]\+:[0-9]\+:Message 6\$"
+   executeOk_servald meshmb send $IDA1 "Message 11"
+   executeOk_servald meshmb activity $IDA1
+   tfw_cat --stdout
+   assertStdoutGrep --matches=1 "0:$IDA1:$SIDA1:Feed A:[0-9]\+:[0-9]\+:Message 11\$"
+   assertStdoutGrep --matches=1 "1:$IDA5:$SIDA5:Feed E:[0-9]\+:[0-9]\+:Message 10\$"
+   assertStdoutGrep --matches=1 "2:$IDA4:$SIDA4:Feed D:[0-9]\+:[0-9]\+:Message 9\$"
+   assertStdoutGrep --matches=1 "3:$IDA3:$SIDA3:Feed C:[0-9]\+:[0-9]\+:Message 8\$"
+   assertStdoutGrep --matches=1 "4:$IDA2:$SIDA2:Feed B:[0-9]\+:[0-9]\+:Message 7\$"
+   assertStdoutGrep --matches=1 "5:$IDA5:$SIDA5:Feed E:[0-9]\+:[0-9]\+:Message 6\$"
 }
 
 runTests "$@"

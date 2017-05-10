@@ -27,7 +27,7 @@ struct meshmb_activity_iterator{
 };
 
 struct rhizome_manifest_field_assignment;
-int meshmb_send(const keyring_identity *id, const char *message, size_t message_len,
+int meshmb_send(struct meshmb_feeds *feeds, const char *message, size_t message_len,
   unsigned nassignments, const struct rhizome_manifest_field_assignment *assignments);
 
 // feed tracking

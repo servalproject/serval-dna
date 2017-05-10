@@ -11,6 +11,68 @@
 
 DEFINE_FEATURE(http_rest_meshmb);
 
+// allow multiple requests to re-use the same struct meshmb_feeds *, keeping it up to date as bundles arrive
+struct meshmb_session{
+  struct meshmb_session *next;
+  struct meshmb_session *prev;
+  unsigned ref_count;
+  keyring_identity *id;
+  struct meshmb_feeds *feeds;
+};
+
+static struct meshmb_session *sessions = NULL;
+
+static struct meshmb_session *open_session(const identity_t *identity){
+  keyring_identity *id = keyring_find_identity(keyring, identity);
+  if (!id)
+    return NULL;
+
+  struct meshmb_session *session = sessions;
+  while(session){
+    if (session->id == id){
+      session->ref_count++;
+      return session;
+    }
+    session = session->next;
+  }
+
+  struct meshmb_feeds *feeds = NULL;
+  if (meshmb_open(id, &feeds)==-1)
+    return NULL;
+
+  meshmb_update(feeds);
+  session = emalloc(sizeof (struct meshmb_session));
+  if (!session){
+    meshmb_close(feeds);
+    return NULL;
+  }
+  session->next = sessions;
+  session->prev = NULL;
+  if (sessions)
+    sessions->prev = session;
+  sessions = session;
+
+  session->ref_count = 1;
+  session->id = id;
+  session->feeds = feeds;
+
+  return session;
+}
+
+static void close_session(struct meshmb_session *session){
+  if (--session->ref_count == 0){
+    if (session->next)
+      session->next->prev = session->prev;
+    if (session->prev)
+      session->prev->next = session->next;
+    else
+      sessions = session->next;
+
+    meshmb_close(session->feeds);
+    free(session);
+  }
+}
+
 static char *PART_MESSAGE = "message";
 static int send_part_start(struct http_request *hr)
 {
@@ -77,16 +139,21 @@ static int send_content_end(struct http_request *hr)
   assert(r->u.sendmsg.message.length > 0);
   assert(r->u.sendmsg.message.length <= MESSAGE_PLY_MAX_LEN);
   assert(keyring != NULL);
-  keyring_identity *id = keyring_find_identity(keyring, &r->bid);
-  if (!id){
-    http_request_simple_response(&r->http, 500, "TODO, detailed errors");
-    return 500;
+
+  struct meshmb_session *session = open_session(&r->bid);
+  int ret;
+
+  if (session
+    && meshmb_send(session->feeds, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length, 0, NULL)!=-1
+    && meshmb_flush(session->feeds)!=-1){
+    http_request_simple_response(&r->http, 201, "TODO, detailed response");
+    ret = 201;
+  }else{
+    http_request_simple_response(&r->http, 500, "TODO, detailed response");
+    ret = 500;
   }
-  if (meshmb_send(id, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length, 0, NULL)==-1){
-    http_request_simple_response(&r->http, 500, "TODO, detailed errors");
-    return 500;
-  }
-  http_request_simple_response(&r->http, 201, "TODO, detailed response");
+  if (session)
+    close_session(session);
   return 201;
 }
 
@@ -416,68 +483,6 @@ static int restful_meshmb_newsince_find(httpd_request *r, const char *remainder)
 }
 */
 
-
-// allow multiple requests to re-use the same struct meshmb_feeds *, keeping it up to date as bundles arrive
-struct meshmb_session{
-  struct meshmb_session *next;
-  struct meshmb_session *prev;
-  unsigned ref_count;
-  keyring_identity *id;
-  struct meshmb_feeds *feeds;
-};
-
-static struct meshmb_session *sessions = NULL;
-
-static struct meshmb_session *open_session(const identity_t *identity){
-  keyring_identity *id = keyring_find_identity(keyring, identity);
-  if (!id)
-    return NULL;
-
-  struct meshmb_session *session = sessions;
-  while(session){
-    if (session->id == id){
-      session->ref_count++;
-      return session;
-    }
-    session = session->next;
-  }
-
-  struct meshmb_feeds *feeds = NULL;
-  if (meshmb_open(id, &feeds)==-1)
-    return NULL;
-
-  meshmb_update(feeds);
-  session = emalloc(sizeof (struct meshmb_session));
-  if (!session){
-    meshmb_close(feeds);
-    return NULL;
-  }
-  session->next = sessions;
-  session->prev = NULL;
-  if (sessions)
-    sessions->prev = session;
-  sessions = session;
-
-  session->ref_count = 1;
-  session->id = id;
-  session->feeds = feeds;
-
-  return session;
-}
-
-static void close_session(struct meshmb_session *session){
-  if (--session->ref_count == 0){
-    if (session->next)
-      session->next->prev = session->prev;
-    if (session->prev)
-      session->prev->next = session->next;
-    else
-      sessions = session->next;
-
-    meshmb_close(session->feeds);
-    free(session);
-  }
-}
 
 static int restful_meshmb_follow(httpd_request *r, const char *remainder)
 {

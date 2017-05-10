@@ -14,14 +14,42 @@
 
 DEFINE_FEATURE(cli_meshmb);
 
+static struct meshmb_feeds * cli_feeds_open(const struct cli_parsed *parsed){
+  const char *idhex;
+  if (cli_arg(parsed, "id", &idhex, str_is_identity, "") == -1)
+    return NULL;
+
+  identity_t identity;
+  if (str_to_identity_t(&identity, idhex) == -1){
+    WHY("Invalid identity");
+    return NULL;
+  }
+
+  if (create_serval_instance_dir() == -1
+    || rhizome_opendb() == -1
+    || !(keyring = keyring_open_instance_cli(parsed)))
+    return NULL;
+
+  keyring_identity *id = keyring_find_identity(keyring, &identity);
+  if (!id){
+    WHY("Invalid identity");
+    return NULL;
+  }
+
+  struct meshmb_feeds *feeds = NULL;
+  if (meshmb_open(id, &feeds)==-1)
+    return NULL;
+
+  return feeds;
+}
+
 DEFINE_CMD(app_meshmb_send, 0,
   "Append a public broadcast message to your feed",
   "meshmb", "send" KEYRING_PIN_OPTIONS, "<id>", "<message>", "...");
 static int app_meshmb_send(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  const char *idhex, *message;
-  if (cli_arg(parsed, "id", &idhex, str_is_identity, "") == -1
-    || cli_arg(parsed, "message", &message, NULL, "") == -1)
+  const char *message;
+  if (cli_arg(parsed, "message", &message, NULL, "") == -1)
     return -1;
 
   unsigned nfields = (parsed->varargi == -1) ? 0 : parsed->argc - (unsigned)parsed->varargi;
@@ -32,20 +60,26 @@ static int app_meshmb_send(const struct cli_parsed *parsed, struct cli_context *
       return -1;
   }
 
-  identity_t identity;
-  if (str_to_identity_t(&identity, idhex) == -1)
-    return WHY("Invalid identity");
+  struct meshmb_feeds *feeds = cli_feeds_open(parsed);
 
-  if (create_serval_instance_dir() == -1
-    || rhizome_opendb() == -1
-    || !(keyring = keyring_open_instance_cli(parsed)))
-    return -1;
+  int ret = -1;
+  if (feeds){
+    ret = meshmb_send(feeds, message, strlen(message)+1, nfields, fields);
 
-  keyring_identity *id = keyring_find_identity(keyring, &identity);
-  if (!id)
-    return WHY("Invalid identity");
+    if (ret!=-1){
+      ret = meshmb_flush(feeds);
+      if (ret!=-1)
+	ret=0;
+    }
 
-  return meshmb_send(id, message, strlen(message)+1, nfields, fields);
+    meshmb_close(feeds);
+  }
+
+  if (keyring)
+    keyring_free(keyring);
+  keyring = NULL;
+
+  return ret;
 }
 
 // TODO from offset....?
@@ -175,35 +209,6 @@ static int app_meshmb_find(const struct cli_parsed *parsed, struct cli_context *
   rhizome_list_release(&cursor);
   cli_end_table(context, rowcount);
   return 0;
-}
-
-static struct meshmb_feeds * cli_feeds_open(const struct cli_parsed *parsed){
-  const char *idhex;
-  if (cli_arg(parsed, "id", &idhex, str_is_identity, "") == -1)
-    return NULL;
-
-  identity_t identity;
-  if (str_to_identity_t(&identity, idhex) == -1){
-    WHY("Invalid identity");
-    return NULL;
-  }
-
-  if (create_serval_instance_dir() == -1
-    || rhizome_opendb() == -1
-    || !(keyring = keyring_open_instance_cli(parsed)))
-    return NULL;
-
-  keyring_identity *id = keyring_find_identity(keyring, &identity);
-  if (!id){
-    WHY("Invalid identity");
-    return NULL;
-  }
-
-  struct meshmb_feeds *feeds = NULL;
-  if (meshmb_open(id, &feeds)==-1)
-    return NULL;
-
-  return feeds;
 }
 
 DEFINE_CMD(app_meshmb_follow, 0,

@@ -66,22 +66,31 @@ static int activity_next_ack(struct meshmb_activity_iterator *i){
 	DEBUGF(meshmb, "Found ack for %s, %"PRIu64" to %"PRIu64,
 	  alloca_tohex(ack.binary, ack.binary_length), ack.start_offset, ack.end_offset);
 
-	struct feed_metadata *metadata;
-	if (tree_find(&i->feeds->root, (void**)&metadata, ack.binary, ack.binary_length, NULL, NULL)==TREE_FOUND){
-	  if (i->metadata == metadata){
-	    // shortcut for consecutive acks for the same incoming feed
-	    DEBUGF(meshmb, "Ply still open @%"PRIu64,
-	      i->msg_reader.read.offset);
-	  }else{
-	    message_ply_read_close(&i->msg_reader);
-	    if (message_ply_read_open(&i->msg_reader, &metadata->bundle_id, NULL)==-1){
-	      i->metadata = NULL;
-	      continue;
-	    }
-	    i->metadata = metadata;
-	  }
+	const rhizome_bid_t *bundle_id = NULL;
+	i->metadata = NULL;
+	if (ack.binary_length == 0){
+	  // ack for our own message ply
+	  bundle_id = &i->feeds->id->sign_keypair->public_key;
 	}else{
-	  WARNF("Failed to find metadata for %s", alloca_tohex(ack.binary, ack.binary_length));
+	  struct feed_metadata *metadata;
+	  if (tree_find(&i->feeds->root, (void**)&metadata, ack.binary, ack.binary_length, NULL, NULL)==TREE_FOUND){
+	    bundle_id = &metadata->bundle_id;
+	    i->metadata = metadata;
+	  }else{
+	    WARNF("Failed to find metadata for %s", alloca_tohex(ack.binary, ack.binary_length));
+	    continue;
+	  }
+	}
+
+	if (memcmp(&i->msg_reader.bundle_id, bundle_id, sizeof *bundle_id)==0){
+	  // shortcut for consecutive acks for the same incoming feed
+	  DEBUGF(meshmb, "Ply still open @%"PRIu64, i->msg_reader.read.offset);
+	}else{
+	  message_ply_read_close(&i->msg_reader);
+	  if (message_ply_read_open(&i->msg_reader, bundle_id, NULL)==-1){
+	    i->metadata = NULL;
+	    continue;
+	  }
 	}
 
 	i->ack_start = ack.start_offset;
@@ -181,6 +190,51 @@ static int finish_ack_writing(struct meshmb_feeds *feeds){
   return ret;
 }
 
+static int activity_ack(struct meshmb_feeds *feeds, struct message_ply_ack *ack)
+{
+  // add an ack to our journal to thread new messages
+  if (!feeds->ack_manifest){
+    rhizome_manifest *m = rhizome_new_manifest();
+
+    DEBUGF(meshmb, "Opening private ply for ack thread");
+
+    struct rhizome_bundle_result result = rhizome_private_bundle(m, &feeds->ack_bundle_keypair);
+    switch(result.status){
+      case RHIZOME_BUNDLE_STATUS_NEW:
+	rhizome_manifest_set_tail(m, 0);
+	rhizome_manifest_set_filesize(m, 0);
+      case RHIZOME_BUNDLE_STATUS_SAME:
+      {
+	enum rhizome_payload_status pstatus = rhizome_write_open_journal(&feeds->ack_writer, m, 0, RHIZOME_SIZE_UNSET);
+	if (pstatus==RHIZOME_PAYLOAD_STATUS_NEW)
+	  break;
+      }
+	// fallthrough
+      case RHIZOME_BUNDLE_STATUS_BUSY:
+	rhizome_bundle_result_free(&result);
+	rhizome_manifest_free(m);
+	return -1;
+
+      default:
+	// everything else should be impossible.
+	FATALF("Cannot create manifest: %s", alloca_rhizome_bundle_result(result));
+    }
+
+    rhizome_bundle_result_free(&result);
+    feeds->ack_manifest = m;
+  }
+
+  struct overlay_buffer *b = ob_new();
+  message_ply_append_ack(b, ack);
+  assert(!ob_overrun(b));
+  DEBUGF2(meshms, meshmb, "Appending %zu bytes @%"PRIu64,
+    ob_position(b), feeds->ack_writer.file_offset);
+  int r = rhizome_write_buffer(&feeds->ack_writer, ob_ptr(b), ob_position(b));
+  DEBUGF(meshmb, "Acked incoming messages");
+  ob_free(b);
+  return r;
+}
+
 static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metadata, struct message_ply_read *reader)
 {
   if (!metadata->details.ply.found){
@@ -252,59 +306,17 @@ static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metada
 
   DEBUGF(meshmb, "Last message from %"PRIu64" to %"PRIu64, metadata->last_message_offset, last_offset);
   if (last_offset > metadata->last_message_offset){
-    // add an ack to our journal to thread new messages
-    if (!feeds->ack_manifest){
-      rhizome_manifest *m = rhizome_new_manifest();
+    struct message_ply_ack ack;
+    bzero(&ack, sizeof ack);
 
-      DEBUGF(meshmb, "Opening private ply for ack thread");
+    ack.start_offset = metadata->size;
+    ack.end_offset = metadata->details.ply.size;
+    ack.binary = metadata->bundle_id.binary;
+    ack.binary_length = (metadata->tree_depth >> 3) + 3;
 
-      struct rhizome_bundle_result result = rhizome_private_bundle(m, &feeds->ack_bundle_keypair);
-      switch(result.status){
-	case RHIZOME_BUNDLE_STATUS_NEW:
-	  rhizome_manifest_set_tail(m, 0);
-	  rhizome_manifest_set_filesize(m, 0);
-	case RHIZOME_BUNDLE_STATUS_SAME:
-	{
-	  enum rhizome_payload_status pstatus = rhizome_write_open_journal(&feeds->ack_writer, m, 0, RHIZOME_SIZE_UNSET);
-	  if (pstatus==RHIZOME_PAYLOAD_STATUS_NEW)
-	    break;
-	}
-	  // fallthrough
-	case RHIZOME_BUNDLE_STATUS_BUSY:
-	  rhizome_bundle_result_free(&result);
-	  rhizome_manifest_free(m);
-	  return -1;
-
-	default:
-	  // everything else should be impossible.
-	  FATALF("Cannot create manifest: %s", alloca_rhizome_bundle_result(result));
-      }
-
-      rhizome_bundle_result_free(&result);
-      feeds->ack_manifest = m;
-    }
-
-    {
-      struct overlay_buffer *b = ob_new();
-
-      struct message_ply_ack ack;
-      bzero(&ack, sizeof ack);
-
-      ack.start_offset = metadata->size;
-      ack.end_offset = metadata->details.ply.size;
-      ack.binary = metadata->bundle_id.binary;
-      ack.binary_length = (metadata->tree_depth >> 3) + 3;
-
-      message_ply_append_ack(b, &ack);
-      assert(!ob_overrun(b));
-      DEBUGF2(meshms, meshmb, "Appending %zu bytes @%"PRIu64,
-	ob_position(b), feeds->ack_writer.file_offset);
-      int r = rhizome_write_buffer(&feeds->ack_writer, ob_ptr(b), ob_position(b));
-      DEBUGF(meshmb, "Acked incoming messages");
-      ob_free(b);
-      if (r == -1)
-	return -1;
-    }
+    int r = activity_ack(feeds, &ack);
+    if (r)
+      return r;
   }
 
   metadata->last_message_offset = last_offset;
@@ -700,22 +712,34 @@ int meshmb_enum(struct meshmb_feeds *feeds, rhizome_bid_t *restart_from, meshmb_
   return tree_walk(&feeds->root, restart_from ? restart_from->binary : NULL, sizeof *restart_from, enum_callback, &enum_context);
 }
 
-int meshmb_send(const keyring_identity *id, const char *message, size_t message_len,
+int meshmb_send(struct meshmb_feeds *feeds, const char *message, size_t message_len,
   unsigned nassignments, const struct rhizome_manifest_field_assignment *assignments){
 
   const char *did=NULL, *name=NULL;
   struct message_ply ply;
   bzero(&ply, sizeof ply);
 
-  ply.bundle_id = id->sign_keypair->public_key;
+  ply.bundle_id = feeds->id->sign_keypair->public_key;
   ply.known_bid = 1;
 
   struct overlay_buffer *b = ob_new();
   message_ply_append_message(b, message, message_len);
   message_ply_append_timestamp(b);
 
-  keyring_identity_extract(id, &did, &name);
-  int ret = message_ply_append(id, RHIZOME_SERVICE_MESHMB, NULL, &ply, b, name, nassignments, assignments);
+  keyring_identity_extract(feeds->id, &did, &name);
+  int ret = message_ply_append(feeds->id, RHIZOME_SERVICE_MESHMB, NULL, &ply, b, name, nassignments, assignments);
+
+  if (ret==0){
+    struct message_ply_ack ack;
+    bzero(&ack, sizeof ack);
+
+    ack.start_offset = ply.size - ob_position(b);
+    ack.end_offset = ply.size;
+    ack.binary_length = 0;
+
+    activity_ack(feeds, &ack);
+  }
+
   ob_free(b);
 
   return ret;

@@ -122,7 +122,7 @@ int message_ply_write_open(
   return 0;
 }
 
-int message_ply_write_finish(struct message_ply_write *ply_write)
+int message_ply_write_finish(struct message_ply_write *ply_write, struct message_ply *ply)
 {
   enum rhizome_payload_status status = rhizome_finish_write(&ply_write->write);
   status = rhizome_finish_store(&ply_write->write, ply_write->m, status);
@@ -135,6 +135,13 @@ int message_ply_write_finish(struct message_ply_write *ply_write)
     rhizome_bundle_result_free(&result);
     return -1;
   }
+
+  if (ply){
+    ply->version = ply_write->m->version;
+    ply->tail = ply_write->m->tail;
+    ply->size = ply_write->m->filesize;
+  }
+
   rhizome_bundle_result_free(&result);
   if (mout && mout!=ply_write->m){
     rhizome_manifest_free(ply_write->m);
@@ -165,7 +172,7 @@ int message_ply_append(const keyring_identity *id, const char *service, const si
     ob_position(b), write.write.written_offset);
   if (rhizome_write_buffer(&write.write, ob_ptr(b), ob_position(b)) == -1)
     goto end;
-  ret = message_ply_write_finish(&write);
+  ret = message_ply_write_finish(&write, ply);
 end:
   message_ply_write_close(&write);
   return ret;
