@@ -389,6 +389,7 @@ void sync_free_peer_state(struct sync_state *state, void *peer_context){
       free(free_peer);
       return;
     }
+    peer_state = &(*peer_state)->next;
   }
 }
 
