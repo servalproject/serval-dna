@@ -82,7 +82,7 @@ static int activity_next_ack(struct meshmb_activity_iterator *i){
 	  }
 	}
 
-	if (memcmp(&i->msg_reader.bundle_id, bundle_id, sizeof *bundle_id)==0){
+	if (cmp_rhizome_bid_t(&i->msg_reader.bundle_id, bundle_id)==0){
 	  // shortcut for consecutive acks for the same incoming feed
 	  DEBUGF(meshmb, "Ply still open @%"PRIu64, i->msg_reader.read.offset);
 	}else{
@@ -187,6 +187,9 @@ static int finish_ack_writing(struct meshmb_feeds *feeds){
 
   rhizome_manifest_free(feeds->ack_manifest);
   feeds->ack_manifest = NULL;
+  if (!feeds->dirty)
+    feeds->generation++;
+
   return ret;
 }
 
@@ -353,6 +356,8 @@ int meshmb_bundle_update(struct meshmb_feeds *feeds, rhizome_manifest *m, struct
     }
     return 1;
   }
+  if (cmp_rhizome_bid_t(&m->keypair.public_key, &feeds->ack_bundle_keypair.public_key)==0)
+    return 1;
   return 0;
 }
 

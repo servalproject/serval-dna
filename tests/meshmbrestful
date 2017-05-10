@@ -288,11 +288,13 @@ test_MeshMBRestNewActivity() {
    executeOk_servald meshmb send $IDA3 "Message 4"
    executeOk_servald meshmb send $IDA2 "Message 5"
    executeOk_servald meshmb send $IDA3 "Message 6"
+   executeOk_servald meshmb send $IDA1 "Message 7"
    for i in 1 2 3; do
       wait_until grep "Message 3" newsince$i.json
       wait_until grep "Message 4" newsince$i.json
       wait_until grep "Message 5" newsince$i.json
       wait_until grep "Message 6" newsince$i.json
+      wait_until grep "Message 7" newsince$i.json
    done
    fork_terminate_all
    fork_wait_all
@@ -305,11 +307,12 @@ test_MeshMBRestNewActivity() {
       tfw_preserve newsince$i.json objects$i.json
    done
    for i in 1 2 3; do
-      assert [ "$(jq '.rows | length' newsince$i.json)" = 4 ]
+      assert [ "$(jq '.rows | length' newsince$i.json)" = 5 ]
       assertJq objects$i.json "contains([{ id: \"$IDA2\", author: \"$SIDA2\", name: \"Feed B\", message: \"Message 3\"}])"
       assertJq objects$i.json "contains([{ id: \"$IDA3\", author: \"$SIDA3\", name: \"Feed C\", message: \"Message 4\"}])"
       assertJq objects$i.json "contains([{ id: \"$IDA2\", author: \"$SIDA2\", name: \"Feed B\", message: \"Message 5\"}])"
       assertJq objects$i.json "contains([{ id: \"$IDA3\", author: \"$SIDA3\", name: \"Feed C\", message: \"Message 6\"}])"
+      assertJq objects$i.json "contains([{ id: \"$IDA1\", author: \"$SIDA1\", name: \"Feed A\", message: \"Message 7\"}])"
    done
 }
 
