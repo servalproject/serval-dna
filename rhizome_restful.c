@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "base64.h"
 #include "strbuf_helpers.h"
+#include "numeric_str.h"
 
 DEFINE_FEATURE(http_rest_rhizome);
 
@@ -449,8 +450,33 @@ static int restful_rhizome_insert(httpd_request *r, const char *remainder)
 
 static int restful_rhizome_import(httpd_request *r, const char *remainder)
 {
+  int ret;
   r->u.insert.importing = 1;
-  return restful_rhizome_insert(r, remainder);
+  if ((ret = restful_rhizome_insert(r, remainder))!=1)
+    return ret;
+
+  const char *s_id = http_request_get_query_param(&r->http, "id");
+  const char *s_version = http_request_get_query_param(&r->http, "version");
+
+  // if we can reject the request now, the client won't have to send us the full manifest and payload
+  if (s_id && s_version){
+    rhizome_bid_t bid;
+    uint64_t version;
+    if (str_to_rhizome_bid_t(&bid, s_id) != -1
+      && str_to_uint64(s_version, 10, &version, NULL) == 1){
+
+      r->bundle_result.status = rhizome_is_interesting(&bid, version);
+      switch (r->bundle_result.status){
+	case RHIZOME_BUNDLE_STATUS_NEW:
+	case RHIZOME_BUNDLE_STATUS_BUSY:
+	  break;
+	default:
+	  return http_request_rhizome_response(r, 0, NULL);
+      }
+    }
+  }
+
+  return 1;
 }
 
 static int restful_rhizome_append(httpd_request *r, const char *remainder)

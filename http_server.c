@@ -1165,7 +1165,7 @@ malformed:
  * Then we need to send a 100 continue response header before parsing the request body
  */
 static int http_request_start_continue(struct http_request *r){
-  const char *msg = "HTTP/1.0 100 Continue\r\n\r\n";
+  const char *msg = "HTTP/1.1 100 Continue\r\n\r\n";
   static size_t msg_len = 0;
   if (msg_len == 0)
     msg_len = strlen(msg);
