@@ -377,6 +377,8 @@ static int rhizome_direct_enquiry(httpd_request *r, const char *remainder)
     return 404;
   if (r->http.verb != HTTP_VERB_POST)
     return 405;
+  // backwards compatibility, rhizome_fetch used to allow HTTP/1.0 responses only
+  r->http.response.header.minor_version=0;
   r->http.form_data.handle_mime_part_start = rhizome_direct_process_mime_start;
   r->http.form_data.handle_mime_part_end = rhizome_direct_process_mime_end;
   r->http.form_data.handle_mime_part_header = rhizome_direct_process_mime_part_header;

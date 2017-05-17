@@ -102,9 +102,11 @@ struct http_request_headers {
   struct http_origin origin;
   struct http_range content_ranges[5];
   struct http_client_authorization authorization;
+  bool_t expect;
 };
 
 struct http_response_headers {
+  uint8_t minor_version;
   http_size_t content_length;
   http_size_t content_range_start; // range_end = range_start + content_length - 1
   http_size_t resource_length; // size of entire resource

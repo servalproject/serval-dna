@@ -52,7 +52,6 @@ teardown() {
 doc_MeshMBRestSend="Restful send of a broadcast message"
 test_MeshMBRestSend() {
    executeOk curl \
-         -H "Expect:" \
          --silent --fail --show-error \
          --output sendmessage.json \
          --basic --user harry:potter \
@@ -71,7 +70,6 @@ setup_MeshMBRestList() {
 }
 test_MeshMBRestList() {
    executeOk curl \
-         -H "Expect:" \
          --silent --fail --show-error \
          --output listmessages.json \
          --dump-header http.headers \
@@ -106,7 +104,6 @@ setup_MeshMBRestFollow() {
 }
 test_MeshMBRestFollow() {
    executeOk curl \
-         -H "Expect:" \
          --silent --fail --show-error \
          --output follow.json \
          --basic --user harry:potter \
@@ -116,7 +113,6 @@ test_MeshMBRestFollow() {
    assertStdoutGrep --matches=1 ":$IDA2:$SIDA2::[0-9]\+:Message 2\$"
    assertStdoutGrep --matches=0 ":$IDA3:$SIDA3::[0-9]\+:Message 3\$"
    executeOk curl \
-         -H "Expect:" \
          --silent --fail --show-error \
          --output follow.json \
          --basic --user harry:potter \
@@ -126,7 +122,6 @@ test_MeshMBRestFollow() {
    assertStdoutGrep --matches=1 ":$IDA2:$SIDA2::[0-9]\+:Message 2\$"
    assertStdoutGrep --matches=1 ":$IDA3:$SIDA3::[0-9]\+:Message 3\$"
    executeOk curl \
-         -H "Expect:" \
          --silent --fail --show-error \
          --output follow.json \
          --basic --user harry:potter \
@@ -149,7 +144,6 @@ setup_MeshMBRestFeeds() {
 }
 test_MeshMBRestFeeds() {
    executeOk curl \
-         -H "Expect:" \
          --silent --fail --show-error \
          --output feedlist.json \
          --dump-header http.headers \
@@ -181,7 +175,6 @@ setup_MeshMBRestEmptyActivity() {
 }
 test_MeshMBRestEmptyActivity() {
    executeOk --timeout=10 curl \
-         -H "Expect:" \
          --silent --fail --show-error \
          --output activity.json \
          --dump-header http.headers \
@@ -226,7 +219,6 @@ setup_MeshMBRestActivity() {
 }
 test_MeshMBRestActivity() {
    executeOk curl \
-         -H "Expect:" \
          --silent --fail --show-error \
          --output activity.json \
          --dump-header http.headers \
@@ -262,7 +254,6 @@ setup_MeshMBRestNewActivity() {
    executeOk_servald meshmb follow $IDA1 $IDA2
    executeOk_servald meshmb follow $IDA1 $IDA3
    executeOk curl \
-         -H "Expect:" \
          --silent --fail --show-error \
          --output activity.json \
          --dump-header http.headers \

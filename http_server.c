@@ -34,6 +34,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "net.h"
 #include "mem.h"
+#include "version_servald.h"
 
 #define BOUNDARY_STRING_MAXLEN  70 // legislated limit from RFC-1341
 
@@ -108,6 +109,7 @@ void http_request_init(struct http_request *r, int sockfd)
   r->request_content_remaining = CONTENT_LENGTH_UNKNOWN;
   r->response.header.content_length = CONTENT_LENGTH_UNKNOWN;
   r->response.header.resource_length = CONTENT_LENGTH_UNKNOWN;
+  r->response.header.minor_version = 1;
   r->alarm.stats = &http_server_stats;
   r->alarm.function = http_server_poll;
   assert(r->idle_timeout >= 0);
@@ -1089,6 +1091,23 @@ static int http_request_parse_header(struct http_request *r)
     goto malformed;
   }
   _rewind(r);
+  if (_skip_literal_nocase(r, "Expect:")) {
+    if (r->request_header.expect){
+      IDEBUGF(r->debug, "Skipping duplicate HTTP header Expect: %s", alloca_toprint(50, sol, r->end - sol));
+      r->cursor = nextline;
+      _commit(r);
+      return 0;
+    }
+    _skip_optional_space(r);
+    uint32_t code;
+    _parse_uint32(r, &code);
+    if (code==100)
+      r->request_header.expect=1;
+    r->cursor = nextline;
+    _commit(r);
+    return 0;
+  }
+  _rewind(r);
   if (_skip_literal_nocase(r, "Authorization:")) {
     if (r->request_header.authorization.scheme != NOAUTH) {
       IDEBUGF(r->debug, "Skipping duplicate HTTP header Authorization: %s", alloca_toprint(50, sol, r->end - sol));
@@ -1141,6 +1160,37 @@ malformed:
   return 400;
 }
 
+/* If the client is trying to post data and has supplied an "Expect: 100..." header
+ * And we haven't rejected the request yet
+ * Then we need to send a 100 continue response header before parsing the request body
+ */
+static int http_request_start_continue(struct http_request *r){
+  const char *msg = "HTTP/1.0 100 Continue\r\n\r\n";
+  static size_t msg_len = 0;
+  if (msg_len == 0)
+    msg_len = strlen(msg);
+
+  if (r->response_sent < msg_len){
+    ssize_t written = write_nonblock(r->alarm.poll.fd, msg + r->response_sent, msg_len - r->response_sent);
+    if (written == -1) {
+      IDEBUG(r->debug, "HTTP socket write error, closing connection");
+      http_request_finalise(r);
+      return -1;
+    }
+    IDEBUGF(r->debug, "Wrote %zu bytes of 100 Continue response to HTTP socket", (size_t) written);
+    r->response_sent += written;
+    if (r->response_sent < msg_len)
+      return 0;
+  }
+
+  r->response_sent=0;
+  r->parser = http_request_parse_body_form_data;
+  r->form_data_state = START;
+  if (_run_out(r))
+    return 100;
+  return 0;
+}
+
 /* If parsing completes, then sets r->parser to the next parsing function and returns 0.  If parsing
  * cannot complete due to running out of data, returns 0 without changing r->parser, so this
  * function will be called again once more data has been read.  Returns a 4nn or 5nn HTTP result
@@ -1187,8 +1237,13 @@ static int http_request_start_body(struct http_request *r)
 		r->verb, r->request_header.content_type.type, r->request_header.content_type.subtype);
 	  return 400;
 	}
-	r->parser = http_request_parse_body_form_data;
-	r->form_data_state = START;
+	if (r->request_header.expect && _run_out(r)){
+	  r->parser = http_request_start_continue;
+	  return 0;
+	}else{
+	  r->parser = http_request_parse_body_form_data;
+	  r->form_data_state = START;
+	}
       } else {
 	IDEBUGF(r->debug, "Unsupported HTTP %s request: Content-Type %s not supported",
 	      r->verb, alloca_mime_content_type(&r->request_header.content_type));
@@ -2114,7 +2169,9 @@ static int _render_response(struct http_request *r)
   }
   assert(hr.header.content_type != NULL);
   assert(hr.header.content_type[0]);
-  strbuf_sprintf(sb, "HTTP/1.0 %03u %s\r\n", hr.status_code, hr.reason);
+  strbuf_sprintf(sb, "HTTP/1.%d %03u %s\r\n", hr.header.minor_version, hr.status_code, hr.reason);
+  strbuf_puts(sb, "Connection: Close\r\n");
+  strbuf_sprintf(sb, "Server: servald %s\r\n", version_servald);
   strbuf_sprintf(sb, "Content-Type: %s", hr.header.content_type);
   if (hr.header.boundary) {
     strbuf_puts(sb, "; boundary=");
@@ -2247,12 +2304,14 @@ static void http_request_start_response(struct http_request *r)
     http_request_finalise(r);
     RETURNVOID;
   }
-  // Drain the rest of the request that has not been received yet (eg, if sending an error response
-  // provoked while parsing the early part of a partially-received request).  If a read error
-  // occurs, the connection is closed so the phase changes to DONE.
-  http_request_drain(r);
-  if (r->phase != RECEIVE)
-    RETURNVOID;
+  if (!r->request_header.expect){
+    // Drain the rest of the request that has not been received yet (eg, if sending an error response
+    // provoked while parsing the early part of a partially-received request).  If a read error
+    // occurs, the connection is closed so the phase changes to DONE.
+    http_request_drain(r);
+    if (r->phase != RECEIVE)
+      RETURNVOID;
+  }
   // Ensure conformance to HTTP standards.
   if (r->response.status_code == 401 && r->response.header.www_authenticate.scheme == NOAUTH) {
     WHY("HTTP 401 response missing WWW-Authenticate header, sending 500 Server Error instead");

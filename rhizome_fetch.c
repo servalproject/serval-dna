@@ -1544,8 +1544,9 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
   parts->content_length = HTTP_RESPONSE_CONTENT_LENGTH_UNSET;
   parts->content_start = NULL;
   char *p = NULL;
-  if (!str_startswith(response, "HTTP/1.0 ", (const char **)&p)) {
-    DEBUGF(rhizome_rx, "Malformed HTTP reply: missing HTTP/1.0 preamble");
+  if (!str_startswith(response, "HTTP/1.0 ", (const char **)&p)
+   && !str_startswith(response, "HTTP/1.1 ", (const char **)&p)) {
+    DEBUGF(rhizome_rx, "Malformed HTTP reply: missing HTTP version preamble");
     RETURN(-1);
   }
   if (!(isdigit(p[0]) && isdigit(p[1]) && isdigit(p[2]) && p[3] == ' ')) {
