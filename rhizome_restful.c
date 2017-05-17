@@ -29,6 +29,7 @@ DEFINE_FEATURE(http_rest_rhizome);
 DECLARE_HANDLER("/restful/rhizome/bundlelist.json", restful_rhizome_bundlelist_json);
 DECLARE_HANDLER("/restful/rhizome/newsince/", restful_rhizome_newsince);
 DECLARE_HANDLER("/restful/rhizome/insert", restful_rhizome_insert);
+DECLARE_HANDLER("/restful/rhizome/import", restful_rhizome_import);
 DECLARE_HANDLER("/restful/rhizome/append", restful_rhizome_append);
 DECLARE_HANDLER("/restful/rhizome/", restful_rhizome_);
 
@@ -446,6 +447,12 @@ static int restful_rhizome_insert(httpd_request *r, const char *remainder)
   return 1;
 }
 
+static int restful_rhizome_import(httpd_request *r, const char *remainder)
+{
+  r->u.insert.importing = 1;
+  return restful_rhizome_insert(r, remainder);
+}
+
 static int restful_rhizome_append(httpd_request *r, const char *remainder)
 {
   r->u.insert.appending = 1;
@@ -474,18 +481,36 @@ static int insert_make_manifest(httpd_request *r)
   assert(r->u.insert.manifest.length <= sizeof r->manifest->manifestdata);
   memcpy(r->manifest->manifestdata, r->u.insert.manifest.buffer, r->u.insert.manifest.length);
   r->manifest->manifest_all_bytes = r->u.insert.manifest.length;
-  rhizome_manifest *mout = NULL;
   int n = rhizome_manifest_parse(r->manifest);
   switch (n) {
     case 0:
+      if (r->u.insert.importing){
+	const char *invalid_reason;
+	if ((invalid_reason = rhizome_manifest_validate_reason(r->manifest))){
+	  r->bundle_result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID, invalid_reason);
+	  break;
+	}
+	if (!rhizome_manifest_verify(r->manifest)){
+	  r->bundle_result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID, "Invalid manifest: Invalid signature");
+	  break;
+	}
+	r->bundle_result.status = rhizome_manifest_check_stored(r->manifest, NULL);
+	break;
+      }
+
       if (r->manifest->malformed) {
 	r->bundle_result = rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_INVALID, "Malformed manifest: %s", r->manifest->malformed);
       } else {
+	rhizome_manifest *mout = NULL;
 	r->bundle_result = rhizome_manifest_add_file(r->u.insert.appending, r->manifest, &mout,
 						    r->u.insert.received_bundleid ? &r->bid : NULL,
 						    r->u.insert.received_secret ? &r->u.insert.bundle_secret : NULL,
 						    r->u.insert.received_author ? &r->u.insert.author : NULL,
 						    NULL, 0, NULL);
+	if (mout && mout != r->manifest){
+	  rhizome_manifest_free(r->manifest);
+	  r->manifest = mout;
+	}
       }
       break;
     case 1:
@@ -498,13 +523,14 @@ static int insert_make_manifest(httpd_request *r)
       r->bundle_result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "Error while parsing manifest");
       break;
   }
+
   switch (r->bundle_result.status) {
   case RHIZOME_BUNDLE_STATUS_NEW:
+    break;
   case RHIZOME_BUNDLE_STATUS_OLD:
   case RHIZOME_BUNDLE_STATUS_SAME:
   case RHIZOME_BUNDLE_STATUS_DUPLICATE:
   case RHIZOME_BUNDLE_STATUS_NO_ROOM:
-    break;
   case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
   case RHIZOME_BUNDLE_STATUS_INVALID:
   case RHIZOME_BUNDLE_STATUS_BUSY:
@@ -513,11 +539,6 @@ static int insert_make_manifest(httpd_request *r)
   case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG:
   case RHIZOME_BUNDLE_STATUS_ERROR:
     return http_request_rhizome_response(r, 0, NULL);
-  }
-  assert(mout != NULL);
-  if (mout != r->manifest) {
-    rhizome_manifest_free(r->manifest);
-    r->manifest = mout;
   }
   assert(r->manifest != NULL);
   return 0;
@@ -534,7 +555,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     if (r->u.insert.received_author)
       return http_response_form_part(r, 400, "Duplicate", PART_AUTHOR, NULL, 0);
     // Reject a request if this parameter comes after the manifest part.
-    if (r->u.insert.received_manifest)
+    if (r->u.insert.received_manifest || r->u.insert.importing)
       return http_response_form_part(r, 400, "Spurious", PART_AUTHOR, NULL, 0);
     // TODO enforce correct content type
     r->u.insert.current_part = PART_AUTHOR;
@@ -544,7 +565,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     if (r->u.insert.received_secret)
       return http_response_form_part(r, 400, "Duplicate", PART_SECRET, NULL, 0);
     // Reject a request if this parameter comes after the manifest part.
-    if (r->u.insert.received_manifest)
+    if (r->u.insert.received_manifest || r->u.insert.importing)
       return http_response_form_part(r, 400, "Spurious", PART_SECRET, NULL, 0);
     // TODO enforce correct content type
     r->u.insert.current_part = PART_SECRET;
@@ -554,7 +575,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     if (r->u.insert.received_bundleid)
       return http_response_form_part(r, 400, "Duplicate", PART_BUNDLEID, NULL, 0);
     // Reject a request if this parameter comes after the manifest part.
-    if (r->u.insert.received_manifest)
+    if (r->u.insert.received_manifest || r->u.insert.importing)
       return http_response_form_part(r, 400, "Spurious", PART_BUNDLEID, NULL, 0);
     // TODO enforce correct content type
     r->u.insert.current_part = PART_BUNDLEID;
@@ -582,37 +603,34 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     if (!r->u.insert.received_manifest)
       return http_response_form_part(r, 400, "Missing", PART_MANIFEST, NULL, 0);
     assert(r->manifest != NULL);
+    if (r->u.insert.importing && (r->manifest->filesize == 0 || !r->manifest->has_filehash))
+      return http_response_form_part(r, 400, "Spurious", PART_PAYLOAD, NULL, 0);
+
     // TODO enforce correct content type
     r->u.insert.current_part = PART_PAYLOAD;
-    // If the manifest does not contain a 'name' field, then assign it from the payload filename.
-    if (   strcasecmp(RHIZOME_SERVICE_FILE, r->manifest->service) == 0
-	&& r->manifest->name == NULL
-	&& *h->content_disposition.filename
-    )
-      rhizome_manifest_set_name_from_path(r->manifest, h->content_disposition.filename);
-    // Start writing the payload content into the Rhizome store.
-    if (r->u.insert.appending) {
-      r->payload_status = rhizome_write_open_journal(&r->u.insert.write, r->manifest, 0, RHIZOME_SIZE_UNSET);
-      if (r->payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
-	WHYF("rhizome_write_open_journal() returned %d %s", r->payload_status, rhizome_payload_status_message(r->payload_status));
-	return http_request_rhizome_response(r, 500, "Error in payload open for write (journal)");
-      }
-    } else {
-      // Note: r->manifest->filesize can be RHIZOME_SIZE_UNSET at this point, if the manifest did
-      // not contain a 'filesize' field.
-      r->payload_status = rhizome_write_open_manifest(&r->u.insert.write, r->manifest);
-      if (r->payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
-	WHYF("rhizome_write_open_manifest() returned %d %s", r->payload_status, rhizome_payload_status_message(r->payload_status));
-	return http_request_rhizome_response(r, 500, "Error in payload open for write");
+
+    if (r->u.insert.importing){
+      r->payload_status = rhizome_open_write(&r->u.insert.write, &r->manifest->filehash, r->manifest->filesize);
+    }else{
+      // If the manifest does not contain a 'name' field, then assign it from the payload filename.
+      if (strcasecmp(RHIZOME_SERVICE_FILE, r->manifest->service) == 0
+	  && r->manifest->name == NULL
+	  && *h->content_disposition.filename
+      )
+	rhizome_manifest_set_name_from_path(r->manifest, h->content_disposition.filename);
+      // Start writing the payload content into the Rhizome store.
+      if (r->u.insert.appending) {
+	r->payload_status = rhizome_write_open_journal(&r->u.insert.write, r->manifest, 0, RHIZOME_SIZE_UNSET);
+      } else {
+	// Note: r->manifest->filesize can be RHIZOME_SIZE_UNSET at this point, if the manifest did
+	// not contain a 'filesize' field.
+	r->payload_status = rhizome_write_open_manifest(&r->u.insert.write, r->manifest);
       }
     }
-    switch (r->payload_status) {
-      case RHIZOME_PAYLOAD_STATUS_STORED:
-	// TODO: initialise payload hash so it can be compared with stored payload
-	break;
-      default:
-	break; // r->payload_status gets dealt with later
-    }
+    // complete early so the client doesn't have to send the payload
+    if (r->payload_status != RHIZOME_PAYLOAD_STATUS_NEW)
+      return http_request_rhizome_response(r, 0, NULL);
+
     r->u.insert.payload_size = 0;
   }
   else
@@ -772,23 +790,28 @@ static int restful_rhizome_insert_end(struct http_request *hr)
   }
   if (!status_valid)
     FATALF("rhizome_finish_store() returned status = %d", r->payload_status);
-  // Finalise the manifest and add it to the store.
-  const char *invalid_reason = rhizome_manifest_validate_reason(r->manifest);
-  if (invalid_reason) {
-    r->bundle_result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID, invalid_reason);
-    return http_request_rhizome_response(r, 0, NULL);
-  }
-  if (r->manifest->malformed) {
-    r->bundle_result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID, r->manifest->malformed);
-    return http_request_rhizome_response(r, 0, NULL);
-  }
-  if (!r->manifest->haveSecret) {
-    r->bundle_result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_READONLY, "Missing bundle secret");
-    return http_request_rhizome_response(r, 0, NULL);
-  }
+
   rhizome_manifest *mout = NULL;
-  rhizome_bundle_result_free(&r->bundle_result);
-  r->bundle_result = rhizome_manifest_finalise(r->manifest, &mout, !r->u.insert.force_new);
+  if (r->u.insert.importing){
+    r->bundle_result = rhizome_bundle_result(rhizome_add_manifest_to_store(r->manifest, &mout));
+  }else{
+    // Finalise the manifest and add it to the store.
+    const char *invalid_reason = rhizome_manifest_validate_reason(r->manifest);
+    if (invalid_reason) {
+      r->bundle_result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID, invalid_reason);
+      return http_request_rhizome_response(r, 0, NULL);
+    }
+    if (r->manifest->malformed) {
+      r->bundle_result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID, r->manifest->malformed);
+      return http_request_rhizome_response(r, 0, NULL);
+    }
+    if (!r->manifest->haveSecret) {
+      r->bundle_result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_READONLY, "Missing bundle secret");
+      return http_request_rhizome_response(r, 0, NULL);
+    }
+    rhizome_bundle_result_free(&r->bundle_result);
+    r->bundle_result = rhizome_manifest_finalise(r->manifest, &mout, !r->u.insert.force_new);
+  }
   int http_status = 500;
   switch (r->bundle_result.status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
@@ -796,19 +819,22 @@ static int restful_rhizome_insert_end(struct http_request *hr)
 	rhizome_manifest_free(mout);
       http_status = 201;
       break;
-    case RHIZOME_BUNDLE_STATUS_SAME:
     case RHIZOME_BUNDLE_STATUS_OLD:
+      if (mout && mout != r->manifest) {
+	rhizome_manifest_free(r->manifest);
+	r->manifest = mout;
+      }
+      http_status = 202;
+      break;
+    case RHIZOME_BUNDLE_STATUS_SAME:
     case RHIZOME_BUNDLE_STATUS_DUPLICATE:
       if (mout && mout != r->manifest) {
 	rhizome_manifest_free(r->manifest);
 	r->manifest = mout;
       }
-      http_status = 201;
+      http_status = 200;
       break;
     case RHIZOME_BUNDLE_STATUS_ERROR:
-      rhizome_bundle_result_free(&r->bundle_result);
-      r->bundle_result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "Error in manifest finalise");
-      // fall through
     case RHIZOME_BUNDLE_STATUS_INVALID:
     case RHIZOME_BUNDLE_STATUS_FAKE:
     case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
@@ -824,10 +850,14 @@ static int restful_rhizome_insert_end(struct http_request *hr)
   }
   if (http_status == 500)
     FATALF("rhizome_manifest_finalise() returned status=%d", r->bundle_result.status);
-  rhizome_authenticate_author(r->manifest);
-  http_request_response_static(&r->http, http_status, "rhizome-manifest/text",
-      (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes
-    );
+  if (r->u.insert.importing){
+    return http_request_rhizome_response(r, http_status, NULL);
+  }else{
+    rhizome_authenticate_author(r->manifest);
+    http_request_response_static(&r->http, http_status, "rhizome-manifest/text",
+	(const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes
+      );
+  }
   return 0;
 }
 

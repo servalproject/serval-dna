@@ -1428,6 +1428,12 @@ enum rhizome_bundle_status rhizome_add_manifest_to_store(rhizome_manifest *m, rh
   if (status != RHIZOME_BUNDLE_STATUS_NEW)
     return status;
 
+  if (mout && *mout){
+    if (m != *mout)
+      rhizome_manifest_free(*mout);
+    *mout = NULL;
+  }
+
   // manifest is complete, and not already stored
 
   /* Bind BAR to data field */
@@ -1509,6 +1515,8 @@ enum rhizome_bundle_status rhizome_add_manifest_to_store(rhizome_manifest *m, rh
     }else{
       sync_rhizome();
     }
+    if (mout)
+      *mout = m;
     return RHIZOME_BUNDLE_STATUS_NEW;
   }
 

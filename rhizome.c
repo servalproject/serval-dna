@@ -475,6 +475,12 @@ enum rhizome_bundle_status rhizome_bundle_import_files(rhizome_manifest *m, rhiz
   if (ret != RHIZOME_BUNDLE_STATUS_NEW)
     goto end;
 
+  if (mout && *mout){
+    if (m != *mout)
+      rhizome_manifest_free(*mout);
+    *mout = NULL;
+  }
+
   enum rhizome_payload_status pstatus = RHIZOME_PAYLOAD_STATUS_EMPTY;
   if (m->filesize > 0){
 

@@ -1259,6 +1259,44 @@ test_RhizomeInsertIncorrectFilehash() {
    assert_rhizome_list
 }
 
+doc_RhizomeImport="HTTP RESTful import Rhizome bundle"
+setup_RhizomeImport() {
+   setup
+   set_instance +B
+   create_single_identity
+   rhizome_add_bundles $SIDB 1 1
+   executeOk_servald rhizome export manifest "${BID[1]}" file1.manifest
+   set_instance +A
+}
+test_RhizomeImport() {
+   execute curl \
+            -H "Expect:" \
+            --silent --show-error --write-out '%{http_code}' \
+            --output http.body \
+            --dump-header http.header \
+            --basic --user harry:potter \
+            --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+            --form "payload=@file1" \
+            "http://$addr_localhost:$PORTA/restful/rhizome/import"
+   tfw_cat http.header http.body
+   assertStdoutIs 201
+   assertJq http.body 'contains({"http_status_code": 201})'
+   assertJq http.body 'contains({"http_status_message": "Created"})'
+   execute curl \
+            -H "Expect:" \
+            --silent --show-error --write-out '%{http_code}' \
+            --output http.body \
+            --dump-header http.header \
+            --basic --user harry:potter \
+            --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+            --form "payload=@file1" \
+            "http://$addr_localhost:$PORTA/restful/rhizome/import"
+   tfw_cat http.header http.body
+   assertStdoutIs 200
+   assertJq http.body 'contains({"http_status_code": 200})'
+   assertJq http.body 'contains({"http_status_message": "Bundle already in store"})'
+}
+
 doc_RhizomeJournalAppend="HTTP RESTful Rhizome journal create and append"
 setup_RhizomeJournalAppend() {
    setup

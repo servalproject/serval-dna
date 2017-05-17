@@ -108,16 +108,8 @@ typedef struct httpd_request
     /* For receiving RESTful Rhizome insert request
      */
     struct {
-      // If this is really a (journal) append request
-      bool_t appending;
       // Which part is currently being received
       const char *current_part;
-      // Which parts have already been received
-      bool_t received_author;
-      bool_t received_secret;
-      bool_t received_bundleid;
-      bool_t received_manifest;
-      bool_t received_payload;
       // For storing the "bundle-author" hex SID as we receive it
       char author_hex[SID_STRLEN];
       size_t author_hex_len;
@@ -132,12 +124,23 @@ typedef struct httpd_request
       // The "force-new" parameter
       char force_new_text[5]; // enough for "false"
       size_t force_new_text_len;
-      bool_t force_new;
+
       // For storing the manifest text (malloc/realloc) as we receive it
       struct form_buf_malloc manifest;
       // For receiving the payload
       uint64_t payload_size;
       struct rhizome_write write;
+
+      // If this is really a (journal) append request
+      bool_t appending:1;
+      bool_t importing:1;
+      // Which parts have already been received
+      bool_t received_author:1;
+      bool_t received_secret:1;
+      bool_t received_bundleid:1;
+      bool_t received_manifest:1;
+      bool_t received_payload:1;
+      bool_t force_new:1;
     }
       insert;
 

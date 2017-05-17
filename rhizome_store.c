@@ -787,6 +787,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
   if (write->id_known) {
     if (cmp_rhizome_filehash_t(&write->id, &hash_out) != 0) {
       WARNF("expected filehash=%s, got %s", alloca_tohex_rhizome_filehash_t(write->id), alloca_tohex_rhizome_filehash_t(hash_out));
+      write->id = hash_out;
       status = RHIZOME_PAYLOAD_STATUS_WRONG_HASH;
       goto failure;
     }
