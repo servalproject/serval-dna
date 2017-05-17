@@ -729,7 +729,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m,
   }
 
   // If we already have this version or newer, do not fetch.
-  if (rhizome_is_manifest_interesting(m) == RHIZOME_BUNDLE_STATUS_SAME) {
+  if (rhizome_is_manifest_interesting(m) != RHIZOME_BUNDLE_STATUS_NEW) {
     DEBUG(rhizome_rx, "   fetch not started -- already have that version or newer");
     RETURN(SUPERSEDED);
   }
@@ -878,7 +878,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   DEBUGF(rhizome_rx, "Considering import bid=%s version=%"PRIu64" size=%"PRIu64,
 	 alloca_tohex_rhizome_bid_t(m->keypair.public_key), m->version, m->filesize);
 
-  if (rhizome_is_manifest_interesting(m) == RHIZOME_BUNDLE_STATUS_SAME) {
+  if (rhizome_is_manifest_interesting(m) != RHIZOME_BUNDLE_STATUS_NEW) {
     DEBUG(rhizome_rx, "   already stored that version or newer");
     rhizome_manifest_free(m);
     RETURN(-1);

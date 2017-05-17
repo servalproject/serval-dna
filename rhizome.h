@@ -622,7 +622,8 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs);
 enum rhizome_bundle_status rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
 int rhizome_manifest_to_bar(rhizome_manifest *m, rhizome_bar_t *bar);
 enum rhizome_bundle_status rhizome_is_bar_interesting(const rhizome_bar_t *bar);
-enum rhizome_bundle_status rhizome_is_manifest_interesting(rhizome_manifest *m);
+enum rhizome_bundle_status rhizome_is_interesting(const rhizome_bid_t *bid, uint64_t version);
+#define rhizome_is_manifest_interesting(M) rhizome_is_interesting(&(M)->keypair.public_key, (M)->version)
 enum rhizome_bundle_status rhizome_retrieve_manifest(const rhizome_bid_t *bid, rhizome_manifest *m);
 enum rhizome_bundle_status rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m);
 enum rhizome_bundle_status rhizome_retrieve_manifest_by_hash_prefix(const uint8_t *prefix, unsigned prefix_len, rhizome_manifest *m);

@@ -288,7 +288,8 @@ static int sync_cache_bar(struct rhizome_sync *state, const rhizome_bar_t *bar, 
       state->bars[state->bar_count].tries = MAX_TRIES;
       state->bar_count++;
       ret=1;
-    }else if(status != RHIZOME_BUNDLE_STATUS_SAME){
+    }else if(status != RHIZOME_BUNDLE_STATUS_SAME
+      && status != RHIZOME_BUNDLE_STATUS_OLD){
       return -1;
     }
   }

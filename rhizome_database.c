@@ -2050,7 +2050,7 @@ static enum rhizome_bundle_status is_interesting(const char *id_hex, uint64_t ve
   // do we have this bundle [or later]?
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
-    "SELECT filehash FROM MANIFESTS WHERE id LIKE ? AND version >= ?",
+    "SELECT version, filehash FROM MANIFESTS WHERE id LIKE ? AND version >= ?",
     TEXT_TOUPPER, id_hex,
     INT64, version,
     END);
@@ -2060,31 +2060,36 @@ static enum rhizome_bundle_status is_interesting(const char *id_hex, uint64_t ve
   enum rhizome_bundle_status status = RHIZOME_BUNDLE_STATUS_ERROR;
   int stepcode;
   if ((stepcode = sqlite_step_retry(&retry, statement)) == SQLITE_ROW){
-    const char *q_filehash = (const char *) sqlite3_column_text(statement, 0);
-    if (q_filehash && *q_filehash) {
-      rhizome_filehash_t hash;
-      if (str_to_rhizome_filehash_t(&hash, q_filehash) == -1) {
-	WHYF("Malformed filehash %s", q_filehash);
-	status = RHIZOME_BUNDLE_STATUS_ERROR;
-      }else{
-	enum rhizome_payload_status pstatus;
-	switch((pstatus = rhizome_exists(&hash))){
-	  case RHIZOME_PAYLOAD_STATUS_NEW:
-	    status = RHIZOME_BUNDLE_STATUS_NEW;
-	    break;
-	  case RHIZOME_PAYLOAD_STATUS_STORED:
-	    status = RHIZOME_BUNDLE_STATUS_SAME;
-	    break;
-	  case RHIZOME_PAYLOAD_STATUS_BUSY:
-	    status = RHIZOME_BUNDLE_STATUS_BUSY;
-	    break;
-	  default:
-	    status = RHIZOME_BUNDLE_STATUS_ERROR;
-	    break;
-	}
-      }
+    uint64_t q_version = sqlite3_column_int64(statement, 0);
+    const char *q_filehash = (const char *) sqlite3_column_text(statement, 1);
+
+    if (q_version > version){
+      status = RHIZOME_BUNDLE_STATUS_OLD;
     }else{
       status = RHIZOME_BUNDLE_STATUS_SAME;
+      // unless we are missing the payload...
+      if (q_filehash && *q_filehash) {
+	rhizome_filehash_t hash;
+	if (str_to_rhizome_filehash_t(&hash, q_filehash) == -1) {
+	  WHYF("Malformed filehash %s", q_filehash);
+	  status = RHIZOME_BUNDLE_STATUS_ERROR;
+	}else{
+	  enum rhizome_payload_status pstatus;
+	  switch((pstatus = rhizome_exists(&hash))){
+	    case RHIZOME_PAYLOAD_STATUS_NEW:
+	      status = RHIZOME_BUNDLE_STATUS_NEW;
+	      break;
+	    case RHIZOME_PAYLOAD_STATUS_STORED:
+	      break;
+	    case RHIZOME_PAYLOAD_STATUS_BUSY:
+	      status = RHIZOME_BUNDLE_STATUS_BUSY;
+	      break;
+	    default:
+	      status = RHIZOME_BUNDLE_STATUS_ERROR;
+	      break;
+	  }
+	}
+      }
     }
   }else if (sqlite_code_busy(stepcode)){
     status = RHIZOME_BUNDLE_STATUS_BUSY;
@@ -2106,7 +2111,7 @@ enum rhizome_bundle_status rhizome_is_bar_interesting(const rhizome_bar_t *bar)
   return is_interesting(id_hex, rhizome_bar_version(bar));
 }
 
-enum rhizome_bundle_status rhizome_is_manifest_interesting(rhizome_manifest *m)
+enum rhizome_bundle_status rhizome_is_interesting(const rhizome_bid_t *bid, uint64_t version)
 {
-  return is_interesting(alloca_tohex_rhizome_bid_t(m->keypair.public_key), m->version);
+  return is_interesting(alloca_tohex_rhizome_bid_t(*bid), version);
 }

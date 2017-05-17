@@ -660,7 +660,7 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
 	  break;
 
 	enum rhizome_bundle_status status = rhizome_is_bar_interesting(&bar);
-	if (status == RHIZOME_BUNDLE_STATUS_SAME){
+	if (status == RHIZOME_BUNDLE_STATUS_SAME || status == RHIZOME_BUNDLE_STATUS_OLD){
 	  DEBUGF(rhizome_sync_keys, "Ignoring BAR %s:%"PRIu64" (hash %s), (Uninteresting)",
 	    alloca_tohex_rhizome_bar_prefix(&bar),
 	    rhizome_bar_version(&bar),
@@ -721,7 +721,7 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
 	}
 
 	enum rhizome_bundle_status bstatus = rhizome_is_manifest_interesting(m);
-	if (bstatus == RHIZOME_BUNDLE_STATUS_SAME){
+	if (bstatus == RHIZOME_BUNDLE_STATUS_SAME || bstatus == RHIZOME_BUNDLE_STATUS_OLD){
 	  DEBUGF(rhizome_sync_keys, "Ignoring manifest %s:%u"PRIu64" (hash %s), (Uninteresting)",
 	    alloca_tohex_rhizome_bid_t(m->keypair.public_key),
 	    m->version,
