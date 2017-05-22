@@ -83,10 +83,11 @@ static struct profile_total http_server_stats = {
       DEBUGF(http_server, "%s %s HTTP/%u.%u", r->verb ? r->verb : "NULL", alloca_str_toprint(r->path), r->version_major, r->version_minor)
 
 #define DEBUG_DUMP_PARSER(r) \
-      DEBUGF(http_server, "parsed %d %s cursor %d %s end %d remain %"PRIhttp_size_t, \
+      DEBUGF(http_server, "parsed %d %s cursor %d %s end %d not decoded %d %s remain %"PRIhttp_size_t, \
 	  (int)(r->parsed - r->received), alloca_toprint(-1, r->parsed, r->cursor - r->parsed), \
 	  (int)(r->cursor - r->received), alloca_toprint(50, r->cursor, r->end - r->cursor), \
 	  (int)(r->end - r->received), \
+	  (int)(r->end_received - r->end), alloca_toprint(20, r->end, r->end_received - r->end), \
 	  r->request_content_remaining \
 	)
 
@@ -121,7 +122,7 @@ void http_request_init(struct http_request *r, int sockfd)
   r->reserved = r->buffer;
   // Put aside a few bytes for reserving strings, so that the path and query parameters can be
   // reserved ok.
-  r->received = r->end = r->parsed = r->cursor = r->buffer + sizeof(void*) * (1 + NELS(r->query_parameters));
+  r->received = r->end_received = r->end = r->parsed = r->cursor = r->buffer + sizeof(void*) * (1 + NELS(r->query_parameters));
   r->parser = http_request_parse_verb;
   watch(&r->alarm);
   http_request_set_idle_timeout(r);
@@ -1108,6 +1109,20 @@ static int http_request_parse_header(struct http_request *r)
     return 0;
   }
   _rewind(r);
+  if (_skip_literal_nocase(r, "Transfer-Encoding:")) {
+    if (r->request_header.expect){
+      IDEBUGF(r->debug, "Skipping duplicate HTTP header Transfer-Encoding: %s", alloca_toprint(50, sol, r->end - sol));
+      r->cursor = nextline;
+      _commit(r);
+      return 0;
+    }
+    _skip_optional_space(r);
+    if (_skip_literal_nocase(r, "chunked"))
+      r->request_header.chunked = 1;
+    r->cursor = nextline;
+    _commit(r);
+    return 0;
+  }
   if (_skip_literal_nocase(r, "Authorization:")) {
     if (r->request_header.authorization.scheme != NOAUTH) {
       IDEBUGF(r->debug, "Skipping duplicate HTTP header Authorization: %s", alloca_toprint(50, sol, r->end - sol));
@@ -1158,6 +1173,90 @@ static int http_request_parse_header(struct http_request *r)
 malformed:
   IDEBUGF(r->debug, "Malformed HTTP request header: %s", alloca_toprint(-1, sol, eol - sol));
   return 400;
+}
+
+static int http_request_decode_chunks(struct http_request *r){
+  if (r->end_received == r->end){
+    IDEBUGF(r->debug, "No chunk data to decode");
+    return 100;
+  }
+  const char *ptr = r->end;
+  switch(r->chunk_state){
+    case CHUNK_NEWLINE:{
+      if (r->end_received - ptr < 2){
+	IDEBUGF(r->debug, "Waiting for \\r\\n");
+	return 100;
+      }
+      if (ptr[0]!='\r' || ptr[1]!='\n')
+	return WHYF("Expected \\r\\n, found %s", alloca_toprint(20, ptr, r->end_received - ptr));
+      ptr+=2;
+
+      if (ptr == r->end_received && r->parsed == r->end){
+	// if the client has flushed at the end of a chunk boundary,
+	// and we've parsed every byte of the chunk
+	// make sure our next read will overwrite the start of the buffer again
+	r->parsed = r->end = (char *)ptr;
+	r->chunk_state = CHUNK_SIZE;
+	return 100;
+      }
+      // fall through
+    }
+    case CHUNK_SIZE:{
+      const char *p;
+      // TODO fail on non hex input
+      int ret = strn_to_uint64(ptr, r->end_received - ptr, 16, &r->chunk_size, &p);
+      if (r->end_received - p < 2){
+	IDEBUGF(r->debug, "Waiting for [size]\\r\\n");
+	return 100;
+      }
+      if (ret!=1 || p[0]!='\r' || p[1]!='\n')
+	return WHY("Expected [size]\r\n");
+      ptr = p+2;
+
+      IDEBUGF(r->debug, "Chunk size %zu %s", r->chunk_size, alloca_toprint(20, r->end, ptr - r->end));
+
+      if (r->chunk_size == 0){
+	// TODO if (r->end_received > ptr)?
+	// EOF
+	r->end_received = r->end;
+	r->decoder = NULL;
+	r->request_content_remaining = 0;
+	IDEBUGF(r->debug, "EOF Chunk");
+	return 0;
+      }
+
+      r->chunk_state = CHUNK_DATA;
+      // fall through
+    }
+    case CHUNK_DATA:{
+      // skip the chunk heading if we can, to avoid a memmove
+      if (r->end == r->parsed)
+	r->parsed = r->end = (char *)ptr;
+
+      if (r->end_received == r->end){
+	IDEBUGF(r->debug, "Waiting for chunk data");
+	return 100;
+      }
+
+      if (ptr > r->end){
+	size_t used = r->end_received - ptr;
+	IDEBUGF(r->debug, "Compacting %zu to cut out %zu",
+	  used, ptr - r->end);
+	memmove(r->end, ptr, used);
+	r->end_received -= used;
+      }
+
+      size_t len = r->end_received - r->end;
+      if (len > r->chunk_size)
+	len = r->chunk_size;
+      r->chunk_size -= len;
+      r->end += len;
+      if (r->chunk_size == 0)
+	r->chunk_state = CHUNK_NEWLINE;
+      // give the parser a chance to deal with this chunk so we can avoid memmove
+      return 0;
+    }
+  }
 }
 
 /* If the client is trying to post data and has supplied an "Expect: 100..." header
@@ -1218,8 +1317,12 @@ static int http_request_start_body(struct http_request *r)
     r->parser = NULL;
   }
   else if (r->verb == HTTP_VERB_POST) {
-    if (r->request_header.content_length == CONTENT_LENGTH_UNKNOWN) {
-      IDEBUGF(r->debug, "Malformed HTTP %s request: missing Content-Length header", r->verb);
+    if (r->request_header.chunked){
+      r->decoder = http_request_decode_chunks;
+      r->end = r->parsed;
+      r->chunk_state = CHUNK_SIZE;
+    }else if (r->request_header.content_length == CONTENT_LENGTH_UNKNOWN) {
+      IDEBUGF(r->debug, "Malformed HTTP %s request: missing Content-Length or Transfer-Encoding: chunked header", r->verb);
       return 411; // Length Required
     }
     if (r->request_header.content_length == 0) {
@@ -1653,23 +1756,29 @@ static void http_request_receive(struct http_request *r)
   IN();
   assert(r->phase == RECEIVE);
   const char *const bufend = r->buffer + sizeof r->buffer;
-  assert(r->end <= bufend);
-  assert(r->parsed >= r->received);
+  assert(r->end_received <= bufend);
+  assert(r->end <= r->end_received);
   assert(r->parsed <= r->end);
+  assert(r->received <= r->parsed);
+  // rewind buffer if everything has been parsed
+  if (r->parsed == r->end_received){
+    r->parsed = r->end = r->end_received = r->received;
+  }
   // If the end of content falls within the buffer, then there is no need to make any more room,
   // just read up to the end of content.  Otherwise, If buffer is running short on unused space,
   // shift existing content in buffer down to make more room if possible.
-  size_t room = bufend - r->end;
+  size_t room = bufend - r->end_received;
   if (r->request_content_remaining != CONTENT_LENGTH_UNKNOWN && room > r->request_content_remaining)
     room = r->request_content_remaining;
   else {
     size_t spare = r->parsed - r->received;
     if (spare && (room < 128 || (room < 1024 && spare >= 32))) {
-      size_t unparsed = r->end - r->parsed;
+      size_t unparsed = r->end_received - r->parsed;
       memmove((char *)r->received, r->parsed, unparsed); // memcpy() does not handle overlapping src and dst
-      r->parsed = r->received;
-      r->end = r->received + unparsed;
-      room = bufend - r->end;
+      r->parsed -= spare;
+      r->end -= spare;
+      r->end_received -= spare;
+      room = bufend - r->end_received;
       if (r->request_content_remaining != CONTENT_LENGTH_UNKNOWN && room > r->request_content_remaining)
 	room = r->request_content_remaining;
     }
@@ -1686,7 +1795,7 @@ static void http_request_receive(struct http_request *r)
   assert(room > 0);
   if (r->request_content_remaining != CONTENT_LENGTH_UNKNOWN)
     assert(room <= r->request_content_remaining);
-  ssize_t bytes = http_request_read(r, (char *)r->end, room);
+  ssize_t bytes = http_request_read(r, (char *)r->end_received, room);
   if (bytes <0)
     RETURNVOID;
   assert((size_t) bytes <= room);
@@ -1695,15 +1804,31 @@ static void http_request_receive(struct http_request *r)
   // timeout will drop inactive connections.
   if (bytes == 0)
     RETURNVOID;
-  r->end += (size_t) bytes;
+  r->end_received += (size_t) bytes;
+  if (!r->decoder)
+    r->end = r->end_received;
   if (r->request_content_remaining != CONTENT_LENGTH_UNKNOWN)
     r->request_content_remaining -= (size_t) bytes;
   // We got some data, so reset the inactivity timer and invoke the parsing state machine to process
   // it.  The state machine invokes the caller-supplied callback functions.
   http_request_set_idle_timeout(r);
   // Parse the unparsed and received data.
+  bool_t decode_more=1;
+
   while (r->phase == RECEIVE) {
     int result;
+    if (r->decoder && decode_more){
+      result = r->decoder(r);
+      if (result == 100){
+	IDEBUGF(r->debug, "Waiting for more data");
+	RETURNVOID; // poll again
+      }
+      if (result != 0){
+	r->response.status_code = 500;
+	break;
+      }
+      decode_more = 0;
+    }
     _rewind(r);
     if (_end_of_content(r)) {
       if (r->handle_content_end)
@@ -1725,10 +1850,19 @@ static void http_request_receive(struct http_request *r)
 	result = r->parser(r);
 	assert(r->parsed >= oldparsed);
       }
-      if (r->phase != RECEIVE)
+      if (r->phase != RECEIVE){
+	IDEBUGF(r->debug, "Phase != receive");
 	break;
-      if (result == 100)
-	RETURNVOID; // needs more data; poll again
+      }
+      if (result == 100){
+	// needs more data
+	if (r->decoder){
+	  decode_more=1;
+	  continue;
+	}
+	IDEBUGF(r->debug, "Waiting for more data");
+	RETURNVOID; // poll again
+      }
       if (result == 0 && r->parsed == oldparsed && r->parser == oldparser) {
 	WHY("Internal failure parsing HTTP request: parser function did not advance");
 	DEBUG_DUMP_PARSER(r);
@@ -1954,11 +2088,9 @@ static void http_server_poll(struct sched_ent *alarm)
     http_request_finalise(r);
   }
   else if (alarm->poll.revents & POLLIN) {
-    assert((alarm->poll.revents & POLLOUT) == 0);
     http_request_receive(r); // could change the phase to TRANSMIT or DONE
   }
   else if (alarm->poll.revents & POLLOUT) {
-    assert((alarm->poll.revents & POLLIN) == 0);
     http_request_send_response(r); // could change the phase to PAUSE or DONE
   }
   else
@@ -2277,17 +2409,6 @@ static void http_request_render_response(struct http_request *r)
   }
 }
 
-static size_t http_request_drain(struct http_request *r)
-{
-  assert(r->phase == RECEIVE);
-  char buf[8192];
-  size_t drained = 0;
-  ssize_t bytes;
-  while ((bytes = http_request_read(r, buf, sizeof buf)) >0)
-    drained += (size_t) bytes;
-  return drained;
-}
-
 static void http_request_start_response(struct http_request *r)
 {
   IN();
@@ -2304,14 +2425,7 @@ static void http_request_start_response(struct http_request *r)
     http_request_finalise(r);
     RETURNVOID;
   }
-  if (!r->request_header.expect){
-    // Drain the rest of the request that has not been received yet (eg, if sending an error response
-    // provoked while parsing the early part of a partially-received request).  If a read error
-    // occurs, the connection is closed so the phase changes to DONE.
-    http_request_drain(r);
-    if (r->phase != RECEIVE)
-      RETURNVOID;
-  }
+
   // Ensure conformance to HTTP standards.
   if (r->response.status_code == 401 && r->response.header.www_authenticate.scheme == NOAUTH) {
     WHY("HTTP 401 response missing WWW-Authenticate header, sending 500 Server Error instead");
@@ -2336,6 +2450,7 @@ static void http_request_start_response(struct http_request *r)
   }
   r->response_buffer_need = 0;
   r->response_sent = 0;
+  r->parser = NULL;
   IDEBUGF(r->debug, "Sending HTTP response: %s", alloca_toprint(160, (const char *)r->response_buffer, r->response_buffer_length));
   _http_request_start_transmitting(r);
   OUT();

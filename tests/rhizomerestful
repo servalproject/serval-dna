@@ -1247,6 +1247,7 @@ setup_RhizomeImport() {
 test_RhizomeImport() {
    execute curl \
             --silent --show-error --write-out '%{http_code}' \
+            --header 'Transfer-Encoding: chunked' \
             --output http.body \
             --dump-header http.header \
             --basic --user harry:potter \
@@ -1260,6 +1261,7 @@ test_RhizomeImport() {
    assertJq http.body 'contains({"http_status_message": "Created"})'
    execute curl \
             --silent --show-error --write-out '%{http_code}' \
+            --header 'Transfer-Encoding: chunked' \
             --output http.body \
             --dump-header http.header \
             --basic --user harry:potter \

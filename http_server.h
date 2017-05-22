@@ -102,7 +102,8 @@ struct http_request_headers {
   struct http_origin origin;
   struct http_range content_ranges[5];
   struct http_client_authorization authorization;
-  bool_t expect;
+  bool_t expect:1;
+  bool_t chunked:1;
 };
 
 struct http_response_headers {
@@ -218,6 +219,7 @@ struct http_request {
   // Parsing is done by setting 'parser' to point to a series of parsing
   // functions as the parsing state progresses.
   HTTP_REQUEST_PARSER *parser; // current parser function
+  HTTP_REQUEST_PARSER *decoder; // decode any transfer encoding
   // The caller may set these up, and they are invoked by the parser as request
   // parsing reaches different stages.
   HTTP_REQUEST_PARSER *handle_first_line; // called after first line is parsed
@@ -226,10 +228,13 @@ struct http_request {
   // The following are used for managing the buffer during RECEIVE phase.
   char *reserved; // end of reserved data in buffer[]
   char *received; // start of received data in buffer[]
-  char *end; // end of received data in buffer[]
+  char *end; // end of decoded data in buffer[]
+  char *end_received; // end of received data in buffer[]
   char *parsed; // start of unparsed data in buffer[]
   char *cursor; // for parsing
   http_size_t request_content_remaining;
+  enum chunk_state {CHUNK_SIZE, CHUNK_DATA, CHUNK_NEWLINE} chunk_state;
+  uint64_t chunk_size;
   // The following are used for parsing a multipart body.
   enum mime_state { START, PREAMBLE, HEADER, BODY, EPILOGUE } form_data_state;
   struct http_mime_handler form_data;

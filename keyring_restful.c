@@ -43,7 +43,6 @@ static int restful_keyring_(httpd_request *r, const char *remainder)
   if (ret)
     return ret;
   const char *verb = HTTP_VERB_GET;
-  http_size_t content_length = CONTENT_LENGTH_UNKNOWN;
   HTTP_HANDLER *handler = NULL;
   const char *end;
   if (strcmp(remainder, "identities.json") == 0) {
@@ -69,12 +68,6 @@ static int restful_keyring_(httpd_request *r, const char *remainder)
   }
   if (handler == NULL)
     return 404;
-  if (	 content_length != CONTENT_LENGTH_UNKNOWN
-      && r->http.request_header.content_length != CONTENT_LENGTH_UNKNOWN
-      && r->http.request_header.content_length != content_length) {
-    http_request_simple_response(&r->http, 400, "Bad content length");
-    return 400;
-  }
   if (r->http.verb != verb)
     return 405;
   return handler(r, remainder);
