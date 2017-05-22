@@ -154,7 +154,7 @@ static int send_content_end(struct http_request *hr)
   }
   if (session)
     close_session(session);
-  return 201;
+  return ret;
 }
 
 static void send_finalise(httpd_request *r)
@@ -614,6 +614,7 @@ static int restful_meshmb_feedlist_json_content_chunk(struct http_request *hr, s
     case LIST_DONE:
       return 0;
   }
+  return -1;
 }
 
 static int restful_meshmb_feedlist_json_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
@@ -837,6 +838,7 @@ static int restful_meshmb_activity_json_content_chunk(struct http_request *hr, s
     case LIST_DONE:
       return 0;
   }
+  return -1;
 }
 
 static int restful_meshmb_activity_json_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)

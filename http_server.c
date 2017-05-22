@@ -1257,6 +1257,7 @@ static int http_request_decode_chunks(struct http_request *r){
       return 0;
     }
   }
+  return -1;
 }
 
 /* If the client is trying to post data and has supplied an "Expect: 100..." header
