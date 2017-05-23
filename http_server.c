@@ -122,7 +122,7 @@ void http_request_init(struct http_request *r, int sockfd)
   r->reserved = r->buffer;
   // Put aside a few bytes for reserving strings, so that the path and query parameters can be
   // reserved ok.
-  r->received = r->end_received = r->end = r->parsed = r->cursor = r->buffer + sizeof(void*) * (1 + NELS(r->query_parameters));
+  r->received = r->decode_ptr = r->end_received = r->end = r->parsed = r->cursor = r->buffer + sizeof(void*) * (1 + NELS(r->query_parameters));
   r->parser = http_request_parse_verb;
   watch(&r->alarm);
   http_request_set_idle_timeout(r);
@@ -1176,87 +1176,86 @@ malformed:
 }
 
 static int http_request_decode_chunks(struct http_request *r){
-  if (r->end_received == r->end){
+  if (r->end_received == r->decode_ptr){
     IDEBUGF(r->debug, "No chunk data to decode");
     return 100;
   }
-  const char *ptr = r->end;
   switch(r->chunk_state){
     case CHUNK_NEWLINE:{
-      if (r->end_received - ptr < 2){
+      if (r->end_received - r->decode_ptr < 2){
 	IDEBUGF(r->debug, "Waiting for \\r\\n");
 	return 100;
       }
-      if (ptr[0]!='\r' || ptr[1]!='\n')
-	return WHYF("Expected \\r\\n, found %s", alloca_toprint(20, ptr, r->end_received - ptr));
-      ptr+=2;
+      if (r->decode_ptr[0]!='\r' || r->decode_ptr[1]!='\n')
+	return WHYF("Expected \\r\\n, found %s", alloca_toprint(20, r->decode_ptr, r->end_received - r->decode_ptr));
 
-      if (ptr == r->end_received && r->parsed == r->end){
-	// if the client has flushed at the end of a chunk boundary,
-	// and we've parsed every byte of the chunk
-	// make sure our next read will overwrite the start of the buffer again
-	r->parsed = r->end = (char *)ptr;
-	r->chunk_state = CHUNK_SIZE;
-	return 100;
+      r->decode_ptr += 2;
+      r->chunk_state = CHUNK_SIZE;
+      if (r->request_content_remaining == 0){
+	r->decoder = NULL;
+	return 0;
       }
       // fall through
     }
     case CHUNK_SIZE:{
       const char *p;
       // TODO fail on non hex input
-      int ret = strn_to_uint64(ptr, r->end_received - ptr, 16, &r->chunk_size, &p);
+      int ret = strn_to_uint64(r->decode_ptr, r->end_received - r->decode_ptr, 16, &r->chunk_size, &p);
       if (r->end_received - p < 2){
 	IDEBUGF(r->debug, "Waiting for [size]\\r\\n");
 	return 100;
       }
       if (ret!=1 || p[0]!='\r' || p[1]!='\n')
 	return WHY("Expected [size]\r\n");
-      ptr = p+2;
 
-      IDEBUGF(r->debug, "Chunk size %zu %s", r->chunk_size, alloca_toprint(20, r->end, ptr - r->end));
+      r->decode_ptr = (char*)p+2;
+      r->chunk_state = CHUNK_DATA;
+
+      IDEBUGF(r->debug, "Chunk size %zu (parsed %d, unparsed %d, heading %d, data %d) %s",
+	r->chunk_size,
+	(int)(r->parsed - r->received),
+	(int)(r->end - r->parsed),
+	(int)(r->decode_ptr - r->end),
+	(int)(r->end_received - r->decode_ptr),
+	alloca_toprint(20, r->end, r->decode_ptr - r->end));
 
       if (r->chunk_size == 0){
-	// TODO if (r->end_received > ptr)?
-	// EOF
-	r->end_received = r->end;
-	r->decoder = NULL;
 	r->request_content_remaining = 0;
 	IDEBUGF(r->debug, "EOF Chunk");
-	return 0;
       }
-
-      r->chunk_state = CHUNK_DATA;
       // fall through
     }
     case CHUNK_DATA:{
+
       // skip the chunk heading if we can, to avoid a memmove
       if (r->end == r->parsed)
-	r->parsed = r->end = (char *)ptr;
+	r->parsed = r->end = r->decode_ptr;
 
-      if (r->end_received == r->end){
-	IDEBUGF(r->debug, "Waiting for chunk data");
-	return 100;
+      if (r->decode_ptr > r->end){
+	size_t used = r->end_received - r->decode_ptr;
+	size_t heading = r->decode_ptr - r->end;
+	IDEBUGF(r->debug, "Compacting %zu to cut out heading %zu",
+	  used, heading);
+	memmove(r->end, r->decode_ptr, used);
+	r->end_received -= heading;
+	r->decode_ptr -= heading;
       }
 
-      if (ptr > r->end){
-	size_t used = r->end_received - ptr;
-	IDEBUGF(r->debug, "Compacting %zu to cut out %zu",
-	  used, ptr - r->end);
-	memmove(r->end, ptr, used);
-	r->end_received -= used;
-      }
-
-      size_t len = r->end_received - r->end;
+      size_t len = r->end_received - r->decode_ptr;
       if (len > r->chunk_size)
 	len = r->chunk_size;
       r->chunk_size -= len;
       r->end += len;
+      r->decode_ptr = r->end;
+
       if (r->chunk_size == 0){
 	r->chunk_state = CHUNK_NEWLINE;
-	if (r->end_received - r->end == 2 && r->end[0]=='\r' && r->end[1]=='\n'){
+	if (r->end_received - r->decode_ptr == 2 && r->decode_ptr[0]=='\r' && r->decode_ptr[1]=='\n'){
 	  // if we can cut the \r\n off the end, do it now
 	  r->chunk_state = CHUNK_SIZE;
 	  r->end_received = r->end;
+	  if (r->request_content_remaining == 0)
+	    r->decoder = NULL;
 	}
       }
       // give the parser a chance to deal with this chunk so we can avoid memmove
@@ -1326,7 +1325,7 @@ static int http_request_start_body(struct http_request *r)
   else if (r->verb == HTTP_VERB_POST) {
     if (r->request_header.chunked){
       r->decoder = http_request_decode_chunks;
-      r->end = r->parsed;
+      r->end = r->decode_ptr = r->parsed;
       r->chunk_state = CHUNK_SIZE;
     }else if (r->request_header.content_length == CONTENT_LENGTH_UNKNOWN) {
       IDEBUGF(r->debug, "Malformed HTTP %s request: missing Content-Length or Transfer-Encoding: chunked header", r->verb);
@@ -1764,12 +1763,13 @@ static void http_request_receive(struct http_request *r)
   assert(r->phase == RECEIVE);
   const char *const bufend = r->buffer + sizeof r->buffer;
   assert(r->end_received <= bufend);
-  assert(r->end <= r->end_received);
+  assert(r->decode_ptr <= r->end_received);
+  assert(r->end <= r->decode_ptr);
   assert(r->parsed <= r->end);
   assert(r->received <= r->parsed);
   // rewind buffer if everything has been parsed
   if (r->parsed == r->end_received){
-    r->parsed = r->end = r->end_received = r->received;
+    r->parsed = r->end = r->decode_ptr = r->end_received = r->received;
   }
   // If the end of content falls within the buffer, then there is no need to make any more room,
   // just read up to the end of content.  Otherwise, If buffer is running short on unused space,
@@ -1784,6 +1784,7 @@ static void http_request_receive(struct http_request *r)
       memmove((char *)r->received, r->parsed, unparsed); // memcpy() does not handle overlapping src and dst
       r->parsed -= spare;
       r->end -= spare;
+      r->decode_ptr -= spare;
       r->end_received -= spare;
       room = bufend - r->end_received;
       if (r->request_content_remaining != CONTENT_LENGTH_UNKNOWN && room > r->request_content_remaining)
@@ -1813,7 +1814,7 @@ static void http_request_receive(struct http_request *r)
     RETURNVOID;
   r->end_received += (size_t) bytes;
   if (!r->decoder)
-    r->end = r->end_received;
+    r->end = r->decode_ptr = r->end_received;
   if (r->request_content_remaining != CONTENT_LENGTH_UNKNOWN)
     r->request_content_remaining -= (size_t) bytes;
   // We got some data, so reset the inactivity timer and invoke the parsing state machine to process
