@@ -22,6 +22,8 @@
 package org.servalproject.servaldna;
 
 import org.servalproject.servaldna.rhizome.RhizomeBundleStatus;
+import org.servalproject.servaldna.rhizome.RhizomeManifest;
+import org.servalproject.servaldna.rhizome.RhizomeManifestParseException;
 
 import java.io.File;
 import java.io.IOException;
@@ -343,7 +345,7 @@ public class ServalDCommand
 		public String service;
 		public String name;
 		public boolean readonly=true;
-		public byte[] manifest;
+		public byte[] manifestText;
 		public String secret;
 		public SubscriberId author;
 		public long rowId;
@@ -378,7 +380,13 @@ public class ServalDCommand
 		@Override
 		public void putBlob(byte[] value) {
 			if (columnName.equals("manifest"))
-				this.manifest = value;
+				this.manifestText = value;
+		}
+
+		public RhizomeManifest getManifest() throws RhizomeManifestParseException {
+			if (manifestText == null)
+				return null;
+			return RhizomeManifest.fromTextFormat(manifestText);
 		}
 
 		@Override

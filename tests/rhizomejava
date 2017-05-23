@@ -353,16 +353,31 @@ test_RhizomeInsert() {
       tfw_cat --stdout --stderr -v nfile$n.manifest
       if [ -n "${author[$n]}" ]; then
          assertStdoutGrep '^_status=NEW$'
+         assertStdoutGrep '^_payload_status=NEW$'
          assertStdoutGrep "^id=${BID[$n]}\$"
-         assertStderrGrep --matches=1 "^bundle_status_code=NEW\$"
-         assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*\$"
-         assertStderrGrep --matches=1 "^payload_status_code=NEW\$"
-         assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload new to store.*\$"
       else
          assertStdoutGrep RhizomeReadOnlyException
-         assertStderrGrep --ignore-case "missing bundle secret"
       fi
    done
+}
+
+doc_RhizomeImport="Java API import existing bundle"
+setup_RhizomeImport() {
+   setup
+   set_instance +B
+   create_single_identity
+   rhizome_add_bundles $SIDB 1 1
+   executeOk_servald rhizome export manifest "${BID[1]}" file1.manifest
+   set_instance +A
+}
+test_RhizomeImport() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-import 'file1.manifest' 'file1'
+   tfw_cat --stdout --stderr
+   assertStdoutGrep '^_status=NEW$'
+   assertStdoutGrep '^_payload_status=NEW$'
+   executeJavaOk org.servalproject.test.Rhizome rhizome-import 'file1.manifest' 'file1'
+   tfw_cat --stdout --stderr
+   assertStdoutGrep '^_status=SAME$'
 }
 
 doc_RhizomeInsertAnon="Java API update anonymous Rhizome bundle"
@@ -381,11 +396,8 @@ test_RhizomeInsertAnon() {
    executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file2.manifest file2 ifile2.manifest "file2" "$SECRET"
    tfw_cat --stdout --stderr -v ifile2.manifest
    assertStdoutGrep '^_status=NEW$'
+   assertStdoutGrep '^_payload_status=NEW$'
    assertStdoutGrep "^id=$BID\$"
-   assertStderrGrep --matches=1 "^bundle_status_code=NEW\$"
-   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*\$"
-   assertStderrGrep --matches=1 "^payload_status_code=NEW\$"
-   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload new to store.*\$"
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 --manifest=ifile2.manifest file2
 }
@@ -401,13 +413,10 @@ test_RhizomeInsertEmptyNew() {
    tfw_cat --stdout --stderr -v empty.manifest
    extract_manifest_id BID empty.manifest
    assertStdoutGrep '^_status=NEW$'
+   assertStdoutGrep '^_payload_status=EMPTY$'
    assertStdoutGrep "^id=$BID\$"
    assertStdoutGrep "^filesize=0\$"
    assertStdoutGrep --matches=0 "^filehash="
-   assertStderrGrep --matches=1 "^bundle_status_code=NEW\$"
-   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*\$"
-   assertStderrGrep --matches=1 "^payload_status_code=EMPTY\$"
-   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload empty.*\$"
    executeOk_servald rhizome list
    assert_rhizome_list empty
    executeOk_servald rhizome extract bundle "$BID" xempty.manifest xempty
@@ -431,13 +440,10 @@ test_RhizomeInsertEmptyUpdate() {
    executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' iempty.manifest empty empty.manifest
    tfw_cat --stdout --stderr -v empty.manifest
    assertStdoutGrep '^_status=NEW$'
+   assertStdoutGrep '^_payload_status=EMPTY$'
    assertStdoutGrep "^id=$BID\$"
    assertStdoutGrep "^filesize=0\$"
    assertStdoutGrep --matches=0 "^filehash="
-   assertStderrGrep --matches=1 "^bundle_status_code=NEW\$"
-   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*\$"
-   assertStderrGrep --matches=1 "^payload_status_code=EMPTY\$"
-   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload empty.*\$"
    executeOk_servald rhizome list
    assert_rhizome_list empty
    executeOk_servald rhizome extract bundle "$BID" xempty.manifest xempty
@@ -456,7 +462,6 @@ test_RhizomeInsertJournal() {
    tfw_cat --stdout --stderr
    # TODO: need special exception for this case, not RhizomeInvalidManifestException
    assertStdoutGrep RhizomeInvalidManifestException
-   assertStderrGrep --ignore-case "cannot add.*journal"
    executeOk_servald rhizome list
    assert_rhizome_list
 }

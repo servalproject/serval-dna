@@ -38,7 +38,7 @@ import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 
-class ServalDTests
+public class ServalDTests
 {
 	static void log(String msg) {
 		System.err.println(new Date().toString()+" "+msg);

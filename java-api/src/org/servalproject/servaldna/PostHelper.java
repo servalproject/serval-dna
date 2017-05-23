@@ -1,12 +1,15 @@
 package org.servalproject.servaldna;
 
 import org.servalproject.servaldna.rhizome.RhizomeIncompleteManifest;
+import org.servalproject.servaldna.rhizome.RhizomeManifest;
+import org.servalproject.servaldna.rhizome.RhizomeManifestSizeException;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.HttpURLConnection;
+import java.net.ProtocolException;
 
 /**
  * Created by jeremy on 5/10/16.
@@ -26,6 +29,8 @@ public class PostHelper {
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+        conn.setRequestProperty("Expect", "100-continue");
+        conn.setChunkedStreamingMode(0);
         conn.connect();
         output = conn.getOutputStream();
         writer = new PrintStream(output, false, "UTF-8");
@@ -84,12 +89,19 @@ public class PostHelper {
             output.write(buffer, 0, n);
     }
 
+    public void writeField(String name, RhizomeManifest manifest) throws IOException, RhizomeManifestSizeException {
+        writeHeading(name, null, "rhizome/manifest; format=\"text+binarysig\"", "binary");
+        manifest.toTextFormat(writer);
+    }
+
     public void writeField(String name, RhizomeIncompleteManifest manifest) throws IOException {
         writeHeading(name, null, "rhizome/manifest; format=\"text+binarysig\"", "binary");
         manifest.toTextFormat(writer);
     }
 
     public void close(){
+        if (writer==null)
+            return;
         writer.print("\r\n--" + boundary + "--\r\n");
         writer.flush();
         writer.close();

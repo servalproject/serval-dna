@@ -22,13 +22,14 @@ package org.servalproject.servaldna.rhizome;
 
 import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.BundleSecret;
-import org.servalproject.servaldna.ServalDInterfaceException;
 
 public class RhizomeInsertBundle extends RhizomeManifestBundle {
 
 	public final RhizomeBundleStatus status;
+	public final RhizomePayloadStatus payloadStatus;
 
 	protected RhizomeInsertBundle(RhizomeBundleStatus status,
+								  RhizomePayloadStatus payloadStatus,
 								  RhizomeManifest manifest,
 								  Long rowId,
 								  Long insertTime,
@@ -37,6 +38,7 @@ public class RhizomeInsertBundle extends RhizomeManifestBundle {
 	{
 		super(manifest, rowId, insertTime, author, secret);
 		this.status = status;
+		this.payloadStatus = payloadStatus;
 	}
 
 }

@@ -72,7 +72,7 @@ public class RhizomeIncompleteManifest {
 		this.date = m.date;
 		this.service = m.service;
 		this.name = m.name;
-		this.extraFields = (HashMap<String,String>) m.extraFields.clone(); // unchecked cast
+		this.extraFields = (HashMap<String,String>) (m.extraFields==null ? new HashMap<String,String>() : m.extraFields.clone()); // unchecked cast
 	}
 
 	/** Return the Rhizome manifest in its text format representation.

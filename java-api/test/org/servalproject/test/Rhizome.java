@@ -35,6 +35,7 @@ import org.servalproject.servaldna.BundleSecret;
 import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.rhizome.RhizomeManifest;
 import org.servalproject.servaldna.rhizome.RhizomeIncompleteManifest;
+import org.servalproject.servaldna.rhizome.RhizomeImportStatus;
 import org.servalproject.servaldna.rhizome.RhizomeListBundle;
 import org.servalproject.servaldna.rhizome.RhizomeBundleList;
 import org.servalproject.servaldna.rhizome.RhizomeManifestBundle;
@@ -43,6 +44,7 @@ import org.servalproject.servaldna.rhizome.RhizomePayloadBundle;
 import org.servalproject.servaldna.rhizome.RhizomeInsertBundle;
 import org.servalproject.servaldna.rhizome.RhizomeException;
 import org.servalproject.servaldna.rhizome.RhizomeManifestParseException;
+import org.servalproject.servaldna.rhizome.RhizomeManifestSizeException;
 
 public class Rhizome {
 
@@ -211,6 +213,22 @@ public class Rhizome {
 		System.exit(0);
 	}
 
+	static void rhizome_import(String manifestPath, String payloadPath)
+		throws ServalDInterfaceException, IOException, RhizomeException, RhizomeManifestParseException, RhizomeManifestSizeException{
+		ServalDClient client = new ServerControl().getRestfulClient();
+		RhizomeManifest manifest = RhizomeManifest.fromTextFormat(new File(manifestPath));
+		InputStream in = new FileInputStream(payloadPath);
+		try{
+			RhizomeImportStatus bundle = client.rhizomeImport(manifest, in);
+			System.out.println(
+				"_status=" + bundle.bundleStatus + "\n" +
+				"_payload_status=" + bundle.payloadStatus + "\n");
+		}finally{
+			in.close();
+		}
+		System.exit(0);
+	}
+
 	static void rhizome_insert(	String author,
 								String manifestPath,
 								String payloadPath,
@@ -238,6 +256,7 @@ public class Rhizome {
 				bundle = client.rhizomeInsert(authorSid, manifest, secret, new FileInputStream(payloadPath), payloadName);
 			System.out.println(
 					"_status=" + bundle.status + "\n" +
+					"_payload_status=" + bundle.payloadStatus + "\n" +
 					(bundle.rowId == null ? "" : "_rowId=" + bundle.rowId + "\n") +
 					(bundle.insertTime == null ? "" : "_insertTime=" + bundle.insertTime + "\n") +
 					(bundle.author == null ? "" : "_author=" + bundle.author + "\n") +
@@ -286,6 +305,8 @@ public class Rhizome {
 								args.length > 5 ? args[5] : null, // payload name
 								args.length > 6 ? args[6] : null  // bundle secret
 							  );
+			else if (methodName.equals("rhizome-import"))
+				rhizome_import(args[1], args[2]);
 		} catch (Exception e) {
 			e.printStackTrace();
 			System.exit(1);

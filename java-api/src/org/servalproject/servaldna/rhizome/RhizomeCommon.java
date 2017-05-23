@@ -33,22 +33,25 @@ import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.ServalDNotImplementedException;
 import org.servalproject.servaldna.SubscriberId;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.PrintStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.net.HttpURLConnection;
-import java.util.List;
-import java.util.Map;
+import java.net.ProtocolException;
+import java.net.URL;
 
 public class RhizomeCommon
 {
 
 	private static class Status {
+		URL url;
+		String contentType;
 		InputStream input_stream;
 		public int http_status_code;
 		public String http_status_message;
@@ -56,17 +59,6 @@ public class RhizomeCommon
 		String bundle_status_message;
 		RhizomePayloadStatus payload_status_code;
 		String payload_status_message;
-	}
-
-	private static void dumpStatus(Status status, PrintStream out)
-	{
-		out.println("input_stream=" + status.input_stream);
-		out.println("http_status_code=" + status.http_status_code);
-		out.println("http_status_message=" + status.http_status_message);
-		out.println("bundle_status_code=" + status.bundle_status_code);
-		out.println("bundle_status_message=" + status.bundle_status_message);
-		out.println("payload_status_code=" + status.payload_status_code);
-		out.println("payload_status_message=" + status.payload_status_message);
 	}
 
 	protected static Status receiveResponse(HttpURLConnection conn, int expected_response_code) throws IOException, ServalDInterfaceException
@@ -78,6 +70,8 @@ public class RhizomeCommon
 	protected static Status receiveResponse(HttpURLConnection conn, int[] expected_response_codes) throws IOException, ServalDInterfaceException
 	{
 		Status status = new Status();
+		status.url = conn.getURL();
+		status.contentType = conn.getContentType();
 		status.http_status_code = conn.getResponseCode();
 		status.http_status_message = conn.getResponseMessage();
 		for (int code: expected_response_codes) {
@@ -86,8 +80,9 @@ public class RhizomeCommon
 				return status;
 			}
 		}
-		if (!conn.getContentType().equals("application/json"))
+		if (!status.contentType.equals("application/json"))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
+
 		if (status.http_status_code >= 300) {
 			JSONTokeniser json = new JSONTokeniser(conn.getErrorStream());
 			decodeRestfulStatus(status, json);
@@ -228,9 +223,7 @@ public class RhizomeCommon
 		conn.connect();
 		Status status = RhizomeCommon.receiveResponse(conn, HttpURLConnection.HTTP_OK);
 		try {
-			dumpHeaders(conn, System.err);
 			decodeHeaderBundleStatus(status, conn);
-			dumpStatus(status, System.err);
 			switch (status.bundle_status_code) {
 			case NEW:
 				return null;
@@ -261,9 +254,7 @@ public class RhizomeCommon
 		conn.connect();
 		Status status = RhizomeCommon.receiveResponse(conn, HttpURLConnection.HTTP_OK);
 		try {
-			dumpHeaders(conn, System.err);
 			decodeHeaderBundleStatus(status, conn);
-			dumpStatus(status, System.err);
 			switch (status.bundle_status_code) {
 			case ERROR:
 				throw new ServalDFailureException("received rhizome_bundle_status_code=ERROR(-1) from " + conn.getURL());
@@ -303,6 +294,33 @@ public class RhizomeCommon
 		throw unexpectedResponse(conn, status);
 	}
 
+	public static void WriteBundleZip(RhizomePayloadRawBundle payload, File output) throws IOException, RhizomeManifestSizeException {
+		try{
+			OutputStream out = new FileOutputStream(output);
+			try{
+				// read out all but the last two bytes
+				long toWrite = payload.manifest.filesize - 2;
+				byte[] buff = new byte[4096];
+				while(toWrite>0){
+					int len = toWrite > buff.length ? buff.length : (int) toWrite;
+					len = payload.rawPayloadInputStream.read(buff, 0, len);
+					out.write(buff, 0, len);
+					toWrite -= len;
+				}
+				// assume the apk is a zip file, write the manifest into a zip file comment at the end
+				byte[] manifestText = payload.manifest.toTextFormat();
+				buff[0] = (byte) (manifestText.length & 0xFF);
+				buff[1] = (byte) ((manifestText.length >> 8) & 0xFF);
+				out.write(buff, 0, 2);
+				out.write(manifestText);
+			}finally{
+				out.close();
+			}
+		}finally {
+			payload.rawPayloadInputStream.close();
+		}
+	}
+
 	public static RhizomePayloadBundle rhizomePayload(ServalDHttpConnectionFactory connector, BundleId bid)
 		throws IOException, ServalDInterfaceException, RhizomeDecryptionException
 	{
@@ -310,9 +328,7 @@ public class RhizomeCommon
 		conn.connect();
 		Status status = RhizomeCommon.receiveResponse(conn, HttpURLConnection.HTTP_OK);
 		try {
-			dumpHeaders(conn, System.err);
 			decodeHeaderBundleStatus(status, conn);
-			dumpStatus(status, System.err);
 			switch (status.bundle_status_code) {
 			case ERROR:
 				throw new ServalDFailureException("received rhizome_bundle_status_code=ERROR(-1) from " + conn.getURL());
@@ -369,6 +385,36 @@ public class RhizomeCommon
 		return rhizomeInsert(connector, author, manifest, secret, null, null);
 	}
 
+	protected static void checkBundleStatus(Status status) throws ServalDInterfaceException, IOException, RhizomeReadOnlyException, RhizomeInconsistencyException, RhizomeFakeManifestException, RhizomeInvalidManifestException {
+		switch (status.bundle_status_code) {
+			case ERROR:
+				throw new ServalDFailureException("received Rhizome bundle_status=ERROR " + quoteString(status.bundle_status_message) + " from " + status.url);
+			case INVALID:
+				throw new RhizomeInvalidManifestException(status.bundle_status_message, status.url);
+			case FAKE:
+				throw new RhizomeFakeManifestException(status.bundle_status_message, status.url);
+			case INCONSISTENT:
+				throw new RhizomeInconsistencyException(status.bundle_status_message, status.url);
+			case READONLY:
+				throw new RhizomeReadOnlyException(status.bundle_status_message, status.url);
+		}
+	}
+
+	protected static void checkPayloadStatus(Status status) throws ServalDFailureException, RhizomeInconsistencyException, RhizomeEncryptionException {
+		if (status.payload_status_code == null)
+			return;
+		switch (status.payload_status_code) {
+			case ERROR:
+				throw new ServalDFailureException("received Rhizome payload_status=ERROR " +
+						quoteString(status.payload_status_message) + " from " + status.url);
+			case WRONG_SIZE:
+			case WRONG_HASH:
+				throw new RhizomeInconsistencyException(status.payload_status_message, status.url);
+			case CRYPTO_FAIL:
+				throw new RhizomeEncryptionException(status.payload_status_message, status.url);
+		}
+	}
+
 	public static RhizomeInsertBundle rhizomeInsert(ServalDHttpConnectionFactory connector,
 													SubscriberId author,
 													RhizomeIncompleteManifest manifest,
@@ -398,55 +444,17 @@ public class RhizomeCommon
 		int[] expected_response_codes = { HttpURLConnection.HTTP_OK, HttpURLConnection.HTTP_CREATED };
 		Status status = RhizomeCommon.receiveResponse(conn, expected_response_codes);
 		try {
-			dumpHeaders(conn, System.err);
 			decodeHeaderPayloadStatusOrNull(status, conn);
-			if (status.payload_status_code != null) {
-				switch (status.payload_status_code) {
-				case ERROR:
-					dumpStatus(status, System.err);
-					throw new ServalDFailureException("received Rhizome payload_status=ERROR " + quoteString(status.payload_status_message) + " from " + conn.getURL());
-				case EMPTY:
-				case NEW:
-				case STORED:
-					break;
-				case TOO_BIG:
-				case EVICTED:
-					dumpStatus(status, System.err);
-					return null;
-				case WRONG_SIZE:
-				case WRONG_HASH:
-					dumpStatus(status, System.err);
-					throw new RhizomeInconsistencyException(status.payload_status_message, conn.getURL());
-				case CRYPTO_FAIL:
-					dumpStatus(status, System.err);
-					throw new RhizomeEncryptionException(status.payload_status_message, conn.getURL());
-				}
-			}
+			checkPayloadStatus(status);
+
 			decodeHeaderBundleStatus(status, conn);
-			dumpStatus(status, System.err);
-			switch (status.bundle_status_code) {
-			case ERROR:
-				throw new ServalDFailureException("received Rhizome bundle_status=ERROR " + quoteString(status.bundle_status_message) + " from " + conn.getURL());
-			case NEW:
-			case SAME:
-			case DUPLICATE:
-			case OLD:
-			case NO_ROOM: {
-					if (!conn.getContentType().equals("rhizome-manifest/text"))
-						throw new ServalDInterfaceException("unexpected HTTP Content-Type " + conn.getContentType() + " from " + conn.getURL());
-					RhizomeManifest returned_manifest = RhizomeManifest.fromTextFormat(status.input_stream);
-					BundleExtra extra = bundleExtraFromHeaders(conn);
-					return new RhizomeInsertBundle(status.bundle_status_code, returned_manifest, extra.rowId, extra.insertTime, extra.author, extra.secret);
-				}
-			case INVALID:
-				throw new RhizomeInvalidManifestException(status.bundle_status_message, conn.getURL());
-			case FAKE:
-				throw new RhizomeFakeManifestException(status.bundle_status_message, conn.getURL());
-			case INCONSISTENT:
-				throw new RhizomeInconsistencyException(status.bundle_status_message, conn.getURL());
-			case READONLY:
-				throw new RhizomeReadOnlyException(status.bundle_status_message, conn.getURL());
-			}
+			checkBundleStatus(status);
+
+			if (!status.contentType.equals("rhizome-manifest/text"))
+				throw new ServalDInterfaceException("unexpected HTTP Content-Type " + status.contentType + " from " + status.url);
+			RhizomeManifest returned_manifest = RhizomeManifest.fromTextFormat(status.input_stream);
+			BundleExtra extra = bundleExtraFromHeaders(conn);
+			return new RhizomeInsertBundle(status.bundle_status_code, status.payload_status_code, returned_manifest, extra.rowId, extra.insertTime, extra.author, extra.secret);
 		}
 		catch (RhizomeManifestParseException e) {
 			throw new ServalDInterfaceException("malformed manifest from daemon", e);
@@ -455,15 +463,40 @@ public class RhizomeCommon
 			if (status.input_stream != null)
 				status.input_stream.close();
 		}
-		dumpStatus(status, System.err);
-		throw unexpectedResponse(conn, status);
 	}
 
-	private static void dumpHeaders(HttpURLConnection conn, PrintStream out)
-	{
-		for (Map.Entry<String,List<String>> e: conn.getHeaderFields().entrySet())
-			for (String v: e.getValue())
-				out.println("received header " + e.getKey() + ": " + v);
+	public static RhizomeImportStatus rhizomeImport(ServalDHttpConnectionFactory connector, RhizomeManifest manifest, InputStream payloadStream) throws ServalDInterfaceException, IOException, RhizomeException, RhizomeManifestSizeException {
+		HttpURLConnection conn = connector.newServalDHttpConnection(
+				"/restful/rhizome/import?id="+manifest.id.toHex()+"&version="+manifest.version);
+		PostHelper helper = new PostHelper(conn);
+		try {
+			helper.connect();
+			helper.writeField("manifest", manifest);
+			if (payloadStream != null)
+				helper.writeField("payload", null, payloadStream);
+			helper.close();
+		}catch (ProtocolException e){
+			// dodgy java implementation, only means that the server did not return 100-continue
+			// attempting to read the input stream will fail again
+			switch (conn.getResponseCode()){
+				case 200:
+					return new RhizomeImportStatus(RhizomeBundleStatus.SAME, null);
+				case 202:
+					return new RhizomeImportStatus(RhizomeBundleStatus.OLD, null);
+			}
+			throw e;
+		}
+
+		int[] expected_response_codes = { HttpURLConnection.HTTP_OK,
+				HttpURLConnection.HTTP_CREATED,
+				HttpURLConnection.HTTP_ACCEPTED};
+
+		Status status = RhizomeCommon.receiveResponse(conn, expected_response_codes);
+		decodeHeaderPayloadStatusOrNull(status, conn);
+		checkPayloadStatus(status);
+		decodeHeaderBundleStatus(status, conn);
+		checkBundleStatus(status);
+		return new RhizomeImportStatus(status.bundle_status_code, status.payload_status_code);
 	}
 
 	private static RhizomeManifest manifestFromHeaders(HttpURLConnection conn) throws ServalDInterfaceException

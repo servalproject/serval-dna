@@ -33,7 +33,7 @@ classes: $(CLASSDIR)/dummy
 $(TESTCLASSDIR)/dummy: $(TEST_SOURCES) $(CLASSDIR)/dummy
 	@mkdir -p $(TESTCLASSDIR)
 	@echo "JAVAC $(TESTCLASSDIR)"
-	@$(JAVAC) -Xlint:unchecked -d $(TESTCLASSDIR) -classpath $(CLASSDIR) $(SOURCES)
+	@$(JAVAC) -Xlint:unchecked -d $(TESTCLASSDIR) -classpath $(CLASSDIR) $(TEST_SOURCES)
 	@touch $@
 
 testclasses: $(TESTCLASSDIR)/dummy

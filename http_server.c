@@ -1110,7 +1110,7 @@ static int http_request_parse_header(struct http_request *r)
   }
   _rewind(r);
   if (_skip_literal_nocase(r, "Transfer-Encoding:")) {
-    if (r->request_header.expect){
+    if (r->request_header.chunked){
       IDEBUGF(r->debug, "Skipping duplicate HTTP header Transfer-Encoding: %s", alloca_toprint(50, sol, r->end - sol));
       r->cursor = nextline;
       _commit(r);
@@ -1251,8 +1251,14 @@ static int http_request_decode_chunks(struct http_request *r){
 	len = r->chunk_size;
       r->chunk_size -= len;
       r->end += len;
-      if (r->chunk_size == 0)
+      if (r->chunk_size == 0){
 	r->chunk_state = CHUNK_NEWLINE;
+	if (r->end_received - r->end == 2 && r->end[0]=='\r' && r->end[1]=='\n'){
+	  // if we can cut the \r\n off the end, do it now
+	  r->chunk_state = CHUNK_SIZE;
+	  r->end_received = r->end;
+	}
+      }
       // give the parser a chance to deal with this chunk so we can avoid memmove
       return 0;
     }
@@ -1341,7 +1347,7 @@ static int http_request_start_body(struct http_request *r)
 		r->verb, r->request_header.content_type.type, r->request_header.content_type.subtype);
 	  return 400;
 	}
-	if (r->request_header.expect && _run_out(r)){
+	if (r->request_header.expect && _run_out(r) && r->end == r->end_received){
 	  r->parser = http_request_start_continue;
 	  return 0;
 	}else{
@@ -1828,8 +1834,8 @@ static void http_request_receive(struct http_request *r)
 	r->response.status_code = 500;
 	break;
       }
-      decode_more = 0;
     }
+    decode_more = 0;
     _rewind(r);
     if (_end_of_content(r)) {
       if (r->handle_content_end)

@@ -37,12 +37,16 @@ import org.servalproject.servaldna.rhizome.RhizomeBundleList;
 import org.servalproject.servaldna.rhizome.RhizomeCommon;
 import org.servalproject.servaldna.rhizome.RhizomeDecryptionException;
 import org.servalproject.servaldna.rhizome.RhizomeEncryptionException;
+import org.servalproject.servaldna.rhizome.RhizomeException;
 import org.servalproject.servaldna.rhizome.RhizomeFakeManifestException;
+import org.servalproject.servaldna.rhizome.RhizomeImportStatus;
 import org.servalproject.servaldna.rhizome.RhizomeIncompleteManifest;
 import org.servalproject.servaldna.rhizome.RhizomeInconsistencyException;
 import org.servalproject.servaldna.rhizome.RhizomeInsertBundle;
 import org.servalproject.servaldna.rhizome.RhizomeInvalidManifestException;
+import org.servalproject.servaldna.rhizome.RhizomeManifest;
 import org.servalproject.servaldna.rhizome.RhizomeManifestBundle;
+import org.servalproject.servaldna.rhizome.RhizomeManifestSizeException;
 import org.servalproject.servaldna.rhizome.RhizomePayloadBundle;
 import org.servalproject.servaldna.rhizome.RhizomePayloadRawBundle;
 import org.servalproject.servaldna.rhizome.RhizomeReadOnlyException;
@@ -149,6 +153,10 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 				RhizomeEncryptionException
 	{
 		return RhizomeCommon.rhizomeInsert(this, author, manifest, secret, payloadStream, fileName);
+	}
+
+	public RhizomeImportStatus rhizomeImport(RhizomeManifest manifest, InputStream payloadStream) throws ServalDInterfaceException, IOException, RhizomeException, RhizomeManifestSizeException {
+		return RhizomeCommon.rhizomeImport(this, manifest, payloadStream);
 	}
 
 	public MeshMSConversationList meshmsListConversations(SubscriberId sid) throws ServalDInterfaceException, IOException, MeshMSException

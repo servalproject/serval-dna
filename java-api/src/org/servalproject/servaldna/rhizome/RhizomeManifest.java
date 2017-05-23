@@ -20,6 +20,8 @@
 
 package org.servalproject.servaldna.rhizome;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -108,25 +110,34 @@ public class RhizomeManifest {
 	 *
 	 * @author Andrew Bettison <andrew@servalproject.com>
 	 */
-	public byte[] toTextFormat() throws RhizomeManifestSizeException
-	{
-		if (this.textFormat == null) {
-			try {
-				ByteArrayOutputStream os = new ByteArrayOutputStream();
-				toTextFormat(os);
-				os.close();
-				if (os.size() > TEXT_FORMAT_MAX_SIZE)
-					throw new RhizomeManifestSizeException("manifest text format overflow", os.size(), TEXT_FORMAT_MAX_SIZE);
-				this.textFormat = os.toByteArray();
-			}
-			catch (IOException e) {
-				// should not happen with ByteArrayOutputStream
-				return new byte[0];
-			}
-		}
+	public byte[] toTextFormat() throws RhizomeManifestSizeException {
+		buildTextformat();
 		byte[] ret = new byte[this.textFormat.length];
 		System.arraycopy(this.textFormat, 0, ret, 0, ret.length);
 		return ret;
+	}
+
+
+	private void buildTextformat() throws RhizomeManifestSizeException {
+		if (textFormat!=null)
+			return;
+		try{
+			ByteArrayOutputStream os = new ByteArrayOutputStream();
+			try {
+				new RhizomeIncompleteManifest(this).toTextFormat(os);
+				if (signatureBlock!=null) {
+					os.write(0);
+					os.write(this.signatureBlock);
+				}
+				if (os.size() > TEXT_FORMAT_MAX_SIZE)
+					throw new RhizomeManifestSizeException("manifest text format overflow", os.size(), TEXT_FORMAT_MAX_SIZE);
+				textFormat = os.toByteArray();
+			} finally{
+				os.close();
+			}
+		} catch (IOException e) {
+			// Um....
+		}
 	}
 
 	/** Write the Rhizome manifest in its text format representation to the given output stream,
@@ -134,13 +145,9 @@ public class RhizomeManifest {
 	 *
 	 * @author Andrew Bettison <andrew@servalproject.com>
 	 */
-	public void toTextFormat(OutputStream os) throws IOException
-	{
-		new RhizomeIncompleteManifest(this).toTextFormat(os);
-		if (this.signatureBlock != null) {
-			os.write(0);
-			os.write(this.signatureBlock);
-		}
+	public void toTextFormat(OutputStream os) throws IOException, RhizomeManifestSizeException {
+		buildTextformat();
+		os.write(this.textFormat);
 	}
 
 	/** Construct a Rhizome manifest from its text format representation.
@@ -198,7 +205,7 @@ public class RhizomeManifest {
 	 *
 	 * @author Andrew Bettison <andrew@servalproject.com>
 	 */
-	static public RhizomeManifest fromTextFormat(InputStream in) throws IOException, RhizomeManifestParseException
+	public static RhizomeManifest fromTextFormat(InputStream in) throws IOException, RhizomeManifestParseException
 	{
 		byte[] bytes = new byte[TEXT_FORMAT_MAX_SIZE];
 		int n = 0;
@@ -211,6 +218,15 @@ public class RhizomeManifest {
 		if (n != -1)
 			throw new RhizomeManifestParseException("input stream too long");
 		return fromTextFormat(bytes, 0, offset);
+	}
+
+	public static RhizomeManifest fromTextFormat(File manifestFile) throws IOException, RhizomeManifestParseException {
+		InputStream in = new FileInputStream(manifestFile);
+		try {
+			return fromTextFormat(in);
+		}finally {
+			in.close();
+		}
 	}
 
 	private static boolean isFieldNameFirstChar(char c)
