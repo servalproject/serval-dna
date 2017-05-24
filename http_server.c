@@ -99,7 +99,6 @@ static int http_request_parse_http_version(struct http_request *r);
 static int http_request_start_parsing_headers(struct http_request *r);
 static int http_request_parse_header(struct http_request *r);
 static int http_request_start_body(struct http_request *r);
-static int http_request_reject_content(struct http_request *r);
 static int http_request_parse_body_form_data(struct http_request *r);
 static void http_request_start_response(struct http_request *r);
 
@@ -1006,18 +1005,7 @@ static int http_request_parse_header(struct http_request *r)
   _skip_eol(r);
   if (eol == r->parsed) { // if EOL is at start of line (ie, blank line)...
     _commit(r);
-    if (r->request_header.content_length != CONTENT_LENGTH_UNKNOWN) {
-      size_t unparsed = r->end - r->parsed;
-      if (unparsed > r->request_header.content_length) {
-	WARNF("HTTP parsing: already read %zu bytes past end of content", (size_t)(unparsed - r->request_header.content_length));
-	r->request_content_remaining = 0;
-      }
-      else
-	r->request_content_remaining = r->request_header.content_length - unparsed;
-    }
     r->parser = http_request_start_body;
-    if (r->handle_headers)
-      return r->handle_headers(r);
     return 0;
   }
   char *const nextline = r->cursor;
@@ -1193,6 +1181,8 @@ static int http_request_decode_chunks(struct http_request *r){
       r->chunk_state = CHUNK_SIZE;
       if (r->request_content_remaining == 0){
 	r->decoder = NULL;
+	if (r->end_received>r->end)
+	  return WHY("Unexpected data");
 	return 0;
       }
       // fall through
@@ -1206,13 +1196,13 @@ static int http_request_decode_chunks(struct http_request *r){
 	return 100;
       }
       if (ret!=1 || p[0]!='\r' || p[1]!='\n')
-	return WHY("Expected [size]\r\n");
+	return WHY("Expected [size]\\r\\n");
 
       r->decode_ptr = (char*)p+2;
       r->chunk_state = CHUNK_DATA;
 
-      IDEBUGF(r->debug, "Chunk size %zu (parsed %d, unparsed %d, heading %d, data %d) %s",
-	r->chunk_size,
+      IDEBUGF(r->debug, "Chunk size %u (parsed %d, unparsed %d, heading %d, data %d) %s",
+	(int)r->chunk_size,
 	(int)(r->parsed - r->received),
 	(int)(r->end - r->parsed),
 	(int)(r->decode_ptr - r->end),
@@ -1254,8 +1244,11 @@ static int http_request_decode_chunks(struct http_request *r){
 	  // if we can cut the \r\n off the end, do it now
 	  r->chunk_state = CHUNK_SIZE;
 	  r->end_received = r->end;
-	  if (r->request_content_remaining == 0)
+	  if (r->request_content_remaining == 0){
 	    r->decoder = NULL;
+	    if (r->end_received>r->end)
+	      return WHY("Unexpected data");
+	  }
 	}
       }
       // give the parser a chance to deal with this chunk so we can avoid memmove
@@ -1288,7 +1281,8 @@ static int http_request_start_continue(struct http_request *r){
       return 0;
   }
 
-  r->response_sent=0;
+  r->response_sent = 0;
+  r->request_header.expect = 0;
   r->parser = http_request_parse_body_form_data;
   r->form_data_state = START;
   if (_run_out(r))
@@ -1310,9 +1304,12 @@ static int http_request_start_body(struct http_request *r)
   assert(r->path != NULL);
   assert(r->version_major != 0);
   assert(r->parsed <= r->end);
+
   if (r->verb == HTTP_VERB_GET) {
     // TODO: Implement HEAD requests (only send response header, not body)
-    if (r->request_header.content_length != 0 && r->request_header.content_length != CONTENT_LENGTH_UNKNOWN) {
+    if (r->request_header.content_length == CONTENT_LENGTH_UNKNOWN)
+      r->request_header.content_length = 0;
+    if (r->request_header.content_length != 0) {
       IDEBUGF(r->debug, "Malformed HTTP %s request: non-zero Content-Length not allowed", r->verb);
       return 400;
     }
@@ -1332,7 +1329,7 @@ static int http_request_start_body(struct http_request *r)
       return 411; // Length Required
     }
     if (r->request_header.content_length == 0) {
-      r->parser = http_request_reject_content;
+      r->parser = NULL;
     } else {
       if (r->request_header.content_type.type[0] == '\0') {
 	IDEBUGF(r->debug, "Malformed HTTP %s request: missing Content-Type header", r->verb);
@@ -1346,9 +1343,8 @@ static int http_request_start_body(struct http_request *r)
 		r->verb, r->request_header.content_type.type, r->request_header.content_type.subtype);
 	  return 400;
 	}
-	if (r->request_header.expect && _run_out(r) && r->end == r->end_received){
+	if (r->request_header.expect){
 	  r->parser = http_request_start_continue;
-	  return 0;
 	}else{
 	  r->parser = http_request_parse_body_form_data;
 	  r->form_data_state = START;
@@ -1360,28 +1356,29 @@ static int http_request_start_body(struct http_request *r)
       }
     }
   }
-  else {
-    IDEBUGF(r->debug, "Unsupported HTTP %s request", r->verb);
-    r->parser = NULL;
-    return 405; // Method Not Allowed
+
+  if (r->request_header.content_length != CONTENT_LENGTH_UNKNOWN) {
+    size_t unparsed = r->end - r->parsed;
+    if (unparsed > r->request_header.content_length) {
+      IDEBUGF(r->debug, "Malformed request: already read %zu bytes past end of content",
+	(size_t)(unparsed - r->request_header.content_length));
+      return 431; // Request Header Fields Too Large
+    }
+    else
+      r->request_content_remaining = r->request_header.content_length - unparsed;
   }
+
+  if (r->handle_headers){
+    int ret = r->handle_headers(r);
+    if (ret!=0){
+      r->parser = NULL;
+      return ret;
+    }
+  }
+
   if (_run_out(r))
     return 100;
   return 0;
-}
-
-/* A special content parser that rejects any content, used when a Content-Type: 0 header was
- * received.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-static int http_request_reject_content(struct http_request *r)
-{
-  if (r->request_header.content_length != CONTENT_LENGTH_UNKNOWN)
-    IDEBUGF(r->debug, "Malformed HTTP %s request (Content-Length %"PRIhttp_size_t"): spurious content", r->verb, r->request_header.content_length);
-  else
-    IDEBUGF(r->debug, "Malformed HTTP %s request: spurious content", r->verb);
-  return 400;
 }
 
 /* Returns 1 if a MIME delimiter is skipped, 2 if a MIME close-delimiter is skipped.
@@ -1760,7 +1757,22 @@ static ssize_t http_request_read(struct http_request *r, char *buf, size_t len)
 static void http_request_receive(struct http_request *r)
 {
   IN();
-  assert(r->phase == RECEIVE);
+  if (r->phase != RECEIVE){
+    // just read & throw away any data
+    char buff[1024];
+    ssize_t len = http_request_read(r, buff, sizeof buff);
+    if (len <0)
+      RETURNVOID;
+    if (r->request_content_remaining!=CONTENT_LENGTH_UNKNOWN){
+      if ((size_t)len > r->request_content_remaining){
+	IDEBUG(r->debug, "Buffer size reached, reporting overflow");
+	http_request_simple_response(r, 431, NULL); // Request Header Fields Too Large
+	RETURNVOID;
+      }
+      r->request_content_remaining -= len;
+    }
+    RETURNVOID;
+  }
   const char *const bufend = r->buffer + sizeof r->buffer;
   assert(r->end_received <= bufend);
   assert(r->decode_ptr <= r->end_received);
@@ -1832,7 +1844,7 @@ static void http_request_receive(struct http_request *r)
 	RETURNVOID; // poll again
       }
       if (result != 0){
-	r->response.status_code = 500;
+	r->response.status_code = 400;
 	break;
       }
     }
@@ -2042,7 +2054,7 @@ static void _http_request_start_transmitting(struct http_request *r)
 {
   assert(r->phase == RECEIVE || r->phase == PAUSE);
   r->phase = TRANSMIT;
-  r->alarm.poll.events = POLLOUT;
+  r->alarm.poll.events = POLLIN|POLLOUT;
   watch(&r->alarm);
   http_request_set_idle_timeout(r);
 }

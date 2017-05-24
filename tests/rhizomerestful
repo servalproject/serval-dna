@@ -1240,8 +1240,11 @@ setup_RhizomeImport() {
    setup
    set_instance +B
    create_single_identity
-   rhizome_add_bundles $SIDB 1 1
-   executeOk_servald rhizome export manifest "${BID[1]}" file1.manifest
+   create_file file1 100
+   executeOk_servald rhizome add file $SIDB file1 file1.manifest
+   extract_manifest_id manifestid file1.manifest
+   extract_manifest_version version file1.manifest
+   executeOk_servald rhizome export manifest "${manifestid}" file1.manifest
    set_instance +A
 }
 test_RhizomeImport() {
@@ -1253,7 +1256,7 @@ test_RhizomeImport() {
             --basic --user harry:potter \
             --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
             --form "payload=@file1" \
-            "http://$addr_localhost:$PORTA/restful/rhizome/import?id=${BID[1]}&version=${VERSION[1]}"
+            "http://$addr_localhost:$PORTA/restful/rhizome/import?id=${manifestid}&version=${version}"
    tfw_cat http.header http.body
    assertStdoutIs 201
    assertGrep http.header '100 Continue'
@@ -1267,12 +1270,41 @@ test_RhizomeImport() {
             --basic --user harry:potter \
             --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
             --form "payload=@file1" \
-            "http://$addr_localhost:$PORTA/restful/rhizome/import?id=${BID[1]}&version=${VERSION[1]}"
+            "http://$addr_localhost:$PORTA/restful/rhizome/import?id=${manifestid}&version=${version}"
    tfw_cat http.header http.body
    assertStdoutIs 200
    assertGrep --matches=0 http.header '100 Continue'
    assertJq http.body 'contains({"http_status_code": 200})'
    assertJq http.body 'contains({"http_status_message": "Bundle already in store"})'
+}
+
+doc_RhizomeImportLarge="HTTP RESTful import 50 MiB Rhizome bundle"
+setup_RhizomeImportLarge() {
+   setup
+   set_instance +B
+   create_single_identity
+   create_file file1 50m
+   executeOk_servald rhizome add file $SIDB file1 file1.manifest
+   extract_manifest_id manifestid file1.manifest
+   extract_manifest_version version file1.manifest
+   executeOk_servald rhizome export manifest "${manifestid}" file1.manifest
+   set_instance +A
+}
+test_RhizomeImportLarge() {
+   execute curl \
+            --silent --show-error --write-out '%{http_code}' \
+            --header 'Transfer-Encoding: chunked' \
+            --output http.body \
+            --dump-header http.header \
+            --basic --user harry:potter \
+            --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+            --form "payload=@file1" \
+            "http://$addr_localhost:$PORTA/restful/rhizome/import?id=${manifestid}&version=${version}"
+   tfw_cat http.header http.body
+   assertStdoutIs 201
+   assertGrep http.header '100 Continue'
+   assertJq http.body 'contains({"http_status_code": 201})'
+   assertJq http.body 'contains({"http_status_message": "Created"})'
 }
 
 doc_RhizomeJournalAppend="HTTP RESTful Rhizome journal create and append"

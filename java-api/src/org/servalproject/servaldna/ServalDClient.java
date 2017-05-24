@@ -46,11 +46,13 @@ import org.servalproject.servaldna.rhizome.RhizomeInsertBundle;
 import org.servalproject.servaldna.rhizome.RhizomeInvalidManifestException;
 import org.servalproject.servaldna.rhizome.RhizomeManifest;
 import org.servalproject.servaldna.rhizome.RhizomeManifestBundle;
+import org.servalproject.servaldna.rhizome.RhizomeManifestParseException;
 import org.servalproject.servaldna.rhizome.RhizomeManifestSizeException;
 import org.servalproject.servaldna.rhizome.RhizomePayloadBundle;
 import org.servalproject.servaldna.rhizome.RhizomePayloadRawBundle;
 import org.servalproject.servaldna.rhizome.RhizomeReadOnlyException;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
@@ -157,6 +159,10 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 
 	public RhizomeImportStatus rhizomeImport(RhizomeManifest manifest, InputStream payloadStream) throws ServalDInterfaceException, IOException, RhizomeException, RhizomeManifestSizeException {
 		return RhizomeCommon.rhizomeImport(this, manifest, payloadStream);
+	}
+
+	public RhizomeImportStatus rhizomeImportZip(File zipFile) throws ServalDInterfaceException, IOException, RhizomeException, RhizomeManifestSizeException, RhizomeManifestParseException {
+		return RhizomeCommon.rhizomeImportZip(this, zipFile);
 	}
 
 	public MeshMSConversationList meshmsListConversations(SubscriberId sid) throws ServalDInterfaceException, IOException, MeshMSException

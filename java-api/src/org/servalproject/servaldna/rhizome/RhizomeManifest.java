@@ -22,6 +22,7 @@ package org.servalproject.servaldna.rhizome;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.RandomAccessFile;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -41,6 +42,7 @@ import org.servalproject.servaldna.BundleKey;
 public class RhizomeManifest {
 
 	public final static int TEXT_FORMAT_MAX_SIZE = 8192;
+	public static final String MIME_TYPE = "rhizome/manifest; format=\"text+binarysig\"";
 
 	// Core fields used for routing and expiry (cannot be null)
 	public final BundleId id;
@@ -227,6 +229,39 @@ public class RhizomeManifest {
 		}finally {
 			in.close();
 		}
+	}
+
+	public static RhizomeManifest fromZipComment(RandomAccessFile file) throws IOException, RhizomeManifestParseException {
+		int readLen = RhizomeManifest.TEXT_FORMAT_MAX_SIZE + 22;
+		file.seek(file.length() - readLen);
+		byte buff[] = new byte[readLen];
+		file.readFully(buff);
+		int offset = buff.length - 21;
+		while(offset>0) {
+			if (buff[--offset] != 0x06)
+				continue;
+			if (buff[--offset] != 0x05)
+				continue;
+			if (buff[--offset] != 0x4b)
+				continue;
+			if (buff[--offset] != 0x50)
+				continue;
+
+			// located zip EOCD record marker 0x504b0506
+			offset += 20;
+			int manifestLen = (buff[offset++]&0xFF) | ((buff[offset++] & 0xFF) << 8);
+			if (manifestLen != readLen - offset)
+				throw new RhizomeManifestParseException("Zip Comment length ("+manifestLen+") doesn't align with end of file ("+readLen+", "+offset+")");
+			if (manifestLen == 0)
+				throw new RhizomeManifestParseException("No Zip Comment");
+
+			RhizomeManifest manifest = RhizomeManifest.fromTextFormat(buff, offset, manifestLen);
+			long expectedFileSize = file.length() - readLen + offset;
+			if (manifest.filesize != expectedFileSize)
+				throw new RhizomeManifestParseException("Manifest filesize doesn't match zip file length");
+			return manifest;
+		}
+		throw new RhizomeManifestParseException("Zip EOCD record not found");
 	}
 
 	private static boolean isFieldNameFirstChar(char c)

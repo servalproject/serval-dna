@@ -29,10 +29,18 @@ public class PostHelper {
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+        // we try to set an expect header so we can gracefully deal with the server aborting early
+        // however implementations don't seem to support it well and will throw a ProtocolException
+        // if the server doesn't return a 100-Continue
+        // Other implementations (like android), just strip the header.
+        // Then if the server closes the connection early, throw some form of IOException
         conn.setRequestProperty("Expect", "100-continue");
+        // If we don't set this, Java might try to re-use a connection that the server closed
+        conn.setRequestProperty("Connection", "close");
         conn.setChunkedStreamingMode(0);
         conn.connect();
         output = conn.getOutputStream();
+        output.flush();
         writer = new PrintStream(output, false, "UTF-8");
     }
 
@@ -52,7 +60,7 @@ public class PostHelper {
         sb.append('"');
     }
 
-    public void writeHeading(String name, String filename, String type, String encoding)
+    protected void writeHeading(String name, String filename, String type, String encoding)
     {
         StringBuilder sb = new StringBuilder();
         sb.append("\r\n--").append(boundary).append("\r\n");
@@ -80,30 +88,52 @@ public class PostHelper {
         writer.print(value.toHex());
     }
 
-    public void writeField(String name, String filename, InputStream stream) throws IOException {
+    public OutputStream beginFileField(String name, String filename){
         writeHeading(name, filename, "application/octet-stream", "binary");
         writer.flush();
+        return output;
+    }
+
+    public void writeField(String name, String filename, InputStream stream) throws IOException {
+        beginFileField(name, filename);
         byte[] buffer = new byte[4096];
         int n;
         while ((n = stream.read(buffer)) > 0)
             output.write(buffer, 0, n);
     }
 
+    public void writeField(String name, String type, byte value[]) throws IOException {
+        writeHeading(name, null, type, "binary");
+        writer.flush();
+        output.write(value);
+    }
+
+    public void writeField(String name, String type, byte value[], int offset, int length) throws IOException {
+        writeHeading(name, null, type, "binary");
+        writer.flush();
+        output.write(value, offset, length);
+    }
+
     public void writeField(String name, RhizomeManifest manifest) throws IOException, RhizomeManifestSizeException {
-        writeHeading(name, null, "rhizome/manifest; format=\"text+binarysig\"", "binary");
+        writeHeading(name, null, RhizomeManifest.MIME_TYPE, "binary");
         manifest.toTextFormat(writer);
     }
 
     public void writeField(String name, RhizomeIncompleteManifest manifest) throws IOException {
-        writeHeading(name, null, "rhizome/manifest; format=\"text+binarysig\"", "binary");
+        writeHeading(name, null, RhizomeManifest.MIME_TYPE, "binary");
         manifest.toTextFormat(writer);
     }
 
-    public void close(){
-        if (writer==null)
-            return;
-        writer.print("\r\n--" + boundary + "--\r\n");
-        writer.flush();
-        writer.close();
+    public void close() throws IOException {
+        if (writer!=null) {
+            writer.print("\r\n--" + boundary + "--\r\n");
+            writer.flush();
+            writer.close();
+            writer=null;
+        }
+        if (output!=null) {
+            output.close();
+            output = null;
+        }
     }
 }

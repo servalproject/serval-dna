@@ -34,10 +34,12 @@ import org.servalproject.servaldna.ServalDNotImplementedException;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -465,16 +467,45 @@ public class RhizomeCommon
 		}
 	}
 
-	public static RhizomeImportStatus rhizomeImport(ServalDHttpConnectionFactory connector, RhizomeManifest manifest, InputStream payloadStream) throws ServalDInterfaceException, IOException, RhizomeException, RhizomeManifestSizeException {
+	public static RhizomeImportStatus rhizomeImportZip(ServalDHttpConnectionFactory connector, File zipFile) throws ServalDInterfaceException, IOException, RhizomeException, RhizomeManifestSizeException, RhizomeManifestParseException {
+		RandomAccessFile file = new RandomAccessFile(zipFile, "r");
+		RhizomeManifest manifest = RhizomeManifest.fromZipComment(file);
+
 		HttpURLConnection conn = connector.newServalDHttpConnection(
 				"/restful/rhizome/import?id="+manifest.id.toHex()+"&version="+manifest.version);
 		PostHelper helper = new PostHelper(conn);
 		try {
 			helper.connect();
 			helper.writeField("manifest", manifest);
-			if (payloadStream != null)
-				helper.writeField("payload", null, payloadStream);
+			OutputStream out = helper.beginFileField("payload", null);
+
+			file.seek(0);
+
+			long readLength = manifest.filesize-2;
+			byte buff[] = new byte[4096];
+			while (readLength>0){
+				int len = readLength > buff.length ? buff.length : (int)readLength;
+				int read = file.read(buff, 0, len);
+				out.write(buff, 0, read);
+				readLength -= read;
+			}
+			buff[0]=0;
+			buff[1]=0;
+			out.write(buff, 0, 2);
+
 			helper.close();
+
+			int[] expected_response_codes = { HttpURLConnection.HTTP_OK,
+					HttpURLConnection.HTTP_CREATED,
+					HttpURLConnection.HTTP_ACCEPTED};
+
+			Status status = RhizomeCommon.receiveResponse(conn, expected_response_codes);
+			decodeHeaderPayloadStatusOrNull(status, conn);
+			checkPayloadStatus(status);
+			decodeHeaderBundleStatus(status, conn);
+			checkBundleStatus(status);
+			return new RhizomeImportStatus(status.bundle_status_code, status.payload_status_code);
+
 		}catch (ProtocolException e){
 			// dodgy java implementation, only means that the server did not return 100-continue
 			// attempting to read the input stream will fail again
@@ -486,17 +517,40 @@ public class RhizomeCommon
 			}
 			throw e;
 		}
+	}
 
-		int[] expected_response_codes = { HttpURLConnection.HTTP_OK,
-				HttpURLConnection.HTTP_CREATED,
-				HttpURLConnection.HTTP_ACCEPTED};
+	public static RhizomeImportStatus rhizomeImport(ServalDHttpConnectionFactory connector, RhizomeManifest manifest, InputStream payloadStream) throws ServalDInterfaceException, IOException, RhizomeException, RhizomeManifestSizeException {
+		HttpURLConnection conn = connector.newServalDHttpConnection(
+				"/restful/rhizome/import?id="+manifest.id.toHex()+"&version="+manifest.version);
+		PostHelper helper = new PostHelper(conn);
+		try {
+			helper.connect();
+			helper.writeField("manifest", manifest);
+			if (manifest.filesize>0 && payloadStream != null)
+				helper.writeField("payload", null, payloadStream);
+			helper.close();
 
-		Status status = RhizomeCommon.receiveResponse(conn, expected_response_codes);
-		decodeHeaderPayloadStatusOrNull(status, conn);
-		checkPayloadStatus(status);
-		decodeHeaderBundleStatus(status, conn);
-		checkBundleStatus(status);
-		return new RhizomeImportStatus(status.bundle_status_code, status.payload_status_code);
+			int[] expected_response_codes = { HttpURLConnection.HTTP_OK,
+					HttpURLConnection.HTTP_CREATED,
+					HttpURLConnection.HTTP_ACCEPTED};
+
+			Status status = RhizomeCommon.receiveResponse(conn, expected_response_codes);
+			decodeHeaderPayloadStatusOrNull(status, conn);
+			checkPayloadStatus(status);
+			decodeHeaderBundleStatus(status, conn);
+			checkBundleStatus(status);
+			return new RhizomeImportStatus(status.bundle_status_code, status.payload_status_code);
+		}catch (ProtocolException e){
+			// dodgy java implementation, only means that the server did not return 100-continue
+			// attempting to read the input stream will fail again
+			switch (conn.getResponseCode()){
+				case 200:
+					return new RhizomeImportStatus(RhizomeBundleStatus.SAME, null);
+				case 202:
+					return new RhizomeImportStatus(RhizomeBundleStatus.OLD, null);
+			}
+			throw e;
+		}
 	}
 
 	private static RhizomeManifest manifestFromHeaders(HttpURLConnection conn) throws ServalDInterfaceException
