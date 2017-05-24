@@ -49,20 +49,6 @@ public class KeyringCommon
 		public KeyringIdentity identity;
 	}
 
-	private static void dumpStatus(Status status, PrintStream out)
-	{
-		out.println("input_stream=" + status.input_stream);
-		out.println("http_status_code=" + status.http_status_code);
-		out.println("http_status_message=" + status.http_status_message);
-		if (status.identity == null) {
-			out.println("identity=null");
-		} else {
-			out.println("identity.subscriber=" + status.identity.subscriber);
-			out.println("identity.did=" + status.identity.did);
-			out.println("identity.name=" + status.identity.name);
-		}
-	}
-
 	protected static Status receiveResponse(HttpURLConnection conn, int expected_response_code) throws IOException, ServalDInterfaceException
 	{
 		int[] expected_response_codes = { expected_response_code };
@@ -176,13 +162,6 @@ public class KeyringCommon
 		}
 	}
 
-	private static void dumpHeaders(HttpURLConnection conn, PrintStream out)
-	{
-		for (Map.Entry<String,List<String>> e: conn.getHeaderFields().entrySet())
-			for (String v: e.getValue())
-				out.println("received header " + e.getKey() + ": " + v);
-	}
-
 	private static String quoteString(String unquoted)
 	{
 		if (unquoted == null)
@@ -214,7 +193,6 @@ public class KeyringCommon
 		Status status = receiveRestfulResponse(conn, HttpURLConnection.HTTP_OK);
 		try {
 			decodeRestfulStatus(status);
-			dumpStatus(status, System.err);
 			if (status.identity == null)
 				throw new ServalDInterfaceException("invalid JSON response; missing identity");
 
@@ -241,7 +219,6 @@ public class KeyringCommon
 		Status status = receiveRestfulResponse(conn, HttpURLConnection.HTTP_CREATED);
 		try {
 			decodeRestfulStatus(status);
-			dumpStatus(status, System.err);
 			if (status.identity == null)
 				throw new ServalDInterfaceException("invalid JSON response; missing identity");
 			return status.identity;
@@ -263,7 +240,6 @@ public class KeyringCommon
 		Status status = receiveRestfulResponse(conn, HttpURLConnection.HTTP_OK);
 		try {
 			decodeRestfulStatus(status);
-			dumpStatus(status, System.err);
 			if (status.identity == null)
 				throw new ServalDInterfaceException("invalid JSON response; missing identity");
 			return status.identity;
