@@ -556,14 +556,14 @@ format with the following columns:
 *  `name` - the string value of the manifest's *name* field, or *null* if the
    manifest has no *name* field.
 
-### GET /restful/rhizome/newsince/TOKEN/bundlelist.json
+### GET /restful/rhizome/newsince[/TOKEN]/bundlelist.json
 
 This request allows a client to receive near-real-time notification of
 newly-arriving Rhizome bundles.
 
 Fetches a list of all bundles currently in [Serval DNA][]'s Rhizome store, in
 order of ascending insertion time, since (but not including) the bundle
-identified by TOKEN.  TOKEN must be a value taken from the non-null `.token`
+identified by TOKEN. If present, TOKEN must be a value taken from the non-null `.token`
 field of any previous *bundlelist.json* request.
 
 The list is returned in the body of the [response](#response) in [JSON table][]
@@ -932,6 +932,23 @@ The steps of the insertion logic have these variations:
 12. No change.
 
 13. No change.
+
+### POST /restful/rhizome/import
+
+This request allows the client to store a valid manifest and payload that have been 
+obtained through some other means.
+
+*  **manifest**  A signed manifest in [text+binarysig format](#textbinarysig-manifest-format), 
+   with a correct *Content-Type* header. 
+
+*  **payload**  The content of the bundle's payload:
+   *  the form part's *Content-Type* header is currently ignored, but in future
+      it may be used to determine the default values of some manifest fields;
+   *  this parameter must occur after the *manifest* parameter, otherwise the
+      request fails with status [400 Bad Request][400] and the message ‘Missing
+      "manifest" form part’;
+   *  the *payload* parameter must not be supplied if the `filesize` field in
+      the *manifest* parameter is zero.
 
 
 -----

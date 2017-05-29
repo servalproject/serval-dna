@@ -13,28 +13,50 @@ the [MeshMS][] service via the **MeshMS REST API** described in this document.
 
 ### Basic concepts
 
-#### Conversation
-
-TBC
-
 #### Ply
 
-### GET /restful/meshms/RECIPIENTSID/conversationlist.json
+In rhizome, each author can only update rhizome bundles that they first created. 
+A ply is a rhizome journal bundle where each participant records their outgoing messages, 
+and any other changes to the conversation.
 
-TBC
+A ply can contain the following types of records;
+
+ * ACK - A pointer to a range of content within another ply.
+ * MESSAGE - A plain text message encoded in UTF-8.
+ * TIME - A timestamp related to the previous record.
+
+#### Conversation
+
+A MeshMS conversation consists of one or two message ply's. Each participant sets
+the sender and recipient manifest fields to the identities of the two parties in the 
+conversation.
+
+Both ply's are encrypted such that only the sender and recipient can read their contents.
+
+Whenever a new MESSAGE is detected on an incoming ply, a new ACK record is written to the
+end of the outgoing ply. This is used to indicate successful delivery, and to thread the
+display of messages in the conversation.
+
+There is no central server to assign a common ordering to messages in a conversation,
+both parties will see their outgoing messages threaded with received messages in the order
+they arrived locally. 
+
+### GET /restful/meshms/SENDERSID/conversationlist.json
+
+List all the conversations for which SENDERSID is either the sender or receiver of a ply.
+SENDERSID must be an identity in the serval keyring.
 
 ### GET /restful/meshms/SENDERSID/RECIPIENTSID/messagelist.json
 
-TBC
+List the messages in the conversation between SENDERSID and RECIPIENTSID.
 
-### GET /restful/meshms/SENDERSID/RECIPIENTSID/newsince/TOKEN/messagelist.json
+### GET /restful/meshms/SENDERSID/RECIPIENTSID/newsince[/TOKEN]/messagelist.json
 
-TBC
+List new messages in the conversation between SENDERSID and RECIPIENTSID as they arrive.
 
 ### POST /restful/meshms/SENDERSID/RECIPIENTSID/sendmessage
 
-TBC
-
+Send a new message from SENDERSID to RECIPIENTSID.
 
 -----
 **Copyright 2015 Serval Project Inc.**  

@@ -100,16 +100,38 @@ GET requests only accept parameters as [query parameters][] in the *path*.
 
 #### POST
 
-A **POST** request is the same as a GET request except that the first word
-of the first line is "POST", the blank line is followed by a request *body*,
-and the following request headers are mandatory:
-*   [Content-Length](#request-content-length)
-*   [Content-Type](#request-content-type)
+A **POST** request has a similar structure to a GET request except that the first word
+of the first line is "POST". 
 
 POST requests accept parameters as [query parameters][] in the *path* and also
 as a request body with a [Content-Type](#request-content-type) of
 [multipart/form-data][].  These two kinds of parameters are not exclusive; a
 request may contain a mixture of both.
+
+A POST request may also include a [Content-Length](#request-content-length)
+or [Transfer-Encoding](#request-transfer-encoding) header;
+a [Content-Type](#request-content-type); and an [Expect](#request-expect) header as described below.
+
+#### Request Transfer-Encoding
+
+In a request, a **Transfer-Encoding** header of "chunked", indicates that the
+client can generate and transmit the request body without pre-calculating the
+final length. No other transfer encodings are currently supported.
+
+Each chunk is generated as the size of the chunk in hex, followed
+by '\r\n', followed by the request bytes, followed by another '\r\n'.
+
+The end of the input is indicated with a chunk of zero length.
+
+#### Request Expect
+
+The presense of an **Expect** header of "100-Continue" indicates that the server 
+should respond with an intermediate response of "HTTP/1.1 100 Continue" before the
+client begins to transmit a request body. 
+
+If for any reason the server determines that the request body is not needed, or
+the request is invalid, the server will generate the response immediately without 
+reading the contents of the request body.
 
 #### Request Content-Length
 
@@ -119,6 +141,8 @@ process a request until it receives Content-Length bytes, so if Content-Length
 is too large, the request will suspend and eventually time out.  Serval DNA
 will ignore any bytes received after it has read Content-Length bytes, so if
 Content-Length is too small, the request body will be malformed.
+
+A missing Content-Length header will be treated the same as a Content-Length of zero.
 
 #### Request Content-Type
 
@@ -297,8 +321,8 @@ path that only supports [POST](#post), or vice versa.
 
 #### 411 Length Required
 
-A `POST` request did not supply a [Content-Length](#request-content-length)
-header.
+A `POST` request did not supply either a [Content-Length](#request-content-length)
+or [Transfer-Encoding](#request-transfer-encoding) header.
 
 #### 414 Request-URI Too Long
 
