@@ -85,16 +85,16 @@ setup_meshmbFollow() {
 test_meshmbFollow() {
    executeOk_servald meshmb follow $IDA1 $IDA2
    executeOk_servald meshmb list following $IDA1
-   assertStdoutGrep --matches=1 ":$IDA2:$SIDA2:Feed B:[0-9]\+:Message 2\$"
-   assertStdoutGrep --matches=0 ":$IDA3:$SIDA3:Feed C:[0-9]\+:Message 3\$"
+   assertStdoutGrep --matches=1 ":$IDA2:$SIDA2:false:Feed B:[0-9]\+:Message 2\$"
+   assertStdoutGrep --matches=0 ":$IDA3:$SIDA3:false:Feed C:[0-9]\+:Message 3\$"
    executeOk_servald meshmb follow $IDA1 $IDA3
    executeOk_servald meshmb list following $IDA1
-   assertStdoutGrep --matches=1 ":$IDA2:$SIDA2:Feed B:[0-9]\+:Message 2\$"
-   assertStdoutGrep --matches=1 ":$IDA3:$SIDA3:Feed C:[0-9]\+:Message 3\$"
+   assertStdoutGrep --matches=1 ":$IDA2:$SIDA2:false:Feed B:[0-9]\+:Message 2\$"
+   assertStdoutGrep --matches=1 ":$IDA3:$SIDA3:false:Feed C:[0-9]\+:Message 3\$"
    executeOk_servald meshmb ignore $IDA1 $IDA2
    executeOk_servald meshmb list following $IDA1
-   assertStdoutGrep --matches=0 ":$IDA2:$SIDA2:Feed B:[0-9]\+:Message 2\$"
-   assertStdoutGrep --matches=1 ":$IDA3:$SIDA3:Feed C:[0-9]\+:Message 3\$"
+   assertStdoutGrep --matches=0 ":$IDA2:$SIDA2:false:Feed B:[0-9]\+:Message 2\$"
+   assertStdoutGrep --matches=1 ":$IDA3:$SIDA3:false:Feed C:[0-9]\+:Message 3\$"
 }
 
 doc_meshmbThreading="Thread incoming message feeds"
@@ -141,6 +141,34 @@ test_meshmbThreading() {
    assertStdoutGrep --matches=1 "3:$IDA3:$SIDA3:Feed C:[0-9]\+:[0-9]\+:Message 8\$"
    assertStdoutGrep --matches=1 "4:$IDA2:$SIDA2:Feed B:[0-9]\+:[0-9]\+:Message 7\$"
    assertStdoutGrep --matches=1 "5:$IDA5:$SIDA5:Feed E:[0-9]\+:[0-9]\+:Message 6\$"
+}
+
+doc_meshmbBlock="Record blocked feeds"
+setup_meshmbBlock() {
+   setup_identities 4
+   executeOk_servald keyring set did $SIDA1 "" "Feed A"
+   executeOk_servald keyring set did $SIDA2 "" "Feed B"
+   executeOk_servald keyring set did $SIDA3 "" "Feed C"
+   executeOk_servald keyring set did $SIDA4 "" "Feed D"
+   executeOk_servald meshmb send $IDA2 "Message 1"
+   executeOk_servald meshmb send $IDA3 "Message 2"
+   executeOk_servald meshmb send $IDA4 "Message 3"
+   executeOk_servald meshmb follow $IDA1 $IDA2
+   executeOk_servald meshmb follow $IDA1 $IDA3
+}
+test_meshmbBlock() {
+   executeOk_servald meshmb block $IDA1 $IDA3
+   executeOk_servald meshmb block $IDA1 $IDA4
+   executeOk_servald meshmb activity $IDA1
+   tfw_cat --stdout
+   assertStdoutGrep --matches=1 "0:$IDA2:$SIDA2:Feed B:[0-9]\+:[0-9]\+:Message 1\$"
+   # what was followed, disappears
+   assertStdoutGrep --matches=0 ":$IDA3:$SIDA3:"
+   executeOk_servald meshmb list following $IDA1
+   tfw_cat --stdout
+   assertStdoutGrep --matches=1 ":$IDA2:$SIDA2:false:Feed B:[0-9]\+:Message 1\$"
+   assertStdoutGrep --matches=1 ":$IDA3:$SIDA3:true::-1:\$"
+   assertStdoutGrep --matches=1 ":$IDA4:$SIDA4:true::-1:\$"
 }
 
 runTests "$@"

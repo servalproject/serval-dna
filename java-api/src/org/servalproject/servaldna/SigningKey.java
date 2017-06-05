@@ -29,4 +29,9 @@ public class SigningKey extends AbstractId {
     public String getMimeType() {
         return "serval-mesh/id";
     }
+
+    @Override
+    protected boolean isEquivalent(Object other){
+        return SigningKey.class.isInstance(other);
+    }
 }

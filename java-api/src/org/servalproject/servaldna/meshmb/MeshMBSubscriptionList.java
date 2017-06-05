@@ -1,6 +1,7 @@
 package org.servalproject.servaldna.meshmb;
 
 import org.servalproject.json.JSONTableScanner;
+import org.servalproject.json.JSONTokeniser;
 import org.servalproject.servaldna.AbstractJsonList;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
@@ -23,9 +24,10 @@ public class MeshMBSubscriptionList extends AbstractJsonList<MeshMBSubscription,
 		super(httpConnector, new JSONTableScanner()
 				.addColumn("id", SigningKey.class)
 				.addColumn("author", SubscriberId.class)
-				.addColumn("name", String.class)
+				.addColumn("blocked", Boolean.class)
+				.addColumn("name", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
 				.addColumn("timestamp", Long.class)
-				.addColumn("last_message", String.class)
+				.addColumn("last_message", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
 		);
 		this.identity = identity;
 	}
@@ -40,7 +42,7 @@ public class MeshMBSubscriptionList extends AbstractJsonList<MeshMBSubscription,
 				new Subscriber((SubscriberId)row.get("author"),
 						(SigningKey) row.get("id"),
 						true),
-				false,
+				(Boolean) row.get("blocked"),
 				(String) row.get("name"),
 				(Long) row.get("timestamp"),
 				(String) row.get("last_message")

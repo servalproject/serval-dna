@@ -20,6 +20,10 @@ struct meshmb_session{
   struct meshmb_feeds *feeds;
 };
 
+#define FLAG_FOLLOW (1)
+#define FLAG_IGNORE (2)
+#define FLAG_BLOCK (3)
+
 static struct meshmb_session *sessions = NULL;
 
 static struct meshmb_session *open_session(const identity_t *identity){
@@ -484,40 +488,25 @@ static int restful_meshmb_newsince_find(httpd_request *r, const char *remainder)
 */
 
 
-static int restful_meshmb_follow(httpd_request *r, const char *remainder)
+static int restful_meshmb_follow_ignore(httpd_request *r, const char *remainder)
 {
   if (*remainder)
     return 404;
   assert(r->finalise_union == NULL);
 
   struct meshmb_session *session = open_session(&r->bid);
-  int ret;
+  int ret=-1;
 
-  if (session
-    && meshmb_follow(session->feeds, &r->u.meshmb_feeds.bundle_id)!=-1
-    && meshmb_flush(session->feeds)!=-1){
-    http_request_simple_response(&r->http, 201, "TODO, detailed response");
-    ret = 201;
-  }else{
-    http_request_simple_response(&r->http, 500, "TODO, detailed response");
-    ret = 500;
+  if (session){
+    switch(r->ui64){
+      case FLAG_FOLLOW: ret = meshmb_follow(session->feeds, &r->u.meshmb_feeds.bundle_id); break;
+      case FLAG_IGNORE: ret = meshmb_ignore(session->feeds, &r->u.meshmb_feeds.bundle_id); break;
+      case FLAG_BLOCK:  ret = meshmb_block (session->feeds, &r->u.meshmb_feeds.bundle_id); break;
+      default:
+	FATAL("Unexpected value");
+    }
   }
-  if (session)
-    close_session(session);
-  return ret;
-}
-
-static int restful_meshmb_ignore(httpd_request *r, const char *remainder)
-{
-  if (*remainder)
-    return 404;
-  assert(r->finalise_union == NULL);
-
-  struct meshmb_session *session = open_session(&r->bid);
-  int ret;
-
-  if (session
-    && meshmb_ignore(session->feeds, &r->u.meshmb_feeds.bundle_id)!=-1
+  if (ret!=-1
     && meshmb_flush(session->feeds)!=-1){
     http_request_simple_response(&r->http, 201, "TODO, detailed response");
     ret = 201;
@@ -545,7 +534,7 @@ static int restful_feedlist_enum(struct meshmb_feed_details *details, void *cont
   strbuf_json_hex(state->buffer, details->ply.bundle_id.binary, sizeof details->ply.bundle_id.binary);
   strbuf_puts(state->buffer, ",");
   strbuf_json_hex(state->buffer, details->ply.author.binary, sizeof details->ply.author.binary);
-  strbuf_puts(state->buffer, ",");
+  strbuf_puts(state->buffer, details->blocked ? ",true," : ",false,");
   strbuf_json_string(state->buffer, details->name);
   strbuf_puts(state->buffer, ",");
   strbuf_sprintf(state->buffer, "%d", details->timestamp);
@@ -569,6 +558,7 @@ static int restful_meshmb_feedlist_json_content_chunk(struct http_request *hr, s
   const char *headers[] = {
     "id",
     "author",
+    "blocked",
     "name",
     "timestamp",
     "last_message"
@@ -918,13 +908,21 @@ static int restful_meshmb_(httpd_request *r, const char *remainder)
       remainder = "";
     } else if(str_startswith(remainder, "/follow/", &end)
 	&& strn_to_identity_t(&r->u.meshmb_feeds.bundle_id, end, &end) != -1) {
-      handler = restful_meshmb_follow;
+      handler = restful_meshmb_follow_ignore;
       verb = HTTP_VERB_POST;
+      r->ui64 = FLAG_FOLLOW;
       remainder = "";
     } else if(str_startswith(remainder, "/ignore/", &end)
 	&& strn_to_identity_t(&r->u.meshmb_feeds.bundle_id, end, &end) != -1) {
-      handler = restful_meshmb_ignore;
+      handler = restful_meshmb_follow_ignore;
       verb = HTTP_VERB_POST;
+      r->ui64 = FLAG_IGNORE;
+      remainder = "";
+    } else if(str_startswith(remainder, "/block/", &end)
+	&& strn_to_identity_t(&r->u.meshmb_feeds.bundle_id, end, &end) != -1) {
+      handler = restful_meshmb_follow_ignore;
+      verb = HTTP_VERB_POST;
+      r->ui64 = FLAG_BLOCK;
       remainder = "";
     }
 /*

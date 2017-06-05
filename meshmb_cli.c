@@ -212,8 +212,8 @@ static int app_meshmb_find(const struct cli_parsed *parsed, struct cli_context *
 }
 
 DEFINE_CMD(app_meshmb_follow, 0,
-  "Start or stop following a broadcast feed",
-  "meshmb", "follow|ignore" KEYRING_PIN_OPTIONS, "<id>", "<peer>");
+  "Follow, block or ignore a broadcast feed",
+  "meshmb", "follow|ignore|block" KEYRING_PIN_OPTIONS, "<id>", "<peer>");
 static int app_meshmb_follow(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   const char *peerhex;
@@ -221,6 +221,7 @@ static int app_meshmb_follow(const struct cli_parsed *parsed, struct cli_context
     return -1;
 
   int follow = cli_arg(parsed, "follow", NULL, NULL, NULL) == 0;
+  int block = cli_arg(parsed, "block", NULL, NULL, NULL) == 0;
 
   identity_t peer;
   if (str_to_identity_t(&peer, peerhex) == -1)
@@ -230,7 +231,9 @@ static int app_meshmb_follow(const struct cli_parsed *parsed, struct cli_context
 
   int ret = -1;
   if (feeds){
-    if (follow){
+    if (block){
+      ret = meshmb_block(feeds, &peer);
+    }else if (follow){
       ret = meshmb_follow(feeds, &peer);
     }else{
       ret = meshmb_ignore(feeds, &peer);
@@ -263,6 +266,7 @@ static int list_callback(struct meshmb_feed_details *details, void *context)
   cli_put_long(enum_context->context, enum_context->rowcount, ":");
   cli_put_string(enum_context->context, alloca_tohex_rhizome_bid_t(details->ply.bundle_id), ":");
   cli_put_string(enum_context->context, alloca_tohex_sid_t(details->ply.author), ":");
+  cli_put_string(enum_context->context, details->blocked ? "true" : "false", ":");
   cli_put_string(enum_context->context, details->name, ":");
   cli_put_long(enum_context->context, details->timestamp ? (long)(gettime() - details->timestamp) : (long)-1, ":");
   cli_put_string(enum_context->context, details->last_message, "\n");
@@ -270,7 +274,7 @@ static int list_callback(struct meshmb_feed_details *details, void *context)
 }
 
 DEFINE_CMD(app_meshmb_list, 0,
-  "List the feeds that you are currently following",
+  "List the feeds that you are currently following or blocking",
   "meshmb", "list", "following" KEYRING_PIN_OPTIONS, "<id>");
 static int app_meshmb_list(const struct cli_parsed *parsed, struct cli_context *context)
 {
@@ -282,6 +286,7 @@ static int app_meshmb_list(const struct cli_parsed *parsed, struct cli_context *
       "_id",
       "id",
       "author",
+      "blocked",
       "name",
       "age",
       "last_message"

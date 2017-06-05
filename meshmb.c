@@ -22,6 +22,8 @@ struct feed_metadata{
   uint64_t size;
 };
 
+#define FLAG_BLOCKED (1<<0)
+
 struct meshmb_feeds{
   struct tree_root root;
   keyring_identity *id;
@@ -29,8 +31,8 @@ struct meshmb_feeds{
   sign_keypair_t ack_bundle_keypair;
   rhizome_manifest *ack_manifest;
   struct rhizome_write ack_writer;
-  bool_t dirty;
   uint8_t generation;
+  bool_t dirty:1;
 };
 
 struct meshmb_activity_iterator *meshmb_activity_open(struct meshmb_feeds *feeds){
@@ -74,6 +76,8 @@ static int activity_next_ack(struct meshmb_activity_iterator *i){
 	}else{
 	  struct feed_metadata *metadata;
 	  if (tree_find(&i->feeds->root, (void**)&metadata, ack.binary, ack.binary_length, NULL, NULL)==TREE_FOUND){
+	    if (metadata->details.blocked)
+	      continue;
 	    bundle_id = &metadata->bundle_id;
 	    i->metadata = metadata;
 	  }else{
@@ -240,6 +244,8 @@ static int activity_ack(struct meshmb_feeds *feeds, struct message_ply_ack *ack)
 
 static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metadata, struct message_ply_read *reader)
 {
+  if (metadata->details.blocked)
+    return 0;
   if (!metadata->details.ply.found){
     // get the current size from the db
     sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
@@ -329,7 +335,7 @@ static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metada
   return 1;
 }
 
-// TODO, might be quicker to fetch all meshmb bundles and test if they are in the feed list
+// TODO, might sometimes be quicker to fetch all meshmb bundles and test if they are in the feed list
 static int update_stats_tree(void **record, void *context)
 {
   struct feed_metadata *metadata = (struct feed_metadata *)*record;
@@ -346,7 +352,8 @@ int meshmb_bundle_update(struct meshmb_feeds *feeds, rhizome_manifest *m, struct
 {
   struct feed_metadata *metadata;
   if (strcmp(m->service, RHIZOME_SERVICE_MESHMB) == 0
-    && tree_find(&feeds->root, (void**)&metadata, m->keypair.public_key.binary, sizeof m->keypair.public_key.binary, NULL, NULL)==TREE_FOUND){
+    && tree_find(&feeds->root, (void**)&metadata, m->keypair.public_key.binary, sizeof m->keypair.public_key.binary, NULL, NULL)==TREE_FOUND
+    && !metadata->details.blocked){
 
     metadata->details.ply.found = 1;
     if (metadata->details.ply.size != m->filesize){
@@ -384,21 +391,24 @@ static int write_metadata(void **record, void *context)
   len += sizeof (rhizome_bid_t);
   bcopy(metadata->details.ply.author.binary, &buffer[len], sizeof (sid_t));
   len += sizeof (sid_t);
-  buffer[len++]=0;// flags?
-  len+=pack_uint(&buffer[len], metadata->size);
-  len+=pack_uint(&buffer[len], metadata->size - metadata->last_message_offset);
-  len+=pack_uint(&buffer[len], metadata->size - metadata->last_seen);
-  len+=pack_uint(&buffer[len], metadata->details.timestamp);
-  if (name_len > 1)
-    strncpy_nul((char *)&buffer[len], metadata->details.name, name_len);
-  else
-    buffer[len]=0;
-  len+=name_len;
-  if (msg_len > 1)
-    strncpy_nul((char *)&buffer[len], metadata->details.last_message, msg_len);
-  else
-    buffer[len]=0;
-  len+=msg_len;
+  uint8_t flags = (metadata->details.blocked ? FLAG_BLOCKED : 0);
+  buffer[len++]=flags;
+  if (!metadata->details.blocked){
+    len+=pack_uint(&buffer[len], metadata->size);
+    len+=pack_uint(&buffer[len], metadata->size - metadata->last_message_offset);
+    len+=pack_uint(&buffer[len], metadata->size - metadata->last_seen);
+    len+=pack_uint(&buffer[len], metadata->details.timestamp);
+    if (name_len > 1)
+      strncpy_nul((char *)&buffer[len], metadata->details.name, name_len);
+    else
+      buffer[len]=0;
+    len+=name_len;
+    if (msg_len > 1)
+      strncpy_nul((char *)&buffer[len], metadata->details.last_message, msg_len);
+    else
+      buffer[len]=0;
+    len+=msg_len;
+  }
   assert(len < sizeof buffer);
   DEBUGF(meshmb, "Write %zu bytes of metadata for %s/%s",
     len,
@@ -525,10 +535,12 @@ static int read_metadata(struct meshmb_feeds *feeds, struct rhizome_read *read)
       break;
 
     uint64_t delta=0;
-    uint64_t size;
-    uint64_t last_message_offset;
-    uint64_t last_seen;
-    uint64_t timestamp;
+    uint64_t size=0;
+    uint64_t last_message_offset=0;
+    uint64_t last_seen=0;
+    uint64_t timestamp=0;
+    const char *name=NULL;
+    const char *msg=NULL;
 
     int unpacked;
     const rhizome_bid_t *bid = (const rhizome_bid_t *)&buffer[0];
@@ -541,39 +553,41 @@ static int read_metadata(struct meshmb_feeds *feeds, struct rhizome_read *read)
     if (offset >= (unsigned)bytes)
       goto error;
 
-    //uint8_t flags = buffer[offset++];
-    offset++;
-    if (offset >= (unsigned)bytes)
-      goto error;
+    uint8_t flags = buffer[offset++];
 
-    if ((unpacked = unpack_uint(buffer+offset, bytes-offset, &size)) == -1)
-      goto error;
-    offset += unpacked;
-
-    if ((unpacked = unpack_uint(buffer+offset, bytes-offset, &delta)) == -1)
-      goto error;
-    offset += unpacked;
-    last_message_offset = size - delta;
-
-    if ((unpacked = unpack_uint(buffer+offset, bytes-offset, &delta)) == -1)
-      goto error;
-    offset += unpacked;
-    last_seen = size - delta;
-
-    if ((unpacked = unpack_uint(buffer+offset, bytes-offset, &timestamp)) == -1)
-      goto error;
-    offset += unpacked;
-
-    const char *name = (const char *)&buffer[offset];
-    while(buffer[offset++]){
+    if (!(flags & FLAG_BLOCKED)){
       if (offset >= (unsigned)bytes)
 	goto error;
-    }
 
-    const char *msg = (const char *)&buffer[offset];
-    while(buffer[offset++]){
-      if (offset >= (unsigned)bytes)
+      if ((unpacked = unpack_uint(buffer+offset, bytes-offset, &size)) == -1)
 	goto error;
+      offset += unpacked;
+
+      if ((unpacked = unpack_uint(buffer+offset, bytes-offset, &delta)) == -1)
+	goto error;
+      offset += unpacked;
+      last_message_offset = size - delta;
+
+      if ((unpacked = unpack_uint(buffer+offset, bytes-offset, &delta)) == -1)
+	goto error;
+      offset += unpacked;
+      last_seen = size - delta;
+
+      if ((unpacked = unpack_uint(buffer+offset, bytes-offset, &timestamp)) == -1)
+	goto error;
+      offset += unpacked;
+
+      name = (const char *)&buffer[offset];
+      while(buffer[offset++]){
+	if (offset >= (unsigned)bytes)
+	  goto error;
+      }
+
+      msg = (const char *)&buffer[offset];
+      while(buffer[offset++]){
+	if (offset >= (unsigned)bytes)
+	  goto error;
+      }
     }
 
     DEBUGF(meshmb, "Seeking backwards %"PRIu64", %u, %zu", read->offset, offset, bytes);
@@ -583,6 +597,7 @@ static int read_metadata(struct meshmb_feeds *feeds, struct rhizome_read *read)
     if (tree_find(&feeds->root, (void**)&result, bid->binary, sizeof *bid, alloc_feed, feeds)<0)
       return WHY("Failed to allocate metadata");
 
+    result->details.blocked = (flags & FLAG_BLOCKED) ? 1 : 0;
     result->last_message_offset = last_message_offset;
     result->last_seen = last_seen;
     result->size = size;
@@ -675,8 +690,6 @@ int meshmb_follow(struct meshmb_feeds *feeds, rhizome_bid_t *bid)
   struct feed_metadata *metadata;
   DEBUGF(meshmb, "Attempting to follow %s", alloca_tohex_rhizome_bid_t(*bid));
 
-  // TODO load the manifest and check the service!
-
   if (tree_find(&feeds->root, (void**)&metadata, bid->binary, sizeof *bid, alloc_feed, feeds)!=TREE_FOUND)
     return WHYF("Failed to follow feed");
 
@@ -684,6 +697,30 @@ int meshmb_follow(struct meshmb_feeds *feeds, rhizome_bid_t *bid)
   bzero(&reader, sizeof(reader));
   update_stats(feeds, metadata, &reader);
   message_ply_read_close(&reader);
+  return 0;
+}
+
+int meshmb_block(struct meshmb_feeds *feeds, rhizome_bid_t *bid)
+{
+  struct feed_metadata *metadata;
+  DEBUGF(meshmb, "Attempting to block %s", alloca_tohex_rhizome_bid_t(*bid));
+
+  if (tree_find(&feeds->root, (void**)&metadata, bid->binary, sizeof *bid, alloc_feed, feeds)!=TREE_FOUND)
+    return WHYF("Failed to block feed");
+  if (metadata->details.name){
+    free((void*)metadata->details.name);
+    metadata->details.name = NULL;
+  }
+  if (metadata->details.last_message){
+    free((void*)metadata->details.last_message);
+    metadata->details.last_message = NULL;
+  }
+  if (is_all_matching(metadata->details.ply.author.binary, sizeof metadata->details.ply.author, 0))
+    crypto_sign_to_sid(bid, &metadata->details.ply.author);
+  if (!metadata->details.blocked)
+    feeds->dirty = 1;
+  metadata->details.blocked = 1;
+  metadata->details.timestamp = 0;
   return 0;
 }
 

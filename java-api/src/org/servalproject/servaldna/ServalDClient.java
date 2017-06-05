@@ -220,12 +220,8 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 		return list;
 	}
 
-	public int meshmbFollow(Subscriber id, SigningKey peer) throws ServalDInterfaceException, IOException {
-		return MeshMBCommon.follow(this, id, peer);
-	}
-
-	public int meshmbIgnore(Subscriber id, SigningKey peer) throws ServalDInterfaceException, IOException {
-		return MeshMBCommon.ignore(this, id, peer);
+	public int meshmbAlterSubscription(Subscriber id, MeshMBCommon.SubscriptionAction action, SigningKey peer) throws ServalDInterfaceException, IOException {
+		return MeshMBCommon.alterSubscription(this, id, action, peer);
 	}
 
 	public MeshMBSubscriptionList meshmbSubscriptions(Subscriber identity) throws IOException, ServalDInterfaceException {

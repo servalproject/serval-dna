@@ -85,6 +85,10 @@ public abstract class AbstractId {
 		this.binary = binary;
 	}
 
+	protected boolean isEquivalent(Object other){
+		return other.getClass() == this.getClass();
+	}
+
 	@Override
 	public boolean equals(Object other) {
 		// must be the exact same type with the same binary contents to be considered equal
@@ -92,7 +96,7 @@ public abstract class AbstractId {
 			return false;
 		if (other==this)
 			return true;
-		if (other.getClass() == this.getClass()) {
+		if (isEquivalent(other)) {
 			AbstractId oBinary = (AbstractId) other;
 			for (int i = 0; i < this.binary.length; i++)
 				if (this.binary[i] != oBinary.binary[i])
