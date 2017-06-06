@@ -241,7 +241,7 @@ int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_
       xprintf(xpf, " OVERLAY_TYPE");
     xprintf(xpf, "\n");
     
-    if (!payload_flags & 1){
+    if (!(payload_flags & 1)){
       xprintf(xpf, "%sSender; ", indent(6));
       int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs);
       xprintf(xpf, "\n");
