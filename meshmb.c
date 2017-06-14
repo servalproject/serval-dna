@@ -23,6 +23,7 @@ struct feed_metadata{
 };
 
 #define FLAG_BLOCKED (1<<0)
+#define FLAG_OVERRIDDEN_NAME (1<<1)
 
 struct meshmb_feeds{
   struct tree_root root;
@@ -242,6 +243,27 @@ static int activity_ack(struct meshmb_feeds *feeds, struct message_ply_ack *ack)
   return r;
 }
 
+static int replace_string(char **ptr, const char *new_value, ssize_t len, size_t max_len){
+  if (!*ptr && (!new_value || !*new_value))
+    return 0;
+
+  if (len == -1)
+    len = strlen(new_value);
+  if ((size_t)len >= max_len)
+    len = max_len -1;
+
+  if (*ptr && *new_value && strn_str_cmp(new_value, len, *ptr) == 0)
+    return 0;
+
+  if (*ptr){
+    free((void*)*ptr);
+    *ptr = NULL;
+  }
+  if (new_value && *new_value)
+    *ptr = strn_edup(new_value, len);
+  return 1;
+}
+
 static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metadata, struct message_ply_read *reader)
 {
   if (metadata->details.blocked)
@@ -269,19 +291,9 @@ static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metada
     && message_ply_read_open(reader, &metadata->bundle_id, NULL)!=0)
     return -1;
 
-  // TODO allow the user to specify an overridden name?
-  if (metadata->details.name){
-    free((void*)metadata->details.name);
-    metadata->details.name = NULL;
-  }
   metadata->details.ply.author = reader->author;
-
-  if (reader->name){
-    size_t len = strlen(reader->name);
-    if (len >= MAX_NAME_LEN)
-      len = MAX_NAME_LEN -1;
-    metadata->details.name = strn_edup(reader->name, len);
-  }
+  if (!metadata->details.overridden_name)
+    replace_string((char **)&metadata->details.name, reader->name, -1, MAX_NAME_LEN);
 
   reader->read.offset = reader->read.length;
   time_s_t timestamp = 0;
@@ -301,13 +313,7 @@ static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metada
 	break;
 
       last_offset = reader->record_end_offset;
-
-      if (metadata->details.last_message)
-	free((void*)metadata->details.last_message);
-      size_t len = reader->record_length;
-      if (len >= MAX_MSG_LEN)
-	len = MAX_MSG_LEN -1;
-      metadata->details.last_message = strn_edup((const char *)reader->record, len);
+      replace_string((char **)&metadata->details.last_message, (const char *)reader->record, reader->record_length, MAX_MSG_LEN);
       metadata->details.timestamp = timestamp;
       break;
     }
@@ -391,7 +397,11 @@ static int write_metadata(void **record, void *context)
   len += sizeof (rhizome_bid_t);
   bcopy(metadata->details.ply.author.binary, &buffer[len], sizeof (sid_t));
   len += sizeof (sid_t);
-  uint8_t flags = (metadata->details.blocked ? FLAG_BLOCKED : 0);
+  uint8_t flags = 0;
+  if (metadata->details.blocked)
+    flags |= FLAG_BLOCKED;
+  if (metadata->details.overridden_name)
+    flags |= FLAG_OVERRIDDEN_NAME;
   buffer[len++]=flags;
   if (!metadata->details.blocked){
     len+=pack_uint(&buffer[len], metadata->size);
@@ -605,6 +615,7 @@ static int read_metadata(struct meshmb_feeds *feeds, struct rhizome_read *read)
     result->details.name = (name && *name) ? str_edup(name) : NULL;
     result->details.last_message = (msg && *msg) ? str_edup(msg) : NULL;
     result->details.timestamp = timestamp;
+    result->details.overridden_name = (flags & FLAG_OVERRIDDEN_NAME) ? 1 : 0;
 
     DEBUGF(meshmb, "Processed %u bytes of metadata for %s (%s)",
       offset,
@@ -685,7 +696,7 @@ int meshmb_open(keyring_identity *id, struct meshmb_feeds **feeds)
   return ret;
 }
 
-int meshmb_follow(struct meshmb_feeds *feeds, rhizome_bid_t *bid)
+int meshmb_follow(struct meshmb_feeds *feeds, const rhizome_bid_t *bid, const sid_t *author, const char *name)
 {
   struct feed_metadata *metadata;
   DEBUGF(meshmb, "Attempting to follow %s", alloca_tohex_rhizome_bid_t(*bid));
@@ -697,10 +708,16 @@ int meshmb_follow(struct meshmb_feeds *feeds, rhizome_bid_t *bid)
   bzero(&reader, sizeof(reader));
   update_stats(feeds, metadata, &reader);
   message_ply_read_close(&reader);
+
+  if (author && is_sid_t_any(metadata->details.ply.author))
+    metadata->details.ply.author = *author;
+  if (name && replace_string((char **)&metadata->details.name, name, -1, MAX_NAME_LEN))
+    metadata->details.overridden_name = 1;
+
   return 0;
 }
 
-int meshmb_block(struct meshmb_feeds *feeds, rhizome_bid_t *bid)
+int meshmb_block(struct meshmb_feeds *feeds, const rhizome_bid_t *bid, const sid_t *author)
 {
   struct feed_metadata *metadata;
   DEBUGF(meshmb, "Attempting to block %s", alloca_tohex_rhizome_bid_t(*bid));
@@ -715,8 +732,8 @@ int meshmb_block(struct meshmb_feeds *feeds, rhizome_bid_t *bid)
     free((void*)metadata->details.last_message);
     metadata->details.last_message = NULL;
   }
-  if (is_all_matching(metadata->details.ply.author.binary, sizeof metadata->details.ply.author, 0))
-    crypto_sign_to_sid(bid, &metadata->details.ply.author);
+  if (author && is_sid_t_any(metadata->details.ply.author))
+    metadata->details.ply.author = *author;
   if (!metadata->details.blocked)
     feeds->dirty = 1;
   metadata->details.blocked = 1;
@@ -724,7 +741,7 @@ int meshmb_block(struct meshmb_feeds *feeds, rhizome_bid_t *bid)
   return 0;
 }
 
-int meshmb_ignore(struct meshmb_feeds *feeds, rhizome_bid_t *bid)
+int meshmb_ignore(struct meshmb_feeds *feeds, const rhizome_bid_t *bid)
 {
   DEBUGF(meshmb, "Attempting to ignore %s", alloca_tohex_rhizome_bid_t(*bid));
   tree_walk_prefix(&feeds->root, bid->binary, sizeof *bid, free_feed, feeds);

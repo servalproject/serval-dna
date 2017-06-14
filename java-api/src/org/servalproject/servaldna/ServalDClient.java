@@ -220,8 +220,8 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 		return list;
 	}
 
-	public int meshmbAlterSubscription(Subscriber id, MeshMBCommon.SubscriptionAction action, SigningKey peer) throws ServalDInterfaceException, IOException {
-		return MeshMBCommon.alterSubscription(this, id, action, peer);
+	public int meshmbAlterSubscription(Subscriber id, MeshMBCommon.SubscriptionAction action, Subscriber peer, String name) throws ServalDInterfaceException, IOException {
+		return MeshMBCommon.alterSubscription(this, id, action, peer, name);
 	}
 
 	public MeshMBSubscriptionList meshmbSubscriptions(Subscriber identity) throws IOException, ServalDInterfaceException {

@@ -9,6 +9,7 @@ import org.servalproject.servaldna.Subscriber;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
+import java.util.Vector;
 
 /**
  * Created by jeremy on 5/10/16.
@@ -34,8 +35,15 @@ public class MeshMBCommon {
         return conn.getResponseCode();
     }
 
-    public static int alterSubscription(ServalDHttpConnectionFactory connector, Subscriber id, SubscriptionAction action, SigningKey peer) throws ServalDInterfaceException, IOException {
-        HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshmb/" + id.signingKey.toHex() + "/"+action.toString().toLowerCase()+"/" + peer.toHex());
+    public static int alterSubscription(ServalDHttpConnectionFactory connector, Subscriber id, SubscriptionAction action, Subscriber peer, String name) throws ServalDInterfaceException, IOException {
+        Vector<ServalDHttpConnectionFactory.QueryParam> parms = new Vector<>();
+        parms.add(new ServalDHttpConnectionFactory.QueryParam("sender", peer.sid.toHex()));
+        if (name!=null && !"".equals(name))
+            parms.add(new ServalDHttpConnectionFactory.QueryParam("name", name));
+        HttpURLConnection conn = connector.newServalDHttpConnection(
+                "/restful/meshmb/"+id.signingKey.toHex()+"/"+peer.signingKey.toHex(),
+                parms
+        );
         conn.setRequestMethod("POST");
         conn.connect();
         return conn.getResponseCode();

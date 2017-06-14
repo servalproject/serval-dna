@@ -157,8 +157,8 @@ setup_meshmbBlock() {
    executeOk_servald meshmb follow $IDA1 $IDA3
 }
 test_meshmbBlock() {
-   executeOk_servald meshmb block $IDA1 $IDA3
-   executeOk_servald meshmb block $IDA1 $IDA4
+   executeOk_servald meshmb block $IDA1 $IDA3 $SIDA3
+   executeOk_servald meshmb block $IDA1 $IDA4 $SIDA4
    executeOk_servald meshmb activity $IDA1
    tfw_cat --stdout
    assertStdoutGrep --matches=1 "0:$IDA2:$SIDA2:Feed B:[0-9]\+:[0-9]\+:Message 1\$"

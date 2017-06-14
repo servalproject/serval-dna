@@ -213,13 +213,18 @@ static int app_meshmb_find(const struct cli_parsed *parsed, struct cli_context *
 
 DEFINE_CMD(app_meshmb_follow, 0,
   "Follow, block or ignore a broadcast feed",
-  "meshmb", "follow|ignore|block" KEYRING_PIN_OPTIONS, "<id>", "<peer>");
+  "meshmb", "follow|ignore|block" KEYRING_PIN_OPTIONS, "<id>", "<peer>", "[<sender>]", "[<name>]");
 static int app_meshmb_follow(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   const char *peerhex;
-  if (cli_arg(parsed, "peer", &peerhex, str_is_identity, "") == -1)
+  const char *sidhex;
+  const char *name;
+
+  if (cli_arg(parsed, "peer", &peerhex, str_is_identity, "") == -1
+  || cli_arg(parsed, "sender", &sidhex, str_is_subscriber_id, NULL) == -1)
     return -1;
 
+  cli_arg(parsed, "name", &name, NULL, NULL);
   int follow = cli_arg(parsed, "follow", NULL, NULL, NULL) == 0;
   int block = cli_arg(parsed, "block", NULL, NULL, NULL) == 0;
 
@@ -227,14 +232,21 @@ static int app_meshmb_follow(const struct cli_parsed *parsed, struct cli_context
   if (str_to_identity_t(&peer, peerhex) == -1)
     return WHY("Invalid identity");
 
+  sid_t sender;
+  bzero(&sender, sizeof sender);
+  if (sidhex && *sidhex){
+    if (str_to_sid_t(&sender, sidhex) == -1)
+      return WHY("Invalid sender");
+  }
+
   struct meshmb_feeds *feeds = cli_feeds_open(parsed);
 
   int ret = -1;
   if (feeds){
     if (block){
-      ret = meshmb_block(feeds, &peer);
+      ret = meshmb_block(feeds, &peer, (sidhex && *sidhex ? &sender : NULL));
     }else if (follow){
-      ret = meshmb_follow(feeds, &peer);
+      ret = meshmb_follow(feeds, &peer, (sidhex && *sidhex ? &sender : NULL), name);
     }else{
       ret = meshmb_ignore(feeds, &peer);
     }

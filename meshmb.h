@@ -15,6 +15,7 @@ struct meshmb_feed_details{
   const char *last_message;
   time_s_t timestamp;
   bool_t blocked:1;
+  bool_t overridden_name:1;
 };
 
 // threaded feed iterator state
@@ -40,9 +41,9 @@ void meshmb_close(struct meshmb_feeds *feeds);
 int meshmb_flush(struct meshmb_feeds *feeds);
 
 // set / clear follow flag for this feed
-int meshmb_follow(struct meshmb_feeds *feeds, rhizome_bid_t *bid);
-int meshmb_ignore(struct meshmb_feeds *feeds, rhizome_bid_t *bid);
-int meshmb_block(struct meshmb_feeds *feeds, rhizome_bid_t *bid);
+int meshmb_follow(struct meshmb_feeds *feeds, const rhizome_bid_t *bid, const sid_t *sender, const char *name);
+int meshmb_ignore(struct meshmb_feeds *feeds, const rhizome_bid_t *bid);
+int meshmb_block(struct meshmb_feeds *feeds, const rhizome_bid_t *bid, const sid_t *sender);
 
 // enumerate feeds, starting from restart_from
 typedef int (*meshmb_callback) (struct meshmb_feed_details *details, void *context);

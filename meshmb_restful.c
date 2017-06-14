@@ -498,14 +498,34 @@ static int restful_meshmb_follow_ignore(httpd_request *r, const char *remainder)
   int ret=-1;
 
   if (session){
+    const char *name = http_request_get_query_param(&r->http, "name");
+    const char *sender_hex = http_request_get_query_param(&r->http, "sender");
+    sid_t sender;
+    bzero(&sender, sizeof sender);
+    if (sender_hex && *sender_hex){
+      if (str_to_sid_t(&sender, sender_hex) == -1)
+	goto fail;
+    }
+
     switch(r->ui64){
-      case FLAG_FOLLOW: ret = meshmb_follow(session->feeds, &r->u.meshmb_feeds.bundle_id); break;
-      case FLAG_IGNORE: ret = meshmb_ignore(session->feeds, &r->u.meshmb_feeds.bundle_id); break;
-      case FLAG_BLOCK:  ret = meshmb_block (session->feeds, &r->u.meshmb_feeds.bundle_id); break;
+      case FLAG_FOLLOW:
+	ret = meshmb_follow(session->feeds, &r->u.meshmb_feeds.bundle_id,
+	  (sender_hex && *sender_hex) ? &sender : NULL,
+	  name);
+	break;
+      case FLAG_IGNORE:
+	ret = meshmb_ignore(session->feeds, &r->u.meshmb_feeds.bundle_id);
+	break;
+      case FLAG_BLOCK:
+	ret = meshmb_block (session->feeds, &r->u.meshmb_feeds.bundle_id,
+	  (sender_hex && *sender_hex) ? &sender : NULL);
+	break;
       default:
 	FATAL("Unexpected value");
     }
   }
+
+fail:
   if (ret!=-1
     && meshmb_flush(session->feeds)!=-1){
     http_request_simple_response(&r->http, 201, "TODO, detailed response");
