@@ -1033,7 +1033,7 @@ test_crowded_mess() {
    executeOk_servald mdp trace $SIDD
    assertStdoutGrep --matches=1 "^[0-9]:${SIDD}\$"
    tfw_cat --stdout
-   executeOk_servald mdp ping --timeout=3 --wait-for-duplicates $SIDH 1
+   executeOk_servald mdp ping --timeout=3 --wait-for-duplicates $SIDH 3
    tfw_cat --stdout --stderr
 }
 
