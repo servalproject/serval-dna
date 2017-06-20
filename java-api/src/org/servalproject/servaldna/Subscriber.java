@@ -43,6 +43,8 @@ public final class Subscriber {
         if (o == null || getClass() != o.getClass()) return false;
 
         Subscriber that = (Subscriber) o;
+        if (that.signingKey!=null && this.signingKey!=null)
+            return signingKey.equals(that.signingKey);
 
         return sid.equals(that.sid);
     }
