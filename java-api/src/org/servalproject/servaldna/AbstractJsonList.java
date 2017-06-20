@@ -18,6 +18,7 @@ public abstract class AbstractJsonList<T, E extends Exception> {
     protected final JSONTableScanner table;
     protected HttpURLConnection httpConnection;
     protected JSONTokeniser json;
+    protected boolean closed = false;
     protected long rowCount = 0;
 
     protected AbstractJsonList(ServalDHttpConnectionFactory httpConnector, JSONTableScanner table){
@@ -88,6 +89,8 @@ public abstract class AbstractJsonList<T, E extends Exception> {
                 json.consume(JSONTokeniser.Token.EOF);
                 return null;
             }
+            if (closed && tok == JSONTokeniser.Token.EOF)
+                return null;
             if (rowCount != 0)
                 JSONTokeniser.match(tok, JSONTokeniser.Token.COMMA);
             else
@@ -110,10 +113,11 @@ public abstract class AbstractJsonList<T, E extends Exception> {
 
     public void close() throws IOException
     {
+        if (closed)
+            return;
+        closed = true;
         httpConnection = null;
-        if (json != null) {
+        if (json != null)
             json.close();
-            json = null;
-        }
     }
 }
