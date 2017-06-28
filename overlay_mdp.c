@@ -267,13 +267,12 @@ int overlay_mdp_setup_sockets()
 	addr.inet.sin_port = htons(port);
 	if (bind(fd, &addr.addr, addr.addrlen)!=-1){
 	  mdp_sock2_inet.poll.fd = fd;
-	  fd = -1;
 	  mdp_sock2_inet.poll.events = POLLIN;
 	  watch(&mdp_sock2_inet);
 	  mdp_loopback_port = port;
 	  
 	  INFOF("Socket mdp.2.inet: fd=%d %s", fd, alloca_socket_address(&addr));
-	  
+	  fd = -1;
 	  break;
 	}
 	  
