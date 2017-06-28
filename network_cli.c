@@ -477,6 +477,8 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
   if ((mdp_sockfd = mdp_socket()) < 0)
     return WHY("Cannot create MDP socket");
 
+  int ret=-1;
+
   struct mdp_header mdp_header;
   bzero(&mdp_header, sizeof mdp_header);
 
@@ -484,10 +486,9 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
   mdp_header.local.port = MDP_ROUTE_TABLE;
   mdp_header.remote.sid = SID_ANY;
   mdp_header.remote.port = MDP_ROUTE_TABLE;
-  if (opt_monitor)
-    mdp_header.flags = MDP_BIND;
 
-  int ret=-1;
+  if (opt_monitor && mdp_bind(mdp_sockfd, &mdp_header.local))
+    goto end;
 
   if (mdp_send(mdp_sockfd, &mdp_header, NULL, 0))
     goto end;
