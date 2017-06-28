@@ -203,7 +203,13 @@ int message_ply_read_open(struct message_ply_read *ply, const rhizome_bid_t *bid
 
     assert(m->filesize != RHIZOME_SIZE_UNSET);
     ply->bundle_id = m->keypair.public_key;
-    ply->author = m->author;
+    rhizome_lookup_author(m);
+    if (m->authorship == AUTHOR_LOCAL || m->authorship == AUTHOR_REMOTE)
+      ply->author = m->author;
+    else if(m->has_sender)
+      ply->author = m->sender;
+    else
+      bzero(&ply->author, sizeof(ply->author));
     ply->read.offset = ply->read.length = m->filesize;
     if (m->name && *m->name)
       ply->name = str_edup(m->name);
