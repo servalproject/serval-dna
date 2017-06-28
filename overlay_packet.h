@@ -151,7 +151,7 @@ DECLARE_SECTION(struct internal_binding, bindings);
   static struct internal_binding BIND ## FUNC IN_SECTION(bindings) = { \
     .port = PORT, \
     .function = FUNC, \
-    .stats.name = #FUNC, \
+    .stats = {.name = #FUNC, }, \
   }
 
 #endif //__SERVAL_DNA__OVERLAY_PACKET_H
