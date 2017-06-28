@@ -189,22 +189,16 @@ overlay_bind_socket(const struct socket_address *addr){
   if (fd < 0)
     return -1;
   
-  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) < 0) {
-    WHY_perror("setsockopt(SO_REUSEADR)");
-    goto error;
-  }
+  if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) < 0)
+    WARN_perror("setsockopt(SO_REUSEADR)");
   
   #ifdef SO_REUSEPORT
-    if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &reuseP, sizeof(reuseP)) < 0) {
-      WHY_perror("setsockopt(SO_REUSEPORT)");
-      goto error;
-    }
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &reuseP, sizeof(reuseP)) < 0)
+      WARN_perror("setsockopt(SO_REUSEPORT)");
   #endif
   
-  if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
-    WHY_perror("setsockopt(SO_BROADCAST)");
-    goto error;
-  }
+  if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0)
+    WARN_perror("setsockopt(SO_BROADCAST)");
   
   /* Automatically close socket on calls to exec().
    This makes life easier when we restart with an exec after receiving
