@@ -2,6 +2,7 @@ package org.servalproject.servaldna.meshmb;
 
 import org.servalproject.servaldna.PostHelper;
 import org.servalproject.servaldna.ServalDClient;
+import org.servalproject.servaldna.ServalDFailureException;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SigningKey;
@@ -30,9 +31,12 @@ public class MeshMBCommon {
         helper.connect();
         helper.writeField("message", text);
         helper.close();
-
-        // TODO handle specific errors
-        return conn.getResponseCode();
+        int responseCode = conn.getResponseCode();
+        // TODO specific errors
+        if (responseCode!=201)
+            throw new ServalDFailureException("received unexpected HTTP Status "+
+                    conn.getResponseCode()+" " + conn.getResponseMessage()+" from " + conn.getURL());
+        return responseCode;
     }
 
     public static int alterSubscription(ServalDHttpConnectionFactory connector, Subscriber id, SubscriptionAction action, Subscriber peer, String name) throws ServalDInterfaceException, IOException {
@@ -41,11 +45,16 @@ public class MeshMBCommon {
         if (name!=null && !"".equals(name))
             parms.add(new ServalDHttpConnectionFactory.QueryParam("name", name));
         HttpURLConnection conn = connector.newServalDHttpConnection(
-                "/restful/meshmb/"+id.signingKey.toHex()+"/"+peer.signingKey.toHex(),
+                "/restful/meshmb/"+id.signingKey.toHex()+"/"+action.toString().toLowerCase()+"/"+peer.signingKey.toHex(),
                 parms
         );
         conn.setRequestMethod("POST");
         conn.connect();
-        return conn.getResponseCode();
+        int responseCode = conn.getResponseCode();
+        // TODO specific errors
+        if (responseCode!=201)
+            throw new ServalDFailureException("received unexpected HTTP Status "+
+                    conn.getResponseCode()+" " + conn.getResponseMessage()+" from " + conn.getURL());
+        return responseCode;
     }
 }
