@@ -715,7 +715,10 @@ static void _json_char(strbuf sb, uint32_t c)
     strbuf_puts(sb, "\\r");
   else if (c == '\t')
     strbuf_puts(sb, "\\t");
-  else if (c>0x7f || iscntrl(c))
+  else if (c>=0x10000){
+    c-=0x10000;
+    strbuf_sprintf(sb, "\\u%04X\\u%04X", 0xD800 + ((c>>10) & 0x3FF), 0xDC00 + (c & 0x3FF));
+  }else if (c>0x7f || iscntrl(c))
     strbuf_sprintf(sb, "\\u%04X", c);
   else
     strbuf_putc(sb, c);

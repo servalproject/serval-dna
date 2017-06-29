@@ -776,4 +776,34 @@ test_sendFlood() {
    tfw_cat http.headers conversationlist.json
 }
 
+doc_unicode="Send and receive unicode emoticons"
+setup_unicode() {
+   IDENTITY_COUNT=2
+   setup
+}
+test_unicode() {
+   SMILEY1=`echo -e "\xf0\x9f\x98\x80\x0a"`
+   SMILEY2=`echo -e "\xf0\x9f\x98\x90\x0a"`
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "$SMILEY1"
+   executeOk curl \
+         --silent --fail --show-error \
+         --output sendmessage.json \
+         --basic --user harry:potter \
+         --form "message=$SMILEY2;type=text/plain;charset=utf-8" \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
+   executeOk curl \
+         --silent --fail --show-error \
+         --output messagelist.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA2/messagelist.json"
+   tfw_cat messagelist.json
+   assertGrep --matches=1 messagelist.json '\\uD83D\\uDE10'
+   assertGrep --matches=1 messagelist.json '\\uD83D\\uDE00'
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   tfw_cat --stdout
+   assertStdoutGrep --matches=1 "$SMILEY1"
+   assertStdoutGrep --matches=1 "$SMILEY2"
+}
+
 runTests "$@"
