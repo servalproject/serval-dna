@@ -469,12 +469,12 @@ int meshmb_flush(struct meshmb_feeds *feeds)
 
 	    rhizome_manifest_set_filehash(m, &write.id);
 	    rhizome_manifest_set_filesize(m, write.file_length);
-	    struct rhizome_bundle_result result = rhizome_manifest_finalise(m, &mout, 1);
-	    if (result.status == RHIZOME_BUNDLE_STATUS_NEW){
+	    struct rhizome_bundle_result end_result = rhizome_manifest_finalise(m, &mout, 1);
+	    if (end_result.status == RHIZOME_BUNDLE_STATUS_NEW){
 	      ret = ++feeds->generation;
 	      feeds->dirty = 0;
 	    }
-	    rhizome_bundle_result_free(&result);
+	    rhizome_bundle_result_free(&end_result);
 	  }
 	}
       }
@@ -483,9 +483,11 @@ int meshmb_flush(struct meshmb_feeds *feeds)
       break;
     }
     default:
+      WHYF("Unexpected bundle status: %s", rhizome_bundle_result_message(result));
       break;
   }
 
+  rhizome_bundle_result_free(&result);
   rhizome_manifest_free(m);
   return ret;
 }

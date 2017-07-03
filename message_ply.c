@@ -126,12 +126,15 @@ int message_ply_write_finish(struct message_ply_write *ply_write, struct message
 {
   enum rhizome_payload_status status = rhizome_finish_write(&ply_write->write);
   status = rhizome_finish_store(&ply_write->write, ply_write->m, status);
-  if (status != RHIZOME_PAYLOAD_STATUS_NEW)
+  // There's a chance that the new payload will actually be identical to one that already exists
+  if (status != RHIZOME_PAYLOAD_STATUS_NEW && status != RHIZOME_PAYLOAD_STATUS_STORED){
+    WHYF("Failed to write payload: %s", rhizome_payload_status_message(status));
     return -1;
+  }
   rhizome_manifest *mout = NULL;
   struct rhizome_bundle_result result = rhizome_manifest_finalise(ply_write->m, &mout, 1);
   if (result.status != RHIZOME_BUNDLE_STATUS_NEW){
-    WARNF("Cannot create message ply manifest: %s", alloca_rhizome_bundle_result(result));
+    WHYF("Cannot create message ply manifest: %s", alloca_rhizome_bundle_result(result));
     rhizome_bundle_result_free(&result);
     return -1;
   }
