@@ -472,25 +472,20 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   DEBUGF(rhizome_tx, "Dispatch size_high=%"PRId64,r->cursor->size_high);
   rhizome_direct_transport_state_http *state = r->transport_specific_state;
 
-  int sock=socket(AF_INET, SOCK_STREAM, 0);
+  struct socket_address addr;
+  bzero(&addr,sizeof(addr));
+
+  if (socket_resolve_name(AF_INET, state->host, NULL, &addr)==-1){
+    DEBUGF(rhizome_tx, "could not resolve hostname");
+    goto end;
+  }
+  addr.inet.sin_port=htons(state->port);
+
+  int sock=socket(addr.addr.sa_family, SOCK_STREAM, 0);
   if (sock==-1) {
     WHY_perror("socket");
     goto end;
   }
-
-  struct hostent *hostent;
-  hostent = gethostbyname(state->host);
-  if (!hostent) {
-    DEBUGF(rhizome_tx, "could not resolve hostname");
-    goto end;
-  }
-
-  struct socket_address addr;
-  bzero(&addr,sizeof(addr));
-  addr.addrlen = sizeof(addr.inet);
-  addr.inet.sin_family = AF_INET;
-  addr.inet.sin_port = htons(state->port);
-  addr.inet.sin_addr = *((struct in_addr *)hostent->h_addr);
 
   if (connect(sock, &addr.addr, addr.addrlen) == -1) {
     WHYF_perror("connect(%s)", alloca_socket_address(&addr));

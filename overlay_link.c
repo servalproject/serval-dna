@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "keyring.h"
 #include "strbuf_helpers.h"
 #include "route_link.h"
+#include "socket.h"
 
 int set_reachable(struct subscriber *subscriber, 
   struct network_destination *destination, struct subscriber *next_hop,
@@ -80,29 +81,6 @@ int set_reachable(struct subscriber *subscriber,
   return 1;
 }
 
-static int resolve_name(const char *name, struct in_addr *addr){
-  // TODO this can block, move to worker thread.
-  IN();
-  int ret=0;
-  struct addrinfo hint={
-    .ai_family=AF_INET,
-  };
-  struct addrinfo *addresses=NULL;
-  if (getaddrinfo(name, NULL, &hint, &addresses))
-    RETURN(WHYF("Failed to resolve %s",name));
-  
-  if (addresses->ai_addr->sa_family==AF_INET){
-    *addr = ((struct sockaddr_in *)addresses->ai_addr)->sin_addr;
-    DEBUGF(overlayrouting, "Resolved %s into %s", name, inet_ntoa(*addr));
-    
-  }else
-    ret=WHY("Ignoring non IPv4 address");
-  
-  freeaddrinfo(addresses);
-  RETURN(ret);
-  OUT();
-}
-
 // load a unicast address from configuration
 struct network_destination *load_subscriber_address(struct subscriber *subscriber)
 {
@@ -123,19 +101,17 @@ struct network_destination *load_subscriber_address(struct subscriber *subscribe
   }
   struct socket_address addr;
   bzero(&addr, sizeof(addr));
-  addr.addrlen = sizeof(addr.inet);
-  addr.inet.sin_family = AF_INET;
-  addr.inet.sin_addr = hostc->address;
-  addr.inet.sin_port = htons(hostc->port);
-  if (addr.inet.sin_addr.s_addr==INADDR_NONE){
-    if (interface || overlay_interface_get_default()){
-      if (resolve_name(hostc->host, &addr.inet.sin_addr))
-	return NULL;
-    }else{
-      // interface isnt up yet
+  if (hostc->address.s_addr == INADDR_NONE){
+    if (socket_resolve_name(AF_INET, hostc->host, NULL, &addr)==-1){
+      // Perhaps the right interface isnt up yet
       return NULL;
     }
+  }else{
+    addr.addrlen = sizeof(addr.inet);
+    addr.inet.sin_family = AF_INET;
+    addr.inet.sin_addr = hostc->address;
   }
+  addr.inet.sin_port = htons(hostc->port);
   DEBUGF(overlayrouting, "Loaded address %s for %s", alloca_socket_address(&addr), alloca_tohex_sid_t(subscriber->sid));
   return create_unicast_destination(&addr, interface);
 }

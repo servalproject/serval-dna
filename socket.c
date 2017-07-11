@@ -21,6 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 #include <assert.h>
 #include <libgen.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
 #include "instance.h"
 #include "str.h"
@@ -353,4 +355,29 @@ ssize_t _recv_message(struct __sourceloc __whence, int fd, struct socket_address
   data.iov[0].iov_base = buffer;
   data.iov[0].iov_len = buflen;
   return _recv_message_frag(__whence, fd, address, ttl, &data);
+}
+
+int socket_resolve_name(int family, const char *name, const char *service, struct socket_address *address){
+  int ret=-1;
+  struct addrinfo hint={
+    .ai_flags = AI_ADDRCONFIG,
+    .ai_family = family,
+  };
+  struct addrinfo *addresses=NULL;
+  if (getaddrinfo(name, service, &hint, &addresses))
+    return WHYF_perror("Failed to resolve %s",name);
+
+  struct addrinfo *p = addresses;
+  while(p){
+    if (p->ai_addrlen < sizeof(address->raw) && (p->ai_addr->sa_family == AF_INET || p->ai_addr->sa_family == AF_INET6)){
+      address->addrlen = p->ai_addrlen;
+      memcpy(&address->addr, p->ai_addr, p->ai_addrlen);
+      ret = 0;
+      break;
+    }
+    p = p->ai_next;
+  }
+
+  freeaddrinfo(addresses);
+  return ret;
 }

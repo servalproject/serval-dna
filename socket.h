@@ -61,6 +61,7 @@ int _socket_listen(struct __sourceloc, int sock, int backlog);
 int _socket_set_reuseaddr(struct __sourceloc, int sock, int reuseP);
 int _socket_set_rcvbufsize(struct __sourceloc, int sock, unsigned buffer_size);
 int socket_unlink_close(int sock);
+int socket_resolve_name(int family, const char *name, const char *service, struct socket_address *address);
 
 #define make_local_sockaddr(sockname, fmt,...) _make_local_sockaddr(__WHENCE__, (sockname), (fmt), ##__VA_ARGS__)
 #define esocket(domain, type, protocol)             _esocket(__WHENCE__, (domain), (type), (protocol))
