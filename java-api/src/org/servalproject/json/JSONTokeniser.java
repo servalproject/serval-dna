@@ -20,6 +20,7 @@
 
 package org.servalproject.json;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -31,6 +32,7 @@ public class JSONTokeniser {
 
 	final InputStream underlyingStream;
 	final PushbackReader reader;
+	private boolean closed = false;
 	Object pushedToken;
 
 	private static final boolean DUMP_JSON_TO_STDERR = false;
@@ -104,18 +106,36 @@ public class JSONTokeniser {
 
 	private int _read() throws IOException
 	{
-		int n = this.reader.read();
-		if (DUMP_JSON_TO_STDERR && n != -1)
-			System.err.print((char)n);
-		return n;
+		try {
+			int n = this.reader.read();
+			if (DUMP_JSON_TO_STDERR && n != -1)
+				System.err.print((char) n);
+			return n;
+		}catch (IllegalStateException e){
+			if (closed) {
+				EOFException eof = new EOFException();
+				eof.initCause(e);
+				throw eof;
+			}
+			throw e;
+		}
 	}
 
 	private int _read(char[] buf, int offset, int length) throws IOException
 	{
-		int n = this.reader.read(buf, offset, length);
-		if (DUMP_JSON_TO_STDERR && n != -1)
-			System.err.print(new String(buf, offset, n));
-		return n;
+		try {
+			int n = this.reader.read(buf, offset, length);
+			if (DUMP_JSON_TO_STDERR && n != -1)
+				System.err.print(new String(buf, offset, n));
+			return n;
+		}catch (IllegalStateException e){
+			if (closed) {
+				EOFException eof = new EOFException();
+				eof.initCause(e);
+				throw eof;
+			}
+			throw e;
+		}
 	}
 
 	public static void unexpected(Object tok) throws UnexpectedTokenException
@@ -493,8 +513,9 @@ public class JSONTokeniser {
 
 	public void close() throws IOException
 	{
-		this.underlyingStream.close();
+		closed = true;
 		this.reader.close();
+		this.underlyingStream.close();
 	}
 
 }
