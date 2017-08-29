@@ -369,7 +369,7 @@ int socket_resolve_name(int family, const char *name, const char *service, struc
 
   struct addrinfo *p = addresses;
   while(p){
-    if (p->ai_addrlen < sizeof(address->raw) && (p->ai_addr->sa_family == AF_INET || p->ai_addr->sa_family == AF_INET6)){
+    if (p->ai_addrlen < (socklen_t)sizeof(address->raw) && (p->ai_addr->sa_family == AF_INET || p->ai_addr->sa_family == AF_INET6)){
       address->addrlen = p->ai_addrlen;
       memcpy(&address->addr, p->ai_addr, p->ai_addrlen);
       ret = 0;

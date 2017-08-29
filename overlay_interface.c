@@ -1290,8 +1290,10 @@ static int netlink_socket()
   addr.nl_family = AF_NETLINK;
   addr.nl_groups = RTMGRP_IPV4_IFADDR;
   
-  if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1)
+  if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1){
+    close(sock);
     return WHYF_perror("bind(%d,AF_NETLINK,%lu)", sock, (unsigned long)sizeof(addr));
+  }
     
   DEBUGF(overlayinterfaces, "bind(%d,AF_NETLINK,%lu)", sock, (unsigned long)sizeof(addr));
   
