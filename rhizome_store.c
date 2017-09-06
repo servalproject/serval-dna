@@ -185,17 +185,11 @@ static uint64_t store_get_free_space()
       if (statvfs(store_path, &stats)==-1)
 	WARNF_perror("statvfs(%s)", store_path);
       else
-	space = stats.f_frsize * stats.f_bavail;
+	space = stats.f_frsize * (uint64_t)stats.f_bavail;
     }
   }
 #endif
   if (IF_DEBUG(rhizome)) {
-    double pretty = space;
-    const char *suffix = " KMGT";
-    while(pretty >= 1024 && suffix[1]){
-      pretty = pretty / 1024;
-      suffix++;
-    }
     // Automated tests depend on this message; do not alter.
     DEBUGF(rhizome, "RHIZOME SPACE FREE bytes=%"PRIu64" (%sB)", space, alloca_double_scaled_binary(space));
   }
