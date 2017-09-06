@@ -116,6 +116,38 @@ teardown_AuthBasicWrong() {
    teardown
 }
 
+doc_MeshmsTalkToYourself="HTTP RESTful talk to yourself"
+setup_MeshmsTalkToYourself() {
+   IDENTITY_COUNT=1
+   setup
+}
+test_MeshmsTalkToYourself() {
+   executeOk curl \
+         --silent --fail --show-error \
+         --output sendmessage.json \
+         --basic --user harry:potter \
+         --form "message=Hello World;type=text/plain;charset=utf-8" \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA1/sendmessage"
+   tfw_cat sendmessage.json
+   tfw_preserve sendmessage.json
+   executeOk curl \
+         --silent --fail --show-error \
+         --output conversationlist.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/conversationlist.json"
+   tfw_cat conversationlist.json
+   tfw_preserve conversationlist.json
+   executeOk curl \
+         --silent --fail --show-error \
+         --output messagelist.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA1/messagelist.json"
+   tfw_cat messagelist.json
+   tfw_preserve messagelist.json
+}
+
 doc_MeshmsListConversations="HTTP RESTful list MeshMS conversations as JSON"
 setup_MeshmsListConversations() {
    IDENTITY_COUNT=5

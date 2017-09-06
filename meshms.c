@@ -136,14 +136,14 @@ static enum meshms_status get_database_conversations(const keyring_identity *id,
       WHYF("invalid Bundle ID hex: %s -- skipping", alloca_str_toprint(id_hex));
       continue;
     }
-    const char *them = recipient;
+    const char *them = sender;
     sid_t their_sid;
     if (str_to_sid_t(&their_sid, them) == -1) {
       WHYF("invalid SID hex: %s -- skipping", alloca_str_toprint(them));
       continue;
     }
     if (cmp_sid_t(&their_sid, id->box_pk) == 0) {
-      them = sender;
+      them = recipient;
       if (str_to_sid_t(&their_sid, them) == -1) {
 	WHYF("invalid SID hex: %s -- skipping", alloca_str_toprint(them));
 	continue;
