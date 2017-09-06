@@ -20,20 +20,19 @@
 
 package org.servalproject.json;
 
-import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.PushbackReader;
 import java.io.UnsupportedEncodingException;
 import java.util.Collection;
 
 public class JSONTokeniser {
 
-	final InputStream underlyingStream;
-	final PushbackReader reader;
+	private final InputStream underlyingStream;
+	private final InputStreamReader reader;
 	private boolean closed = false;
-	Object pushedToken;
+	private int pushedChar=-1;
+	private Object pushedToken;
 
 	private static final boolean DUMP_JSON_TO_STDERR = false;
 
@@ -52,6 +51,9 @@ public class JSONTokeniser {
 	{
 		public SyntaxException(String message) {
 			super(message);
+		}
+		public SyntaxException(String message, Throwable e) {
+			super(message, e);
 		}
 	}
 
@@ -101,39 +103,51 @@ public class JSONTokeniser {
 
 	public JSONTokeniser(InputStream stream) throws UnsupportedEncodingException {
 		underlyingStream = stream;
-		reader = new PushbackReader(new InputStreamReader(stream, "UTF-8"));
+		reader = new InputStreamReader(stream, "UTF-8");
 	}
 
-	private int _read() throws IOException
+	private int _read()
 	{
+		int p = pushedChar;
+		pushedChar = -1;
+		if (p!=-1)
+			return p;
 		try {
 			int n = this.reader.read();
 			if (DUMP_JSON_TO_STDERR && n != -1)
 				System.err.print((char) n);
 			return n;
-		}catch (IllegalStateException e){
-			if (closed) {
-				EOFException eof = new EOFException();
-				eof.initCause(e);
-				throw eof;
-			}
+		}catch (IOException e){
+			return -1;
+		}catch (RuntimeException e){
+			if (closed)
+				return -1;
 			throw e;
 		}
 	}
 
-	private int _read(char[] buf, int offset, int length) throws IOException
+	private int _read(char[] buf, int offset, int length)
 	{
+		if (length==0)
+			return 0;
+
+		int p = pushedChar;
+		pushedChar = -1;
+		if (p!=-1){
+			buf[offset] = (char) p;
+			return 1;
+		}
+
 		try {
 			int n = this.reader.read(buf, offset, length);
 			if (DUMP_JSON_TO_STDERR && n != -1)
 				System.err.print(new String(buf, offset, n));
 			return n;
-		}catch (IllegalStateException e){
-			if (closed) {
-				EOFException eof = new EOFException();
-				eof.initCause(e);
-				throw eof;
-			}
+		}catch (IOException e){
+			return -1;
+		}catch (RuntimeException e){
+			if (closed)
+				return -1;
 			throw e;
 		}
 	}
@@ -149,7 +163,7 @@ public class JSONTokeniser {
 			throw new SyntaxException("JSON syntax error: expecting " + exactly + ", got " + jsonTokenDescription(tok));
 	}
 
-	public void consume(Token exactly) throws SyntaxException, UnexpectedException, IOException
+	public void consume(Token exactly) throws SyntaxException, UnexpectedException
 	{
 		match(nextToken(), exactly);
 	}
@@ -197,37 +211,37 @@ public class JSONTokeniser {
 		// 		Float --> Double
 		// 		Double --> Float
 		if (cls == Double.class && (tok instanceof Float || tok instanceof Long || tok instanceof Integer))
-			tok = new Double(((Number)tok).doubleValue());
+			tok = ((Number)tok).doubleValue();
 		else if (cls == Float.class && (tok instanceof Double || tok instanceof Long || tok instanceof Integer))
-			tok = new Float(((Number)tok).floatValue());
+			tok = ((Number)tok).floatValue();
 		else if (cls == Long.class && tok instanceof Integer)
-			tok = new Long(((Number)tok).longValue());
+			tok = ((Number)tok).longValue();
 		if (cls.isInstance(tok))
 			return (T)tok; // unchecked cast
 		throw new UnexpectedTokenException(tok, cls);
 	}
 
-	public <T> T consume(Class<T> cls) throws SyntaxException, UnexpectedException, IOException
+	public <T> T consume(Class<T> cls) throws SyntaxException, UnexpectedException
 	{
 		return consume(cls, Narrow.NO_NULL);
 	}
 
-	public <T> T consume(Class<T> cls, Narrow opts) throws SyntaxException, UnexpectedException, IOException
+	public <T> T consume(Class<T> cls, Narrow opts) throws SyntaxException, UnexpectedException
 	{
 		return narrow(nextToken(), cls, opts);
 	}
 
-	public Object consume() throws SyntaxException, UnexpectedException, IOException
+	public Object consume() throws SyntaxException, UnexpectedException
 	{
 		return consume(Object.class, Narrow.NO_NULL);
 	}
 
-	public Object consume(Narrow opts) throws SyntaxException, UnexpectedException, IOException
+	public Object consume(Narrow opts) throws SyntaxException, UnexpectedException
 	{
 		return consume(Object.class, opts);
 	}
 
-	public String consume(String exactly) throws SyntaxException, UnexpectedException, IOException
+	public String consume(String exactly) throws SyntaxException, UnexpectedException
 	{
 		String tok = consume(String.class);
 		if (tok.equals(exactly))
@@ -235,17 +249,17 @@ public class JSONTokeniser {
 		throw new UnexpectedTokenException(tok, exactly);
 	}
 
-	public int consumeArray(Collection<Object> collection, Narrow opts) throws SyntaxException, UnexpectedException, IOException
+	public int consumeArray(Collection<Object> collection, Narrow opts) throws SyntaxException, UnexpectedException
 	{
 		return consumeArray(collection, Object.class, opts);
 	}
 
-	public <T> int consumeArray(Collection<T> collection, Class<T> cls) throws SyntaxException, UnexpectedException, IOException
+	public <T> int consumeArray(Collection<T> collection, Class<T> cls) throws SyntaxException, UnexpectedException
 	{
 		return consumeArray(collection, cls, Narrow.NO_NULL);
 	}
 
-	public <T> int consumeArray(Collection<T> collection, Class<T> cls, Narrow opts) throws SyntaxException, UnexpectedException, IOException
+	public <T> int consumeArray(Collection<T> collection, Class<T> cls, Narrow opts) throws SyntaxException, UnexpectedException
 	{
 		int added = 0;
 		consume(Token.START_ARRAY);
@@ -264,17 +278,17 @@ public class JSONTokeniser {
 		return added;
 	}
 
-	public void consumeArray(Object[] array) throws SyntaxException, UnexpectedException, IOException
+	public void consumeArray(Object[] array) throws SyntaxException, UnexpectedException
 	{
 		consumeArray(array, Object.class, Narrow.NO_NULL);
 	}
 
-	public void consumeArray(Object[] array, Narrow opts) throws SyntaxException, UnexpectedException, IOException
+	public void consumeArray(Object[] array, Narrow opts) throws SyntaxException, UnexpectedException
 	{
 		consumeArray(array, Object.class, opts);
 	}
 
-	public <T> void consumeArray(T[] array, Class<T> cls, Narrow opts) throws SyntaxException, UnexpectedException, IOException
+	public <T> void consumeArray(T[] array, Class<T> cls, Narrow opts) throws SyntaxException, UnexpectedException
 	{
 		consume(Token.START_ARRAY);
 		for (int i = 0; i < array.length; ++i) {
@@ -309,38 +323,38 @@ public class JSONTokeniser {
 		return tok.toString();
 	}
 
-	private void readWord(String word) throws SyntaxException, IOException
-	{
-		int len = 0;
-		while (len < word.length()) {
-			char[] buf = new char[word.length() - len];
-			int n = _read(buf, 0, buf.length);
-			if (n == -1)
-				throw new SyntaxException("EOF in middle of \"" + word + "\"");
-			for (int i = 0; i < n; ++i)
-				if (buf[i] != word.charAt(len++))
-					throw new SyntaxException("expecting \"" + word + "\"");
-		}
-	}
-
-	private int readHex(int digits) throws SyntaxException, IOException
-	{
-		assert digits <= 8;
-		char[] buf = new char[digits];
+	private void readAll(char[] buf) throws SyntaxException {
 		int len = 0;
 		while (len < buf.length) {
 			int n = _read(buf, len, buf.length - len);
 			if (n == -1)
-				throw new SyntaxException("EOF in middle of " + digits + " hex digits");
+				throw new SyntaxException("EOF in middle of read");
 			len += n;
 		}
+	}
+
+	private void readWord(String word) throws SyntaxException
+	{
+		int len = word.length();
+		char[] buf = new char[len];
+		readAll(buf);
+		for (int i = 0; i < len; ++i)
+			if (buf[i] != word.charAt(i))
+				throw new SyntaxException("expecting \"" + word + "\"");
+	}
+
+	private int readHex(int digits) throws SyntaxException
+	{
+		assert digits <= 8;
+		char[] buf = new char[digits];
+		readAll(buf);
 		String hex = new String(buf);
 		try {
 			return Integer.valueOf(hex, 16);
 		}
 		catch (NumberFormatException e) {
+			throw new SyntaxException("expecting " + digits + " hex digits, got \"" + hex + "\"", e);
 		}
-		throw new SyntaxException("expecting " + digits + " hex digits, got \"" + hex + "\"");
 	}
 
 	public void pushToken(Object tok)
@@ -350,10 +364,10 @@ public class JSONTokeniser {
 		pushedToken = tok;
 	}
 
-	public Object nextToken() throws SyntaxException, IOException
+	public Object nextToken() throws SyntaxException
 	{
-		if (pushedToken != null) {
-			Object tok = pushedToken;
+		Object tok = pushedToken;
+		if (tok != null) {
 			pushedToken = null;
 			return tok;
 		}
@@ -380,15 +394,15 @@ public class JSONTokeniser {
 			case ':':
 				return Token.COLON;
 			case 't':
-				this.reader.unread(c);
+				pushedChar=c;
 				readWord("true");
 				return Boolean.TRUE;
 			case 'f':
-				this.reader.unread(c);
+				pushedChar=c;
 				readWord("false");
 				return Boolean.FALSE;
 			case 'n':
-				this.reader.unread(c);
+				pushedChar=c;
 				readWord("null");
 				return Token.NULL;
 			case '"': {
@@ -487,7 +501,7 @@ public class JSONTokeniser {
 						}
 							while (Character.isDigit(c));
 					}
-					this.reader.unread(c);
+					pushedChar=c;
 					String number = sb.toString();
 					try {
 						if (isfloat)
