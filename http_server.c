@@ -1315,15 +1315,19 @@ static int http_request_start_body(struct http_request *r)
   assert(r->version_major != 0);
   assert(r->parsed <= r->end);
 
-  // No header should probably be treated the same as no content
-  // Though some server implementations disagree
+  // The absence of a Content-Length: header should probably be treated the same as no content,
+  // although some server implementations disagree:
   // http://lists.w3.org/Archives/Public/ietf-http-wg/2010JulSep/0275.html
   if (r->request_header.content_length == CONTENT_LENGTH_UNKNOWN && !r->request_header.chunked)
     r->request_header.content_length = 0;
 
   if (r->verb == HTTP_VERB_GET) {
     // TODO: Implement HEAD requests (only send response header, not body)
-    if (r->request_header.chunked || r->request_header.content_length != 0) {
+    if (r->request_header.chunked) {
+      IDEBUGF(r->debug, "Malformed HTTP %s request: chunked Transfer-Encoding not allowed", r->verb);
+      return 400;
+    }
+    if (r->request_header.content_length != 0) {
       IDEBUGF(r->debug, "Malformed HTTP %s request: non-zero Content-Length not allowed", r->verb);
       return 400;
     }
