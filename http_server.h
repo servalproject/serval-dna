@@ -231,7 +231,7 @@ struct http_request {
   // The following are used for managing the buffer during RECEIVE phase.
   char *reserved; // end of reserved data in buffer[]
   char *received; // start of received data in buffer[]
-  char *end; // end of decoded data in buffer[]
+  char *end_decoded; // end of decoded data in buffer[]
   char *decode_ptr; // end of received data in buffer[]
   char *end_received; // end of received data in buffer[]
   char *parsed; // start of unparsed data in buffer[]

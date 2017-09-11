@@ -93,11 +93,11 @@ static struct profile_total http_server_stats = {
       DEBUGF(http_server, "%s %s HTTP/%u.%u", r->verb ? r->verb : "NULL", alloca_str_toprint(r->path), r->version_major, r->version_minor)
 
 #define DEBUG_DUMP_PARSER(r) \
-      DEBUGF(http_server, "parsed %d %s cursor %d %s end %d not decoded %d %s remain %"PRIhttp_size_t, \
+      DEBUGF(http_server, "parsed=%d %s cursor=%d %s end_decoded=%d end_received=%d %s remain %"PRIhttp_size_t, \
 	  (int)(r->parsed - r->received), alloca_toprint(-1, r->parsed, r->cursor - r->parsed), \
-	  (int)(r->cursor - r->received), alloca_toprint(50, r->cursor, r->end - r->cursor), \
-	  (int)(r->end - r->received), \
-	  (int)(r->end_received - r->end), alloca_toprint(20, r->end, r->end_received - r->end), \
+	  (int)(r->cursor - r->received), alloca_toprint(50, r->cursor, r->end_decoded - r->cursor), \
+	  (int)(r->end_decoded - r->received), \
+	  (int)(r->end_received - r->end_decoded), alloca_toprint(20, r->end_decoded, r->end_received - r->end_decoded), \
 	  r->request_content_remaining \
 	)
 
@@ -131,7 +131,7 @@ void http_request_init(struct http_request *r, int sockfd)
   r->reserved = r->buffer;
   // Put aside a few bytes for reserving strings, so that the path and query parameters can be
   // reserved ok.
-  r->received = r->decode_ptr = r->end_received = r->end = r->parsed = r->cursor = r->buffer + sizeof(void*) * (1 + NELS(r->query_parameters));
+  r->received = r->decode_ptr = r->end_received = r->end_decoded = r->parsed = r->cursor = r->buffer + sizeof(void*) * (1 + NELS(r->query_parameters));
   r->parser = http_request_parse_verb;
   watch(&r->alarm);
   http_request_set_idle_timeout(r);
@@ -257,7 +257,7 @@ static int _reserve(struct http_request *r, const char **resp, const char *src, 
   }
   if (r->reserved + siz > r->parsed) {
     WHYF("Error during HTTP parsing, unparsed content %s would be overwritten by reserving %zu bytes",
-	 alloca_toprint(30, r->parsed, r->end - r->parsed), len + 1
+	 alloca_toprint(30, r->parsed, r->end_decoded - r->parsed), len + 1
         );
     r->response.status_code = 500;
     return 0;
@@ -355,21 +355,27 @@ static void _release_reserved(struct http_request *r)
   r->reserved = r->buffer;
 }
 
-static inline int _end_of_content(struct http_request *r)
+static inline int _at_end_of_content(struct http_request *r)
 {
-  return r->cursor == r->end && r->request_content_remaining == 0;
+  return r->cursor == r->end_decoded && r->request_content_remaining == 0;
 }
 
-static inline int _run_out(struct http_request *r)
+static inline int _run_out_of_decoded_content(struct http_request *r)
 {
-  assert(r->cursor <= r->end);
-  return r->cursor == r->end;
+  assert(r->cursor <= r->end_decoded);
+  return r->cursor == r->end_decoded;
 }
 
+/* The input buffer is full if none of it has been parsed yet (so none can be discarded from the
+ * start) and no more data can be received (because either there is no room for any more data at
+ * the end or all expected data has already been received).  This assumes that the decoder has
+ * already decoded all available data before this function can be called; ie, any un-decoded data in
+ * the buffer cannot be decoded yet until more is received (which cannot happen).
+ */
 static inline int _buffer_full(struct http_request *r)
 {
   const char *const bufend = r->buffer + sizeof r->buffer;
-  return r->parsed == r->received && (r->end == bufend || r->request_content_remaining == 0);
+  return r->parsed == r->received && (r->end_decoded == bufend || r->request_content_remaining == 0);
 }
 
 static inline void _rewind(struct http_request *r)
@@ -380,13 +386,13 @@ static inline void _rewind(struct http_request *r)
 
 static inline void _commit(struct http_request *r)
 {
-  assert(r->cursor <= r->end);
+  assert(r->cursor <= r->end_decoded);
   r->parsed = r->cursor;
 }
 
-static inline int _skip_any(struct http_request *r)
+static inline int _skip_any_char(struct http_request *r)
 {
-  if (_run_out(r))
+  if (_run_out_of_decoded_content(r))
     return 0;
   ++r->cursor;
   return 1;
@@ -394,25 +400,30 @@ static inline int _skip_any(struct http_request *r)
 
 static inline int _skip_while(struct http_request *r, int (*predicate)(int))
 {
-  while (!_run_out(r) && predicate(*r->cursor))
+  while (!_run_out_of_decoded_content(r) && predicate(*r->cursor))
     ++r->cursor;
   return 1;
 }
 
 static inline void _skip_all(struct http_request *r)
 {
-  r->cursor = r->end;
+  r->cursor = r->end_decoded;
 }
 
 static inline int _skip_crlf(struct http_request *r)
 {
-  return !_run_out(r) && *r->cursor == '\r' && ++r->cursor && !_run_out(r) && *r->cursor == '\n' && ++r->cursor;
+  return !_run_out_of_decoded_content(r)
+      && *r->cursor == '\r'
+      && ++r->cursor
+      && !_run_out_of_decoded_content(r)
+      && *r->cursor == '\n'
+      && ++r->cursor;
 }
 
 static inline int _skip_to_crlf(struct http_request *r)
 {
-  for (; !_run_out(r); ++r->cursor)
-    if (r->cursor + 1 < r->end && r->cursor[0] == '\r' && r->cursor[1] == '\n')
+  for (; !_run_out_of_decoded_content(r); ++r->cursor)
+    if (r->cursor + 1 < r->end_decoded && r->cursor[0] == '\r' && r->cursor[1] == '\n')
       return 1;
   return 0;
 }
@@ -438,7 +449,7 @@ static inline void _rewind_crlf(struct http_request *r)
 static inline int _skip_eol(struct http_request *r)
 {
   unsigned crcount = 0;
-  for (; !_run_out(r); ++r->cursor) {
+  for (; !_run_out_of_decoded_content(r); ++r->cursor) {
     switch (*r->cursor) {
       case '\0': // ignore any leading NULs (telnet inserts them)
 	break;
@@ -463,9 +474,9 @@ static inline int _skip_eol(struct http_request *r)
 static int _skip_to_eol(struct http_request *r)
 {
   const char *const start = r->cursor;
-  while (!_run_out(r) && *r->cursor != '\n')
+  while (!_run_out_of_decoded_content(r) && *r->cursor != '\n')
     ++r->cursor;
-  if (_run_out(r))
+  if (_run_out_of_decoded_content(r))
     return 0;
   // consume preceding NULs (telnet inserts them)
   while (r->cursor > start && r->cursor[-1] == '\0')
@@ -481,14 +492,14 @@ static int _skip_to_eol(struct http_request *r)
 
 static int _skip_literal(struct http_request *r, const char *literal)
 {
-  while (!_run_out(r) && *literal && *r->cursor == *literal)
+  while (!_run_out_of_decoded_content(r) && *literal && *r->cursor == *literal)
     ++literal, ++r->cursor;
   return *literal == '\0';
 }
 
 static int _skip_literal_nocase(struct http_request *r, const char *literal)
 {
-  while (!_run_out(r) && *literal && toupper(*r->cursor) == toupper(*literal))
+  while (!_run_out_of_decoded_content(r) && *literal && toupper(*r->cursor) == toupper(*literal))
     ++literal, ++r->cursor;
   return *literal == '\0';
 }
@@ -515,11 +526,13 @@ static size_t _skip_word_printable(struct http_request *r, struct substring *str
   const char *start = r->cursor;
   if (str)
     str->start = str->end = start;
-  if (_run_out(r) || isspace(*r->cursor) || !isprint(*r->cursor) || *r->cursor == until)
+  if (_run_out_of_decoded_content(r) || isspace(*r->cursor) || !isprint(*r->cursor) || *r->cursor == until)
     return 0;
-  for (++r->cursor; !_run_out(r) && !isspace(*r->cursor) && isprint(*r->cursor) && *r->cursor != until; ++r->cursor)
+  for (++r->cursor;
+       !_run_out_of_decoded_content(r) && !isspace(*r->cursor) && isprint(*r->cursor) && *r->cursor != until;
+       ++r->cursor)
     ;
-  if (_run_out(r))
+  if (_run_out_of_decoded_content(r))
     return 0;
   assert(r->cursor > start);
   assert(isspace(*r->cursor) || *r->cursor == until);
@@ -530,12 +543,12 @@ static size_t _skip_word_printable(struct http_request *r, struct substring *str
 
 static size_t _skip_token(struct http_request *r, struct substring *str)
 {
-  if (_run_out(r) || !is_http_token(*r->cursor))
+  if (_run_out_of_decoded_content(r) || !is_http_token(*r->cursor))
     return 0;
   const char *start = r->cursor;
-  for (++r->cursor; !_run_out(r) && is_http_token(*r->cursor); ++r->cursor)
+  for (++r->cursor; !_run_out_of_decoded_content(r) && is_http_token(*r->cursor); ++r->cursor)
     ;
-  if (_run_out(r))
+  if (_run_out_of_decoded_content(r))
     return 0;
   assert(r->cursor > start);
   assert(!is_http_token(*r->cursor));
@@ -559,12 +572,12 @@ static size_t _parse_token(struct http_request *r, char *dst, size_t dstsiz)
 
 static size_t _parse_quoted_string(struct http_request *r, char *dst, size_t dstsiz)
 {
-  assert(r->cursor <= r->end);
-  if (_run_out(r) || *r->cursor != '"')
+  assert(r->cursor <= r->end_decoded);
+  if (_run_out_of_decoded_content(r) || *r->cursor != '"')
     return 0;
   int slosh = 0;
   size_t len = 0;
-  for (++r->cursor; !_run_out(r); ++r->cursor) {
+  for (++r->cursor; !_run_out_of_decoded_content(r); ++r->cursor) {
     if (!isprint(*r->cursor))
       return 0;
     if (slosh) {
@@ -584,7 +597,7 @@ static size_t _parse_quoted_string(struct http_request *r, char *dst, size_t dst
   }
   if (dst)
     dst[len < dstsiz - 1 ? len : dstsiz - 1] = '\0';
-  if (_run_out(r))
+  if (_run_out_of_decoded_content(r))
     return 0;
   assert(*r->cursor == '"');
   ++r->cursor;
@@ -594,19 +607,23 @@ static size_t _parse_quoted_string(struct http_request *r, char *dst, size_t dst
 static size_t _parse_token_or_quoted_string(struct http_request *r, char *dst, size_t dstsiz)
 {
   assert(dstsiz > 0);
-  if (!_run_out(r) && *r->cursor == '"')
+  if (!_run_out_of_decoded_content(r) && *r->cursor == '"')
     return _parse_quoted_string(r, dst, dstsiz);
   return _parse_token(r, dst, dstsiz);
 }
 
 static inline int _parse_http_size_t(struct http_request *r, http_size_t *szp)
 {
-  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint64(r->cursor, 10, szp, (const char **)&r->cursor);
+  return !_run_out_of_decoded_content(r)
+      && isdigit(*r->cursor)
+      && str_to_uint64(r->cursor, 10, szp, (const char **)&r->cursor);
 }
 
 static inline int _parse_uint32(struct http_request *r, uint32_t *uint32p)
 {
-  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint32(r->cursor, 10, uint32p, (const char **)&r->cursor);
+  return !_run_out_of_decoded_content(r)
+      && isdigit(*r->cursor)
+      && str_to_uint32(r->cursor, 10, uint32p, (const char **)&r->cursor);
 }
 
 static unsigned _parse_ranges(struct http_request *r, struct http_range *range, unsigned nrange)
@@ -700,7 +717,7 @@ static int _parse_content_type(struct http_request *r, struct mime_content_type 
       IDEBUGF(r->debug, "Skipping HTTP Content-Type parameter: %s", alloca_substring_toprint(param));
       continue;
     }
-    WARNF("Malformed HTTP Content-Type: %s", alloca_toprint(50, r->cursor, r->end - r->cursor));
+    WARNF("Malformed HTTP Content-Type: %s", alloca_toprint(50, r->cursor, r->end_decoded - r->cursor));
     return 0;
   }
   return 1;
@@ -708,7 +725,7 @@ static int _parse_content_type(struct http_request *r, struct mime_content_type 
 
 static size_t _parse_base64(struct http_request *r, char *bin, size_t binsize)
 {
-  return base64_decode((unsigned char *)bin, binsize, r->cursor, r->end - r->cursor, (const char **)&r->cursor, B64_CONSUME_ALL, is_http_space);
+  return base64_decode((unsigned char *)bin, binsize, r->cursor, r->end_decoded - r->cursor, (const char **)&r->cursor, B64_CONSUME_ALL, is_http_space);
 }
 
 static int _parse_authorization_credentials_basic(struct http_request *r, struct http_client_credentials_basic *cred, char *buf, size_t bufsz)
@@ -753,7 +770,7 @@ static int _parse_authorization(struct http_request *r, struct http_client_autho
     IDEBUGF(r->debug, "Unrecognised HTTP Authorization scheme: %s", alloca_toprint(-1, scheme.start, scheme.end - scheme.start));
     return 0;
   }
-  IDEBUGF(r->debug, "Malformed HTTP Authorization header: %s", alloca_toprint(50, r->parsed, r->end - r->parsed));
+  IDEBUGF(r->debug, "Malformed HTTP Authorization header: %s", alloca_toprint(50, r->parsed, r->end_decoded - r->parsed));
   return 0;
 }
 
@@ -841,7 +858,7 @@ static int http_request_parse_verb(struct http_request *r)
   DEBUG_DUMP_PARSER(r);
   _rewind(r);
   assert(r->cursor >= r->received);
-  assert(!_run_out(r));
+  assert(!_run_out_of_decoded_content(r));
   // Parse verb: GET, PUT, POST, etc.
   assert(r->verb == NULL);
   unsigned i;
@@ -851,11 +868,11 @@ static int http_request_parse_verb(struct http_request *r)
       r->verb = http_verbs[i].word;
       break;
     }
-    if (_run_out(r))
+    if (_run_out_of_decoded_content(r))
       return 100; // read more and try again
   }
   if (r->verb == NULL) {
-    IDEBUGF(r->debug, "Malformed HTTP request, invalid verb: %s", alloca_toprint(20, r->cursor, r->end - r->cursor));
+    IDEBUGF(r->debug, "Malformed HTTP request, invalid verb: %s", alloca_toprint(20, r->cursor, r->end_decoded - r->cursor));
     return 400;
   }
   _commit(r);
@@ -907,12 +924,12 @@ static int http_request_parse_path(struct http_request *r)
     }
   }
   if (!_skip_literal(r, " ")) {
-    if (_run_out(r))
+    if (_run_out_of_decoded_content(r))
       return 100; // read more and try again
     if (count == NELS(params))
-      IDEBUGF(r->debug, "Unsupported HTTP %s request, too many query parameters: %s", r->verb, alloca_toprint(20, r->parsed, r->end - r->parsed));
+      IDEBUGF(r->debug, "Unsupported HTTP %s request, too many query parameters: %s", r->verb, alloca_toprint(20, r->parsed, r->end_decoded - r->parsed));
     else
-      IDEBUGF(r->debug, "Malformed HTTP %s request at path: %s", r->verb, alloca_toprint(20, r->parsed, r->end - r->parsed));
+      IDEBUGF(r->debug, "Malformed HTTP %s request at path: %s", r->verb, alloca_toprint(20, r->parsed, r->end_decoded - r->parsed));
     return 400;
   }
   _commit(r);
@@ -964,9 +981,9 @@ static int http_request_parse_http_version(struct http_request *r)
 	&& _skip_eol(r)
        )
   ) {
-    if (_run_out(r))
+    if (_run_out_of_decoded_content(r))
       return 100; // read more and try again
-    IDEBUGF(r->debug, "Malformed HTTP %s request at version: %s", r->verb, alloca_toprint(20, r->parsed, r->end - r->parsed));
+    IDEBUGF(r->debug, "Malformed HTTP %s request at version: %s", r->verb, alloca_toprint(20, r->parsed, r->end_decoded - r->parsed));
     return 400;
   }
   _commit(r);
@@ -1023,7 +1040,7 @@ static int http_request_parse_header(struct http_request *r)
   const char *const sol = r->cursor;
   if (_skip_literal_nocase(r, "Content-Length:")) {
     if (r->request_header.content_length != CONTENT_LENGTH_UNKNOWN) {
-      IDEBUGF(r->debug, "Skipping duplicate HTTP header Content-Length: %s", alloca_toprint(50, sol, r->end - sol));
+      IDEBUGF(r->debug, "Skipping duplicate HTTP header Content-Length: %s", alloca_toprint(50, sol, r->end_decoded - sol));
       r->cursor = nextline;
       _commit(r);
       return 0;
@@ -1042,7 +1059,7 @@ static int http_request_parse_header(struct http_request *r)
   _rewind(r);
   if (_skip_literal_nocase(r, "Content-Type:")) {
     if (r->request_header.content_type.type[0]) {
-      IDEBUGF(r->debug, "Skipping duplicate HTTP header Content-Type: %s", alloca_toprint(50, sol, r->end - sol));
+      IDEBUGF(r->debug, "Skipping duplicate HTTP header Content-Type: %s", alloca_toprint(50, sol, r->end_decoded - sol));
       r->cursor = nextline;
       _commit(r);
       return 0;
@@ -1062,7 +1079,7 @@ static int http_request_parse_header(struct http_request *r)
   _rewind(r);
   if (_skip_literal_nocase(r, "Range:")) {
     if (r->request_header.content_range_count) {
-      IDEBUGF(r->debug, "Skipping duplicate HTTP header Range: %s", alloca_toprint(50, sol, r->end - sol));
+      IDEBUGF(r->debug, "Skipping duplicate HTTP header Range: %s", alloca_toprint(50, sol, r->end_decoded - sol));
       r->cursor = nextline;
       _commit(r);
       return 0;
@@ -1092,7 +1109,7 @@ static int http_request_parse_header(struct http_request *r)
   _rewind(r);
   if (_skip_literal_nocase(r, "Expect:")) {
     if (r->request_header.expect){
-      IDEBUGF(r->debug, "Skipping duplicate HTTP header Expect: %s", alloca_toprint(50, sol, r->end - sol));
+      IDEBUGF(r->debug, "Skipping duplicate HTTP header Expect: %s", alloca_toprint(50, sol, r->end_decoded - sol));
       r->cursor = nextline;
       _commit(r);
       return 0;
@@ -1109,7 +1126,7 @@ static int http_request_parse_header(struct http_request *r)
   _rewind(r);
   if (_skip_literal_nocase(r, "Transfer-Encoding:")) {
     if (r->request_header.chunked){
-      IDEBUGF(r->debug, "Skipping duplicate HTTP header Transfer-Encoding: %s", alloca_toprint(50, sol, r->end - sol));
+      IDEBUGF(r->debug, "Skipping duplicate HTTP header Transfer-Encoding: %s", alloca_toprint(50, sol, r->end_decoded - sol));
       r->cursor = nextline;
       _commit(r);
       return 0;
@@ -1123,7 +1140,7 @@ static int http_request_parse_header(struct http_request *r)
   }
   if (_skip_literal_nocase(r, "Authorization:")) {
     if (r->request_header.authorization.scheme != NOAUTH) {
-      IDEBUGF(r->debug, "Skipping duplicate HTTP header Authorization: %s", alloca_toprint(50, sol, r->end - sol));
+      IDEBUGF(r->debug, "Skipping duplicate HTTP header Authorization: %s", alloca_toprint(50, sol, r->end_decoded - sol));
       r->cursor = nextline;
       _commit(r);
       return 0;
@@ -1145,7 +1162,7 @@ static int http_request_parse_header(struct http_request *r)
   _rewind(r);
   if (_skip_literal_nocase(r, "Origin:")) {
     if (r->request_header.origin.null || r->request_header.origin.scheme[0]) {
-      IDEBUGF(r->debug, "Skipping duplicate HTTP header Origin: %s", alloca_toprint(50, sol, r->end - sol));
+      IDEBUGF(r->debug, "Skipping duplicate HTTP header Origin: %s", alloca_toprint(50, sol, r->end_decoded - sol));
       r->cursor = nextline;
       _commit(r);
       return 0;
@@ -1191,7 +1208,7 @@ static int http_request_decode_chunks(struct http_request *r){
       r->chunk_state = CHUNK_SIZE;
       if (r->request_content_remaining == 0){
 	r->decoder = NULL;
-	if (r->end_received>r->end)
+	if (r->end_received > r->end_decoded)
 	  return WHY("Unexpected data");
 	return 0;
       }
@@ -1214,10 +1231,10 @@ static int http_request_decode_chunks(struct http_request *r){
       IDEBUGF(r->debug, "Chunk size %u (parsed %d, unparsed %d, heading %d, data %d) %s",
 	(int)r->chunk_size,
 	(int)(r->parsed - r->received),
-	(int)(r->end - r->parsed),
-	(int)(r->decode_ptr - r->end),
+	(int)(r->end_decoded - r->parsed),
+	(int)(r->decode_ptr - r->end_decoded),
 	(int)(r->end_received - r->decode_ptr),
-	alloca_toprint(20, r->end, r->decode_ptr - r->end));
+	alloca_toprint(20, r->end_decoded, r->decode_ptr - r->end_decoded));
 
       if (r->chunk_size == 0){
 	r->request_content_remaining = 0;
@@ -1226,17 +1243,15 @@ static int http_request_decode_chunks(struct http_request *r){
       FALLTHROUGH;
     }
     case CHUNK_DATA:{
+      // Skip over the chunk heading if we can, to avoid a memmove.
+      if (r->end_decoded == r->parsed)
+	r->parsed = r->end_decoded = r->decode_ptr;
 
-      // skip the chunk heading if we can, to avoid a memmove
-      if (r->end == r->parsed)
-	r->parsed = r->end = r->decode_ptr;
-
-      if (r->decode_ptr > r->end){
+      if (r->decode_ptr > r->end_decoded){
 	size_t used = r->end_received - r->decode_ptr;
-	size_t heading = r->decode_ptr - r->end;
-	IDEBUGF(r->debug, "Compacting %zu to cut out heading %zu",
-	  used, heading);
-	memmove(r->end, r->decode_ptr, used);
+	size_t heading = r->decode_ptr - r->end_decoded;
+	IDEBUGF(r->debug, "Chunk decoder: memmove %zu bytes to cut out %zu heading bytes", used, heading);
+	memmove(r->end_decoded, r->decode_ptr, used);
 	r->end_received -= heading;
 	r->decode_ptr -= heading;
       }
@@ -1245,18 +1260,18 @@ static int http_request_decode_chunks(struct http_request *r){
       if (len > r->chunk_size)
 	len = r->chunk_size;
       r->chunk_size -= len;
-      r->end += len;
-      r->decode_ptr = r->end;
+      r->end_decoded += len;
+      r->decode_ptr = r->end_decoded;
 
       if (r->chunk_size == 0){
 	r->chunk_state = CHUNK_NEWLINE;
 	if (r->end_received - r->decode_ptr == 2 && r->decode_ptr[0]=='\r' && r->decode_ptr[1]=='\n'){
 	  // if we can cut the \r\n off the end, do it now
 	  r->chunk_state = CHUNK_SIZE;
-	  r->end_received = r->end;
+	  r->end_received = r->end_decoded;
 	  if (r->request_content_remaining == 0){
 	    r->decoder = NULL;
-	    if (r->end_received>r->end)
+	    if (r->end_received > r->end_decoded)
 	      return WHY("Unexpected data");
 	  }
 	}
@@ -1295,7 +1310,7 @@ static int http_request_start_continue(struct http_request *r){
   r->request_header.expect = 0;
   r->parser = http_request_parse_body_form_data;
   r->form_data_state = START;
-  if (_run_out(r))
+  if (_run_out_of_decoded_content(r))
     return 100;
   return 0;
 }
@@ -1313,7 +1328,7 @@ static int http_request_start_body(struct http_request *r)
   assert(r->verb != NULL);
   assert(r->path != NULL);
   assert(r->version_major != 0);
-  assert(r->parsed <= r->end);
+  assert(r->parsed <= r->end_decoded);
 
   // The absence of a Content-Length: header should probably be treated the same as no content,
   // although some server implementations disagree:
@@ -1340,7 +1355,7 @@ static int http_request_start_body(struct http_request *r)
   else if (r->verb == HTTP_VERB_POST) {
     if (r->request_header.chunked){
       r->decoder = http_request_decode_chunks;
-      r->end = r->decode_ptr = r->parsed;
+      r->end_decoded = r->decode_ptr = r->parsed;
       r->chunk_state = CHUNK_SIZE;
     }
     if (r->request_header.content_length == 0) {
@@ -1373,7 +1388,7 @@ static int http_request_start_body(struct http_request *r)
   }
 
   if (r->request_header.content_length != CONTENT_LENGTH_UNKNOWN) {
-    size_t unparsed = r->end - r->parsed;
+    size_t unparsed = r->end_decoded - r->parsed;
     if (unparsed > r->request_header.content_length) {
       IDEBUGF(r->debug, "Malformed request: already read %zu bytes past end of content",
 	(size_t)(unparsed - r->request_header.content_length));
@@ -1391,7 +1406,7 @@ static int http_request_start_body(struct http_request *r)
     }
   }
 
-  if (r->request_content_remaining && _run_out(r))
+  if (r->request_content_remaining && _run_out_of_decoded_content(r))
     return 100;
   return 0;
 }
@@ -1474,7 +1489,7 @@ static int _parse_content_disposition(struct http_request *r, struct mime_conten
       continue;
     }
 malformed:
-    WARNF("Malformed HTTP Content-Disposition: %s", alloca_toprint(50, r->cursor, r->end - r->cursor));
+    WARNF("Malformed HTTP Content-Disposition: %s", alloca_toprint(50, r->cursor, r->end_decoded - r->cursor));
     return 0;
   }
   return 1;
@@ -1570,18 +1585,21 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	    _commit(r);
 	    return http_request_form_data_start_part(r, b);
 	  }
-	  // if we hit the end of the buffer in the middle of the mime boundary, rewind to the crlf & wait for more data
-	  if (_run_out(r)){
+          // If only part of the mime boundary has been received, rewind to the CRLF and await more
+          // data.
+	  if (_run_out_of_decoded_content(r)){
 	    r->cursor = end_preamble;
 	    break;
 	  }
+          // A line was found that was not the mime boundary. Any content in the preamble prior to
+          // the mime boundary can be ignored, so skip this line and try the next.
 	  if (!at_start) {
 	    r->cursor = end_preamble;
-	    _skip_any(r);
+	    _skip_any_char(r);
 	  }
 	  at_start = 0;
 	}
-	if (_end_of_content(r)) {
+	if (_at_end_of_content(r)) {
 	  IDEBUGF(r->debug, "Malformed HTTP %s form data: missing first boundary", r->verb);
 	  return 400;
 	}
@@ -1619,7 +1637,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  r->form_data_state = BODY;
 	  return 0;
 	}
-	if (_run_out(r))
+	if (_run_out_of_decoded_content(r))
 	  return 100; // read more and try again
 	r->cursor = sol;
 	// A mime boundary technically should not occur in the middle of the headers, but if it
@@ -1632,7 +1650,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  // An end boundary terminates the current part and starts the epilogue.
 	  return http_request_form_data_start_part(r, b);
 	}
-	if (_run_out(r))
+	if (_run_out_of_decoded_content(r))
 	  return 100; // read more and try again
 	r->cursor = sol;
 	struct substring label;
@@ -1643,7 +1661,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  str_tolower_inplace(labelstr);
 	  if (strcmp(labelstr, "content-length") == 0) {
 	    if (r->part_header.content_length != CONTENT_LENGTH_UNKNOWN) {
-	      IDEBUGF(r->debug, "Skipping duplicate HTTP multipart header %s", alloca_toprint(50, sol, r->end - sol));
+	      IDEBUGF(r->debug, "Skipping duplicate HTTP multipart header %s", alloca_toprint(50, sol, r->end_decoded - sol));
 	      return 400;
 	    }
 	    http_size_t length;
@@ -1657,7 +1675,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  }
 	  else if (strcmp(labelstr, "content-type") == 0) {
 	    if (r->part_header.content_type.type[0]) {
-	      IDEBUGF(r->debug, "Skipping duplicate HTTP multipart header %s", alloca_toprint(50, sol, r->end - sol));
+	      IDEBUGF(r->debug, "Skipping duplicate HTTP multipart header %s", alloca_toprint(50, sol, r->end_decoded - sol));
 	      return 400;
 	    }
 	    if (_parse_content_type(r, &r->part_header.content_type) && _skip_optional_space(r) && _skip_crlf(r)) {
@@ -1669,7 +1687,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  }
 	  else if (strcmp(labelstr, "content-disposition") == 0) {
 	    if (r->part_header.content_disposition.type[0]) {
-	      IDEBUGF(r->debug, "Skipping duplicate HTTP multipart header %s", alloca_toprint(50, sol, r->end - sol));
+	      IDEBUGF(r->debug, "Skipping duplicate HTTP multipart header %s", alloca_toprint(50, sol, r->end_decoded - sol));
 	      return 400;
 	    }
 	    if (_parse_content_disposition(r, &r->part_header.content_disposition) && _skip_optional_space(r) && _skip_crlf(r)) {
@@ -1687,18 +1705,18 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	}
 	r->cursor = sol;
 	if (_buffer_full(r)) {
-	  // The line does not start with "Token:" and is too long to fit into the buffer.  Start
+	  // The line does not start with "<Token>:" and is too long to fit into the buffer.  Start
 	  // skipping it.
-	  WARNF("Skipping unterminated HTTP MIME header %s", alloca_toprint(50, sol, r->end - sol));
-	  r->cursor = r->end;
+	  WARNF("Skipping unterminated HTTP MIME header %s", alloca_toprint(50, sol, r->end_decoded - sol));
+	  r->cursor = r->end_decoded;
 	  _rewind_optional_cr(r);
 	  IDEBUGF(r->debug, "skipping %zu header bytes", r->cursor - r->parsed);
 	  _commit(r);
 	  return 0;
 	}
-	if (_run_out(r))
+	if (_run_out_of_decoded_content(r))
 	  return 100; // read more and try again
-	IDEBUGF(r->debug, "Malformed HTTP %s form data part: invalid header %s", r->verb, alloca_toprint(50, sol, r->end - sol));
+	IDEBUGF(r->debug, "Malformed HTTP %s form data part: invalid header %s", r->verb, alloca_toprint(50, sol, r->end_decoded - sol));
 	DEBUG_DUMP_PARSER(r);
       }
       return 400;
@@ -1719,13 +1737,14 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  _INVOKE_HANDLER_BUF_LEN(handle_mime_body, start, end_body); // excluding CRLF at end
 	  return http_request_form_data_start_part(r, b);
 	}
-	// if we hit the end of the buffer in the middle of the mime boundary, rewind to the crlf & wait for more data
-	if (_run_out(r)){
+        // If only part of the mime boundary has been received, rewind to the CRLF and wait for more
+        // data.
+	if (_run_out_of_decoded_content(r)){
 	  r->cursor = end_body;
 	  break;
 	}
       }
-      if (_end_of_content(r)) {
+      if (_at_end_of_content(r)) {
 	IDEBUGF(r->debug, "Malformed HTTP %s form data part: missing end boundary", r->verb);
 	return 400;
       }
@@ -1738,12 +1757,12 @@ static int http_request_parse_body_form_data(struct http_request *r)
       return 100; // need more data
   case EPILOGUE:
     DEBUGF(http_server, "EPILOGUE");
-    r->cursor = r->end;
+    r->cursor = r->end_decoded;
     assert(r->cursor >= r->parsed);
     _INVOKE_HANDLER_BUF_LEN(handle_mime_epilogue, r->parsed, r->cursor);
     _commit(r);
-    assert(_run_out(r));
-    if (_end_of_content(r))
+    assert(_run_out_of_decoded_content(r));
+    if (_at_end_of_content(r))
       return 0; // done
     return 100; // need more data
   default:
@@ -1791,12 +1810,12 @@ static void http_request_receive(struct http_request *r)
   const char *const bufend = r->buffer + sizeof r->buffer;
   assert(r->end_received <= bufend);
   assert(r->decode_ptr <= r->end_received);
-  assert(r->end <= r->decode_ptr);
-  assert(r->parsed <= r->end);
+  assert(r->end_decoded <= r->decode_ptr);
+  assert(r->parsed <= r->end_decoded);
   assert(r->received <= r->parsed);
   // rewind buffer if everything has been parsed
   if (r->parsed == r->end_received){
-    r->parsed = r->end = r->decode_ptr = r->end_received = r->received;
+    r->parsed = r->end_decoded = r->decode_ptr = r->end_received = r->received;
   }
   // If the end of content falls within the buffer, then there is no need to make any more room,
   // just read up to the end of content.  Otherwise, If buffer is running short on unused space,
@@ -1810,7 +1829,7 @@ static void http_request_receive(struct http_request *r)
       size_t unparsed = r->end_received - r->parsed;
       memmove((char *)r->received, r->parsed, unparsed); // memcpy() does not handle overlapping src and dst
       r->parsed -= spare;
-      r->end -= spare;
+      r->end_decoded -= spare;
       r->decode_ptr -= spare;
       r->end_received -= spare;
       room = bufend - r->end_received;
@@ -1841,7 +1860,7 @@ static void http_request_receive(struct http_request *r)
     RETURNVOID;
   r->end_received += (size_t) bytes;
   if (!r->decoder)
-    r->end = r->decode_ptr = r->end_received;
+    r->end_decoded = r->decode_ptr = r->end_received;
   if (r->request_content_remaining != CONTENT_LENGTH_UNKNOWN)
     r->request_content_remaining -= (size_t) bytes;
   // We got some data, so reset the inactivity timer and invoke the parsing state machine to process
@@ -1865,7 +1884,7 @@ static void http_request_receive(struct http_request *r)
     }
     decode_more = 0;
     _rewind(r);
-    if (_end_of_content(r)) {
+    if (_at_end_of_content(r)) {
       if (r->handle_content_end)
 	result = r->handle_content_end(r);
       else {
@@ -1877,7 +1896,7 @@ static void http_request_receive(struct http_request *r)
       HTTP_REQUEST_PARSER *oldparser = r->parser;
       const char *oldparsed = r->parsed;
       if (r->parser == NULL) {
-	IDEBUGF(r->debug, "No HTTP parser function set -- skipping %zu bytes", (size_t)(r->end - r->cursor));
+	IDEBUGF(r->debug, "No HTTP parser function set -- skipping %zu bytes", (size_t)(r->end_decoded - r->cursor));
 	_skip_all(r);
 	_commit(r);
 	result = 0;
