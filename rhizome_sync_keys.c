@@ -1,4 +1,5 @@
 
+#include "lang.h" // for FALLTHROUGH
 #include "rhizome.h"
 #include "overlay_address.h"
 #include "overlay_buffer.h"
@@ -400,6 +401,7 @@ static void sync_send_peer(struct subscriber *peer, struct rhizome_sync_keys *sy
 	      DEBUGF(rhizome_sync_keys, "Can't send manifest right now, (hash %s) %s",
 		alloca_sync_key(&msg->key),
 		rhizome_bundle_status_message_nonnull(status));
+	      FALLTHROUGH;
 	    case RHIZOME_BUNDLE_STATUS_NEW:
 	      // TODO we don't have this bundle anymore!
 	      ob_rewind(payload);

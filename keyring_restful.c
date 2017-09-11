@@ -17,6 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include "lang.h" // for FALLTHROUGH
 #include "serval.h"
 #include "conf.h"
 #include "httpd.h"
@@ -175,6 +176,7 @@ static int restful_keyring_identitylist_json_content_chunk(struct http_request *
       
     case LIST_ROWS:
       strbuf_putc(b, ',');
+      FALLTHROUGH;
     case LIST_FIRST:
       r->u.sidlist.phase = LIST_ROWS;
       const char *did = NULL;

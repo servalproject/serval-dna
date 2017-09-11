@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <assert.h>
 #include <inttypes.h>
 #include <time.h>
+#include "lang.h" // for FALLTHROUGH
 #include "serval_types.h"
 #include "http_server.h"
 #include "sighandlers.h"
@@ -1185,7 +1186,7 @@ static int http_request_decode_chunks(struct http_request *r){
 	  return WHY("Unexpected data");
 	return 0;
       }
-      // fall through
+      FALLTHROUGH;
     }
     case CHUNK_SIZE:{
       const char *p;
@@ -1213,7 +1214,7 @@ static int http_request_decode_chunks(struct http_request *r){
 	r->request_content_remaining = 0;
 	IDEBUGF(r->debug, "EOF Chunk");
       }
-      // fall through
+      FALLTHROUGH;
     }
     case CHUNK_DATA:{
 
@@ -1502,7 +1503,7 @@ static int http_request_form_data_start_part(struct http_request *r, int b)
 	      r->part_header.content_length
 	    );
       }
-      // fall through...
+      FALLTHROUGH;
     case HEADER:
       _INVOKE_HANDLER_VOID(handle_mime_part_end);
       break;
@@ -1542,7 +1543,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
       // The logic here allows for a missing initial CRLF before the first boundary line.
       at_start = 1;
       r->form_data_state = PREAMBLE;
-      // fall through
+      FALLTHROUGH;
     case PREAMBLE: {
 	DEBUGF(http_server, "PREAMBLE");
 	char *start = r->parsed;
@@ -2138,6 +2139,7 @@ unsigned http_range_close(struct http_range *dst, const struct http_range *src, 
     switch (range->type) {
       case CLOSED:
 	last = range->last < resource_length ? range->last : resource_length - 1;
+	FALLTHROUGH;
       case OPEN:
 	first = range->first < resource_length ? range->first : resource_length;
 	break;

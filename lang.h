@@ -66,4 +66,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #   define UNUSED(x) x
 #endif
 
+// To suppress the "may fall through" warning from -Wimplicit-fallthrough.
+#ifdef HAVE_STMT_ATTRIBUTE_FALLTHROUGH
+#   define __ATTRIBUTE_fallthrough  __fallthrough__
+#   define FALLTHROUGH __attribute__((__fallthrough__))
+#else
+#   define __ATTRIBUTE_fallthrough
+#   define FALLTHROUGH
+#endif
+
 #endif // __SERVAL_DNA__LANG_H

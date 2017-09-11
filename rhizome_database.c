@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <time.h>
 #include <ctype.h>
 #include <assert.h>
+#include "lang.h" // for FALLTHROUGH
 #include "serval.h"
 #include "conf.h"
 #include "rhizome.h"
@@ -649,6 +650,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	    case SQLITE_LOCKED: \
 	      if (retry && _sqlite_retry(__whence, retry, #FUNC "()")) \
 		continue; \
+	      FALLTHROUGH; \
 	    default: \
 	      LOGF(log_level, #FUNC "(%d) failed, %s: %s", index, sqlite3_errmsg(rhizome_db), sqlite3_sql(statement)); \
 	      sqlite3_finalize(statement); \

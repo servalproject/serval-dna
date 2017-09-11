@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 #include <assert.h>
 #include <sys/uio.h>
+#include "lang.h" // for FALLTHROUGH
 #include "serval.h"
 #include "conf.h"
 #include "crypto.h"
@@ -1397,7 +1398,7 @@ struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const ch
     if (rhizome_manifest_createid(m) == -1) {
       return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "Could not bind manifest to an ID");
     }
-    // fall through to set the BK field...
+    FALLTHROUGH; // to set the BK field...
   case NEW_BUNDLE_ID:
     assert(m->has_id);
     // If no 'authorSidp' parameter was supplied but the manifest has a 'sender' field, then use the

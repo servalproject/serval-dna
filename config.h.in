@@ -156,6 +156,9 @@
 /* Define to 1 if you have the <stdlib.h> header file. */
 #undef HAVE_STDLIB_H
 
+/* Define to 1 if the system has the `fallthrough' statement attribute */
+#undef HAVE_STMT_ATTRIBUTE_FALLTHROUGH
+
 /* Define to 1 if you have the <strings.h> header file. */
 #undef HAVE_STRINGS_H
 

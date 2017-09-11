@@ -18,6 +18,7 @@ AX_GCC_FUNC_ATTRIBUTE(unused)
 AX_GCC_FUNC_ATTRIBUTE(used)
 AX_GCC_VAR_ATTRIBUTE(section)
 AX_GCC_VAR_ATTRIBUTE(section_seg)
+AX_GCC_STMT_ATTRIBUTE(fallthrough)
 
 dnl Init pkg-config
 PKG_PROG_PKG_CONFIG()

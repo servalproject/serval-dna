@@ -18,6 +18,7 @@
  */
 
 #include "base64.h"
+#include "lang.h"    // for FALLTHROUGH
 #include "str.h"     // for Serval ctype
 #include <stdint.h>  // for uint8_t
 #include <stdio.h>   // for NULL
@@ -74,6 +75,7 @@ static size_t _base64_encodev(const char symbols[], char *dstBase64, const struc
   switch (place) {
     case 1:
       *dst++ = symbols[64];
+      FALLTHROUGH;
     case 2:
       *dst++ = symbols[64];
   }

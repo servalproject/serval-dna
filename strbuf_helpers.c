@@ -65,6 +65,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/uio.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include "lang.h" // for FALLTHROUGH
 #include "http_server.h"
 #include "strbuf_helpers.h"
 #include "str.h"
@@ -491,7 +492,7 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
       }
     }
     break;
-  case AF_INET:
+  case AF_INET: FALLTHROUGH;
   case AF_INET6:{
     char name[INET6_ADDRSTRLEN];
     char service[6];
@@ -503,7 +504,7 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
 	service);
       break;
     }
-    // fall through
+    FALLTHROUGH;
   }
   default: {
       strbuf_append_socket_domain(sb, addr->sa_family);
