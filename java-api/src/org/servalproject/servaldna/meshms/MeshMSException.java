@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2014 Serval Project Inc.
+ * Copyright (C) 2012-2015 Serval Project Inc.
  *
  * This file is part of Serval Software (http://www.servalproject.org)
  *

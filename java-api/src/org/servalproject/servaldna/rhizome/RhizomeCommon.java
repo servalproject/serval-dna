@@ -1,5 +1,6 @@
 /**
- * Copyright (C) 2014 Serval Project Inc.
+ * Copyright (C) 2016-2017 Flinders University
+ * Copyright (C) 2014-2015 Serval Project Inc.
  *
  * This file is part of Serval Software (http://www.servalproject.org)
  *
