@@ -671,6 +671,7 @@ static void serverCleanUp()
 {
   assert(serverMode != SERVER_NOT_RUNNING);
   INFOF("Server cleaning up");
+  overlay_queue_release();
   rhizome_close_db();
   dna_helper_shutdown();
   overlay_interface_close_all();

@@ -90,6 +90,9 @@ void overlay_interface_close(overlay_interface *interface)
   unschedule(&interface->alarm);
   if (interface->radio_link_state)
     radio_link_free(interface);
+
+  set_destination_ref(&interface->destination, NULL);
+
   interface->state=INTERFACE_STATE_DOWN;
   
   INFOF("Interface %s addr %s is down", 

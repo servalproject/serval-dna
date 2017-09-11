@@ -447,8 +447,10 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
       frame_add_destination(frame, NULL, context->interface->destination);
       
       struct network_destination *dest = create_unicast_destination(&context->addr, context->interface);
-      if (dest)
+      if (dest){
 	frame_add_destination(frame, NULL, dest);
+	release_destination_ref(dest);
+      }
     
     }else{
       FATAL("This context doesn't have an interface?");

@@ -62,7 +62,7 @@ static int overlay_calc_queue_time(struct overlay_frame *frame);
 
 int overlay_queue_init(){
   /* Set default congestion levels for queues */
-  int i;
+  unsigned i;
   for(i=0;i<OQ_MAX;i++) {
     overlay_tx[i].maxLength=100;
     overlay_tx[i].latencyTarget=0; // no QOS time limit by default, depend on per destination timeouts
@@ -101,6 +101,14 @@ overlay_queue_remove(overlay_txqueue *queue, struct overlay_frame *frame){
   op_free(frame);
   
   return next;
+}
+
+void overlay_queue_release(){
+  unsigned i;
+  for(i=0;i<OQ_MAX;i++) {
+    while(overlay_tx[i].first)
+      overlay_queue_remove(&overlay_tx[i], overlay_tx[i].first);
+  }
 }
 
 #if 0 // unused

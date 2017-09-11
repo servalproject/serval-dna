@@ -1761,6 +1761,7 @@ tfw_quietly() {
 execute() {
    $_tfw_assert_noise && tfw_log "# execute" $(shellarg "$@")
    _tfw_getopts execute "$@"
+   _tfw_dump_on_fail --stderr
    shift $_tfw_getopts_shift
    _tfw_execute "$@"
 }
@@ -1769,7 +1770,6 @@ executeOk() {
    $_tfw_assert_noise && tfw_log "# executeOk" $(shellarg "$@")
    _tfw_getopts executeok "$@"
    _tfw_opt_exit_status=0
-   _tfw_dump_on_fail --stderr
    shift $_tfw_getopts_shift
    _tfw_execute "$@"
 }

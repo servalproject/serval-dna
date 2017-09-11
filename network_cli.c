@@ -287,6 +287,9 @@ static int app_trace(const struct cli_parsed *parsed, struct cli_context *contex
   struct mdp_header mdp_header;
   bzero(&mdp_header, sizeof mdp_header);
 
+  uint8_t payload[MDP_MTU];
+  struct overlay_buffer *b = ob_static(payload, sizeof payload);
+
   mdp_header.local.sid = BIND_PRIMARY;
 
   if (mdp_bind(mdp_sockfd, &mdp_header.local))
@@ -304,8 +307,6 @@ static int app_trace(const struct cli_parsed *parsed, struct cli_context *contex
   cli_delim(context, "\n");
   cli_flush(context);
   time_ms_t end_time = gettime_ms() + timeout_ms;
-  uint8_t payload[MDP_MTU];
-  struct overlay_buffer *b = ob_static(payload, sizeof payload);
 
   while(1){
     ob_clear(b);
@@ -354,6 +355,8 @@ static int app_trace(const struct cli_parsed *parsed, struct cli_context *contex
 
 
 end:
+  if (b)
+    ob_free(b);
   mdp_close(mdp_sockfd);
   return ret;
 }

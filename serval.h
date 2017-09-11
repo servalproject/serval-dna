@@ -261,6 +261,7 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
 void rhizome_check_connections(struct sched_ent *alarm);
 
 int overlay_queue_init();
+void overlay_queue_release();
 
 void monitor_client_poll(struct sched_ent *alarm);
 void monitor_poll(struct sched_ent *alarm);

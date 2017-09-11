@@ -621,6 +621,7 @@ void sync_send_keys(struct sched_ent *alarm)
   header.qos = OQ_OPPORTUNISTIC;
   header.ttl = 1;
   overlay_send_frame(&header, payload);
+  ob_free(payload);
   
   time_ms_t now = gettime_ms();
   

@@ -599,6 +599,13 @@ int main()
 	DEBUGF(verbose, "Closing peer proxy socket, TX %d RX %d", p->tx_count, p->rx_count);
 	unwatch(&p->alarm);
 	socket_unlink_close(p->alarm.poll.fd);
+
+	while(p->_head){
+	  struct packet *packet = p->_head;
+	  p->_head = packet->_next;
+	  free(packet);
+	}
+
 	struct peer *f = p;
 	p=p->_next;
 	free(f);

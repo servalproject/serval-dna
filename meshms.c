@@ -755,12 +755,14 @@ enum meshms_status meshms_message_iterator_open(struct meshms_message_iterator *
     c = c->_next;
   }
 
+  rhizome_manifest_free(m);
   meshms_free_conversations(conv);
   return MESHMS_STATUS_OK;
 
 error:
   status = MESHMS_STATUS_ERROR;
 fail:
+  rhizome_manifest_free(m);
   meshms_message_iterator_close(iter);
   meshms_free_conversations(conv);
   return status;

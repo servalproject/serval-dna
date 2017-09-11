@@ -1193,7 +1193,7 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
   
   /* Free variable and signature blocks. */
   rhizome_manifest_clear(m);
-
+  free(m);
   return;
 }
 

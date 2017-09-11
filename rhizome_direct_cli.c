@@ -55,12 +55,16 @@ static int rhizome_sync_with_peers(int mode, int peer_count, const struct config
   int peer_number;
   for (peer_number = 0; peer_number < peer_count; ++peer_number) {
     const struct config_rhizome_peer *peer = peers[peer_number];
-    if (strcasecmp(peer->protocol, "http") != 0)
+    if (strcasecmp(peer->protocol, "http") != 0){
+      free(state);
       return WHYF("Unsupported Rhizome Direct protocol %s", alloca_str_toprint(peer->protocol));
+    }
     strbuf h = strbuf_local(state->host, sizeof state->host);
     strbuf_puts(h, peer->host);
-    if (strbuf_overrun(h))
+    if (strbuf_overrun(h)){
+      free(state);
       return WHYF("Rhizome Direct host name too long: %s", alloca_str_toprint(peer->host));
+    }
     state->port = peer->port;
     DEBUGF(rhizome_direct, "Rhizome direct peer is %s://%s:%d", peer->protocol, state->host, state->port);
     rhizome_direct_sync_request *s = rhizome_direct_new_sync_request(rhizome_direct_http_dispatch, 65536, 0, mode, state);
@@ -69,6 +73,7 @@ static int rhizome_sync_with_peers(int mode, int peer_count, const struct config
       while (fd_poll() && rd_sync_handle_count > 0)
 	;
   }
+  free(state);
   return 0;
 }
 

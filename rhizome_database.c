@@ -80,19 +80,21 @@ static uint64_t max_rowid=0;
 static int sqlite_trace_callback(unsigned UNUSED(mask), void *UNUSED(context), void * p, void * x)
 {
   if (sqlite_trace_func()) {
+    const char * expanded_sql = NULL;
     const char * rendered_sql = NULL;
     switch (mask) {
     case SQLITE_TRACE_STMT:
       if (!sqlite_trace_done) {
 	sqlite3_stmt * stmt = p;
 	const char * unexpanded_sql = x;
-	rendered_sql = (unexpanded_sql[0] == '-' && unexpanded_sql[1] == '-') ? &unexpanded_sql[2] : sqlite3_expanded_sql(stmt);
+	rendered_sql = (unexpanded_sql[0] == '-' && unexpanded_sql[1] == '-') ?
+	  &unexpanded_sql[2] : (expanded_sql = sqlite3_expanded_sql(stmt));
       }
       break;
     case SQLITE_TRACE_PROFILE:
       if (!sqlite_trace_done) {
 	sqlite3_stmt * stmt = p;
-	rendered_sql = sqlite3_expanded_sql(stmt);
+	rendered_sql = (expanded_sql = sqlite3_expanded_sql(stmt));
       }
       break;
     }
@@ -100,6 +102,8 @@ static int sqlite_trace_callback(unsigned UNUSED(mask), void *UNUSED(context), v
       logMessage(LOG_LEVEL_DEBUG, sqlite_trace_whence ? *sqlite_trace_whence : __HERE__, "%s", rendered_sql);
       ++sqlite_trace_done;
     }
+    if (expanded_sql)
+      sqlite3_free((void*)expanded_sql);
   }
   return 0; // ignored by SQLite
 }

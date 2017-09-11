@@ -2046,29 +2046,43 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
       line[--linelen] = '\0';
       if (linelen && line[linelen - 1] == '\r')
 	line[--linelen] = '\0';
-    } else
+    } else {
+      if (id)
+	keyring_free_identity(id);
       return WHY("line too long");
+    }
     unsigned idn;
     unsigned ktype;
     int i, j;
     int n = sscanf(line, "%u: type=%u (%n%*[^)]%n)", &idn, &ktype, &i, &j);
     if (n == EOF && (ferror(input) || feof(input)))
 	break;
-    if (n != 2)
+    if (n != 2){
+      if (id)
+	keyring_free_identity(id);
       return WHYF("malformed input n=%u", n);
-    if (ktype == 0)
+    }
+    if (ktype == 0){
+      if (id)
+	keyring_free_identity(id);
       return WHY("invalid input: ktype=0");
+    }
     const char *ktypestr = &line[i];
     line[j] = '\0';
     const char *content = &line[j + 1];
     //DEBUGF(keyring, "n=%d i=%u ktypestr=%s j=%u content=%s", n, i, alloca_str_toprint(ktypestr), j, alloca_str_toprint(content));
     keypair *kp = keyring_alloc_keypair(ktype, 0);
-    if (kp == NULL)
+    if (kp == NULL){
+      if (id)
+	keyring_free_identity(id);
       return -1;
+    }
     int (*loader)(keypair *, const char *) = load_unknown;
     if (strcmp(ktypestr, "unknown") != 0 && ktype < NELS(keytypes))
       loader = keytypes[ktype].loader;
     if (loader(kp, content) == -1) {
+      if (id)
+	keyring_free_identity(id);
       keyring_free_keypair(kp);
       return -1;
     }

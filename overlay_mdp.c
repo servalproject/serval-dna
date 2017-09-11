@@ -874,8 +874,8 @@ int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *h
   
     /* crypted and signed (using CryptoBox authcryption primitive) */
     frame->payload = encrypt_payload(frame->source, frame->destination, ob_ptr(plaintext), ob_position(plaintext));
+    ob_free(plaintext);
     if (!frame->payload){
-      ob_free(plaintext);
       op_free(frame);
       return -1;
     }

@@ -550,8 +550,10 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
 
 void rhizome_direct_bundle_iterator_free(rhizome_direct_bundle_cursor **c)
 {
-  free((*c)->buffer); (*c)->buffer=NULL;
+  free((*c)->buffer);
+  (*c)->buffer=NULL;
   bzero(*c,sizeof(rhizome_direct_bundle_cursor));
+  free(*c);
   *c=NULL;
 }
 
