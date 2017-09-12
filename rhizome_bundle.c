@@ -1483,7 +1483,6 @@ struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const ch
 int rhizome_lookup_author(rhizome_manifest *m)
 {
   IN();
-  assert(keyring != NULL);
   switch (m->authorship) {
     case AUTHOR_LOCAL:
     case AUTHOR_AUTHENTIC:
@@ -1491,7 +1490,7 @@ int rhizome_lookup_author(rhizome_manifest *m)
       RETURN(1);
     case AUTHOR_NOT_CHECKED:
       DEBUGF(rhizome, "manifest %p lookup author=%s", m, alloca_tohex_sid_t(m->author));
-      if (keyring_find_identity_sid(keyring, &m->author)) {
+      if (keyring && keyring_find_identity_sid(keyring, &m->author)) {
 	DEBUGF(rhizome, "found author");
 	m->authorship = AUTHOR_LOCAL;
 	RETURN(1);
@@ -1500,7 +1499,7 @@ int rhizome_lookup_author(rhizome_manifest *m)
     case ANONYMOUS:
       if (m->has_sender) {
 	DEBUGF(rhizome, "manifest %p lookup sender=%s", m, alloca_tohex_sid_t(m->sender));
-	if (keyring_find_identity_sid(keyring, &m->sender)) {
+	if (keyring && keyring_find_identity_sid(keyring, &m->sender)) {
 	  DEBUGF(rhizome, "found sender");
 	  rhizome_manifest_set_author(m, &m->sender);
 	  m->authorship = AUTHOR_LOCAL;
