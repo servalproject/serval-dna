@@ -1,6 +1,6 @@
 Serval DNA
 ==========
-[Serval Project][], September 2016
+[Serval Project][], September 2017
 
 [Serval DNA][] is the core component of the [Serval Mesh][] app for Android and
 the [Serval Mesh Extender][] long-range mesh networking device.  It is a daemon
@@ -53,10 +53,15 @@ Bugs can be reported and inspected using the [GitHub issue tracker][Serval DNA i
 What is in this repository?
 ---------------------------
 
-This repository contains the [GNU C][] source code for the **servald**
-executable, a [test framework](./testframework.sh) and [test scripts](./tests/)
-written in [Bash][], some [technical documentation](./doc/), and various
-support files for installation and configuration on various platforms.
+This repository contains:
+
+* the [GNU C][] source code for the **servald** executable,
+* the [Java][] source code for the Serval API,
+* some [technical documentation](./doc/),
+* a [test framework](./testframework.sh) and [test scripts](./tests/) written
+  in [Bash][],
+* various support files for installation and configuration on various
+  platforms.
 
 The **servald** executable is a multi-purpose program that can be invoked
 directly from the command line, run as a daemon process, or invoked via [JNI][]
@@ -158,7 +163,7 @@ Entity][entity].
 
 -----
 **Copyright 2015 Serval Project Inc.**  
-**Copyright 2016 Flinders University**  
+**Copyright 2016-2017 Flinders University**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 This document is available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 
@@ -176,6 +181,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [Serval DNA issues]: https://github.com/servalproject/serval-dna/issues
 [issue #28]: https://github.com/servalproject/serval-dna/issues/28
 [GNU C]: http://gcc.gnu.org/
+[Java]: https://en.wikipedia.org/wiki/Java_(programming_language)
 [daemon]: http://en.wikipedia.org/wiki/Daemon_(computing)
 [free software]: http://www.gnu.org/philosophy/free-sw.html
 [contributors]: /servalproject/serval-dna/blob/development/CONTRIBUTORS.md

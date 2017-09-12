@@ -1,13 +1,13 @@
 Serval DNA Build and Test
 =========================
-[Serval Project][], October 2016
+[Serval Project][], September 2017
 
 Supported Architectures
 -----------------------
 
 These instructions will build [Serval DNA][] successfully for the following platforms:
 
- * Debian Linux, ix86 and x86\_64, kernel versions 2.6 to 4.6, using [gcc
+ * Debian Linux, ix86 and x86\_64, kernel versions 2.6 to 4.12, using [gcc
    4.4][] and later, [gcc 5][] and [gcc 6][]
  * Mac OS-X x86\_64, releases 10.7 “Lion” to 10.11 “El Capitan”, using
    [Xcode][] versions 3.2 to 8, and GNU tools available from [homebrew][]
@@ -47,15 +47,9 @@ Mandatory dependencies:
  * network services library **libnsl** and headers
  * dynamic link library **libdl** and header `<dlfcn.h>`
  * Native Posix Threads Library **libpthread** and header `<pthread.h>`
- * elliptic curve encryption library **libsodium** and header `<sodium.h>`,
-   version 1.0.2 or greater
  * on Solaris, the realtime library **librt** (for the `nanosleep()` function)
  * **autoconf** 2.67-2.69 (2.70 may work but has not been tested)
  * **automake** 1.15
-
-The **libsodium** development files are available on Debian/Ubuntu systems in
-the `libsodium-dev` package.  On other systems, like Mac OS-X, it must be
-compiled from source.  The [Notes for Developers][] give more details.
 
 Optional:
 
@@ -103,28 +97,52 @@ A successful session should appear something like:
     config.status: creating Makefile
     config.status: creating testconfig.sh
     $ make
-    SERVALD CC conf.c
-    SERVALD CC cli.c
+    SERVALD CC servald_features.c
+    MAKE libsodium-dev
+    make[1]: Entering directory '/home/username/src/serval-dna/libsodium'
+    Making install in contrib
+    make[2]: Entering directory '/home/username/src/serval-dna/libsodium/contrib'
     ...
-    CC cli.c
-    CC commandline.c
+    make[4]: Leaving directory '/home/username/src/serval-dna/libsodium/src/libsodium/include'
+    make[4]: Entering directory '/home/username/src/serval-dna/libsodium/src/libsodium'
+      CC       crypto_aead/chacha20poly1305/sodium/libsodium_la-aead_chacha20poly1305.lo
+      CC       crypto_aead/xchacha20poly1305/sodium/libsodium_la-aead_xchacha20poly1305.lo
+      CC       crypto_auth/libsodium_la-crypto_auth.lo
+    ...
+    ----------------------------------------------------------------------
+    Libraries have been installed in:
+       /home/username/src/serval-dna/libsodium-dev/lib
+    ...
+    make[1]: Leaving directory '/home/username/src/serval-dna/libsodium'
+    SERVALD CC jni_common.c
+    SERVALD CC jni_commandline.c
+    SERVALD CC jni_instance.c
+    ...
+    CC version_servald.c
+    AR _servald.a
+    LINK libservaldaemon.so
+    LIB CC base64.c
+    LIB CC cli.c
+    LIB CC cli_stdio.c
     ...
     LINK simulator
-    SERVALD CC test_cli.c
-    SERVALD CC log_context.c
-    SERVALD CC log_stderr.c
-    SERVALD CC context1.c
+    SERVALD CC test_features.c
     LINK serval-tests
+    make[1]: Entering directory '/home/username/src/serval-dna/java-api'
+    JAVAC classes
+    JAVAC testclasses
+    Note: Some input files use or override a deprecated API.
+    Note: Recompile with -Xlint:deprecation for details.
+    make[1]: Leaving directory '/home/username/src/serval-dna/java-api'
+    rm _servalclient.a _monitorclient.a _servald.a
     $
 
-On Solaris, the system `make` command may not be GNU Make, and the system
-`cc` command may not be GNU Gcc.  The following may work:
+On some systems, the system `make` command may not be GNU Make, and the system
+`cc` command may not be GNU gcc.  The following may work:
 
     $ cd $HOME/src/serval-dna
     $ autoreconf -f -i -I m4
-    $ CC=gcc
-    $ export CC
-    $ ./configure
+    $ ./configure CC=gcc
     $ gmake
     $
 
@@ -140,14 +158,15 @@ Built artifacts
 The build process produces the following artifacts:
 
 * **servald** is the main Serval DNA daemon executable.  All the Serval DNA
-  daemon code is statically linked into this executable, so it does not depend
-  on any built Serval libraries.  However, it is dynamically linked with the
-  system libraries and with `libsodium.so`.
+  daemon, SQLite and libsodium code is statically linked into this executable,
+  so it does not need to load any Serval or libsodium shared libraries at
+  run-time.  Its unstripped size is about 9.5 MB on a typical 64-bit system, of
+  which about 7 MB is SQLite.  Its stripped size is about 3 MB.
 
 * **servaldwrap** is a Serval DNA executable identical to *servald*, but
-  dynamically linked with `libservald.so` instead of statically linked.  This
-  executable mainly exists to ensure that the shared library is always
-  linkable.
+  it loads `libservaldaemon.so` at run-time using [dlopen(3)][] instead of
+  being statically linked, so it is only a dozen KB in size.  This executable
+  mainly exists to test that the shared library is loadable.
 
 * **serval-tests** is an executable utility that performs various system tests
   such as memory speed, cryptographic speed, byte ordering, and configuration
@@ -155,16 +174,16 @@ The build process produces the following artifacts:
   provided in a separate executable in order to keep the size of the *servald*
   executable to a minimum.
 
-* **libservald.a** is a static library containing the complete executable code
-  of the Serval DNA daemon.  An executable (such as *servald*) can be built
-  with any desired subset of Serval functions by linking in only the required
-  parts of this library using the *features* mechanism described in
-  [feature.h](./feature.h).
+* **libservaldaemon.a** is a static library containing the complete executable
+  code of the Serval DNA daemon, including SQLite and libsodium cryptographic
+  functions.  An executable (such as *servald*) can be built with any desired
+  subset of Serval functions by linking in only the required parts of this
+  library using the *features* mechanism described in [feature.h](./feature.h).
 
-* **libservald.so** is a dynamic library containing the complete executable
-  code of the Serval DNA daemon, including [JNI][] entry points.  The Serval
-  DNA Java API, which is used by [batphone][], and the *servaldwrap* executable
-  both use this dynamic library.
+* **libservaldaemon.so** is a dynamic library containing the complete executable
+  code of the Serval DNA daemon, including [JNI][] entry points, SQLite and
+  libsodium cryptographic functions.  The Serval DNA Java API, which is used by
+  [batphone][], and the *servaldwrap* executable both use this dynamic library.
 
 * **directory_service** is the executable for the [Serval Infrastructure][]
   daemon.
@@ -242,7 +261,7 @@ and may need to be changed for your particular circumstances.
 
 -----
 **Copyright 2013-2015 Serval Project Inc.**  
-**Copyright 2016 Flinders University**  
+**Copyright 2016-2017 Flinders University**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 This document is available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 

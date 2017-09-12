@@ -12,6 +12,12 @@ SQLITE3_AMALGAMATION = sqlite-amalgamation-3140200
 include $(SOURCE_PREFIX)sourcefiles.mk
 include $(SOURCE_PREFIX)headerfiles.mk
 
+LIBSODIUM_SUBDIR =	$(SOURCE_PREFIX)libsodium/
+LIBSODIUM_DEV =		libsodium-dev
+LIBSODIUM_HEADERS =	$(LIBSODIUM_DEV)/include/sodium.h
+LIBSODIUM_A =		$(LIBSODIUM_DEV)/lib/libsodium.a
+LIBSODIUM_SO =		$(LIBSODIUM_DEV)/lib/libsodium.so
+
 OBJSDIR_SERVALD =	objs_servald
 OBJSDIR_LIB =		objs_lib
 OBJSDIR_TOOLS =		objs
@@ -53,6 +59,7 @@ SIMULATOR_OBJS = \
 	$(addprefix $(OBJSDIR_TOOLS)/, $(SIMULATOR_SOURCES:.c=.o))
 
 PREFIXED_HEADERS = $(addprefix $(SOURCE_PREFIX), $(HDRS))
+PREFIXED_SOURCES = $(addprefix $(SOURCE_PREFIX), $(ALL_SOURCES))
 
 CC= @CC@
 
@@ -87,6 +94,14 @@ DEFS= @DEFS@
 
 CONFIG_H = @CONFIG_H@
 
+# Usage: $(call MERGE_STATIC_LIBS, libdest.a, libsrcfoo.a libsrcbar.a)
+MERGE_STATIC_LIBS =	echo MERGE $(1) = $(2); \
+			tmp="$$(mktemp -d)" && \
+			( cd "$$tmp" $(foreach LIB, $(2), && $(AR) -x $(abspath $(LIB))) ) && \
+			$(RM) $@ && \
+			$(AR) -cr $(1) "$$tmp"/* && \
+			$(RM) -r "$$tmp"
+
 .PHONY: all libs test install uninstall clean
 
 all:	libs servald servaldwrap test
@@ -104,13 +119,15 @@ uninstall:
 	$(RM) $(DESTDIR)$(sbindir)/servald
 
 clean:
-	@$(RM) -r $(OBJSDIRS:%=%/*) \
-		  servald \
-		  libservaldaemon.so libservaldaemon.a \
-		  libservalclient.so libservalclient.a \
-		  libmonitorclient.so libmonitorclient.a \
-		  tfw_createfile directory_service fakeradio simulator serval-tests \
-		  tags
+	cd $(LIBSODIUM_SUBDIR) && $(MAKE) clean
+	$(RM) -r $(LIBSODIUM_DEV) \
+		 $(OBJSDIRS:%=%/*) \
+		 servald \
+		 libservaldaemon.so libservaldaemon.a \
+		 libservalclient.so libservalclient.a \
+		 libmonitorclient.so libmonitorclient.a \
+		 tfw_createfile directory_service fakeradio simulator serval-tests \
+		 tags
 
 # Only provide Java targets if the Java compiler is available.
 ifneq ($(JAVAC),)
@@ -135,6 +152,32 @@ java-api-clean:
 	@cd java-api 2>/dev/null && $(MAKE) SOURCE_PREFIX=$(SOURCE_PREFIX_JAVA_API) clean
 
 endif # $(JAVAC)
+
+# Build the Sodium elliptic curve encryption library within its 'libsodium'
+# subtree, and install its development files (headers and libraries) into our
+# $(LIBSODIUM_DEV) subdirectory.  Then use the contents of this subdirectory to
+# provide system headers, eg <sodium.h>, and libraries, eg, libsodium.a, to
+# compile and link Serval DNA.  This completely avoids any dependency on the
+# system's installed libsodium run-time and development packages.
+
+CFLAGS+= -isystem $(LIBSODIUM_DEV)/include
+
+$(LIBSODIUM_HEADERS) $(LIBSODIUM_A): $(LIBSODIUM_DEV)/.installed
+
+# The libsodium package uses libtool, so by default its static libraries get
+# compiled without the -fPIC option.  This prevents the libsodium static
+# library from being linked into a shared library.  However, this Makefile
+# needs to do exactly that, to make libservaldaemon.so, so passes the
+# -prefer-pic libtool option, which causes libtool to use -fPIC even when
+# compiling for static libraries.
+
+$(LIBSODIUM_DEV)/.installed:
+	@echo MAKE $(LIBSODIUM_DEV)
+	@mkdir -p $(LIBSODIUM_DEV)
+	@$(RM) $@
+	@touch $@.in-progress
+	@cd $(LIBSODIUM_SUBDIR) && $(MAKE) CFLAGS+=-prefer-pic prefix=$(abspath $(LIBSODIUM_DEV)) install
+	@mv -f $@.in-progress $@
 
 # Source code test coverage support -- see doc/Testing.md
 
@@ -193,7 +236,7 @@ $(SOURCE_PREFIX)configure: $(SOURCE_PREFIX)configure.ac
 
 # Embed Serval DNA's version into libraries and executables.
 
-$(OBJSDIR_TOOLS)/version.o: $(addprefix $(SOURCE_PREFIX), $(ALL_SOURCES)) \
+$(OBJSDIR_TOOLS)/version.o: $(PREFIXED_SOURCES) \
     			    $(PREFIXED_HEADERS) \
 			    $(SOURCE_PREFIX)version_servald.c \
 			    $(SOURCE_PREFIX)version_string.sh \
@@ -243,28 +286,32 @@ $(OBJSDIR_LIB)/%.o: $(SOURCE_PREFIX)%.c
 # broad so it sometimes results in unnecessary re-compilation, but that is
 # better than too narrow, which can result in missed re-compilation.
 
-$(SERVAL_DAEMON_OBJS): 			Makefile $(CONFIG_H) $(PREFIXED_HEADERS)
-$(SERVALD_OBJS):       			Makefile
-$(LIB_SERVAL_OBJS): 			Makefile $(CONFIG_H) $(PREFIXED_HEADERS)
+$(SERVAL_DAEMON_OBJS): 			Makefile $(CONFIG_H) $(PREFIXED_HEADERS) $(LIBSODIUM_HEADERS)
+$(SERVALD_OBJS):       			Makefile                                 $(LIBSODIUM_HEADERS)
+$(LIB_SERVAL_OBJS): 			Makefile $(CONFIG_H) $(PREFIXED_HEADERS) $(LIBSODIUM_HEADERS)
 $(OBJSDIR_TOOLS)/tfw_createfile.o:	Makefile str.h
-$(OBJSDIR_TOOLS)/directory_service.o:	Makefile $(CONFIG_H) $(PREFIXED_HEADERS)
-$(MONITOR_CLIENT_OBJS):			Makefile $(CONFIG_H) $(PREFIXED_HEADERS)
-$(SIMULATOR_OBJS):			Makefile $(CONFIG_H) $(PREFIXED_HEADERS)
+$(OBJSDIR_TOOLS)/directory_service.o:	Makefile $(CONFIG_H) $(PREFIXED_HEADERS) $(LIBSODIUM_HEADERS)
+$(MONITOR_CLIENT_OBJS):			Makefile $(CONFIG_H) $(PREFIXED_HEADERS) $(LIBSODIUM_HEADERS)
+$(SIMULATOR_OBJS):			Makefile $(CONFIG_H) $(PREFIXED_HEADERS) $(LIBSODIUM_HEADERS)
 
 # Rules for main targets.
 
-libservaldaemon.a: \
-		$(SERVALD_OBJS) \
-		$(OBJSDIR_TOOLS)/version.o
+.INTERMEDIATE: _servald.a
+_servald.a: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
+	@$(RM) $@
 	@$(AR) -cr $@ $^
+
+libservaldaemon.a: _servald.a $(LIBSODIUM_A)
+	@$(call MERGE_STATIC_LIBS, $@, $^)
 
 libservaldaemon.so: \
 		$(OBJSDIR_SERVALD)/servald_features.o \
 		$(SERVAL_DAEMON_JNI_OBJS) \
-		libservaldaemon.a
+		_servald.a \
+		$(LIBSODIUM_A)
 	@echo LINK $@
-	@$(CC) -Wall -shared -o $@ $^ $(LDFLAGS)
+	@$(CC) -Wall -shared -o $@ $(LDFLAGS) $(filter %.o, $^) $(filter %.a, $^)
 
 servald: $(OBJSDIR_SERVALD)/servald_features.o libservaldaemon.a
 	@echo LINK $@
@@ -294,27 +341,38 @@ simulator: $(SIMULATOR_OBJS) libservalclient.a
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
-libservalclient.a: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
+.INTERMEDIATE: _servalclient.a
+_servalclient.a: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
+	@$(RM) $@
 	@$(AR) -cr $@ $^
 
-libservalclient.so: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
-	@echo LINK $@
-	@$(CC) -Wall -shared -o $@ $^ $(LDFLAGS)
+libservalclient.a: _servalclient.a $(LIBSODIUM_A)
+	@$(call MERGE_STATIC_LIBS, $@, $^)
 
-libmonitorclient.a: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
+libservalclient.so: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o $(LIBSODIUM_A)
+	@echo LINK $@
+	@$(CC) -Wall -shared -o $@ $(LDFLAGS) $(filter %.o, $^) $(filter %.a, $^)
+
+.INTERMEDIATE: _monitorclient.a
+_monitorclient.a: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
+	@$(RM) $@
 	@$(AR) -cr $@ $^
 
-libmonitorclient.so: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
+libmonitorclient.a: _monitorclient.a $(LIBSODIUM_A)
+	@$(call MERGE_STATIC_LIBS, $@, $^)
+
+libmonitorclient.so: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o $(LIBSODIUM_A)
 	@echo LINK $@
-	@$(CC) -Wall -shared -o $@ $^ $(LDFLAGS)
+	@$(CC) -Wall -shared -o $@ $(LDFLAGS) $(filter %.o, $^) $(filter %.a, $^)
 
 # The tags will always index all the Serval DNA headers and source files.  If
 # serval-tools is installed, then it will also index all the libsodium, JNI
 # and Android NDK header files.
-tags:	Makefile $(HDRS) $(ALL_SOURCES)
-	{ for file in $(HDRS) $(ALL_SOURCES); do echo "$$file"; done; \
+$(SOURCE_PREFIX)tags:	Makefile $(PREFIXED_HEADERS) $(PREFIXED_SOURCES)
+	{ for file in $(PREFIXED_HEADERS) $(PREFIXED_SOURCES); do echo "$$file"; done; \
+	  find $(LIBSODIUM_DEV)/install -type f ; \
 	  sp-find-gcc-headers $(CFLAGS) 2>/dev/null; \
 	  ndk_prefix=$$(sp-ndk-prefix . 2>/dev/null) && find "$$ndk_prefix/arch-arm/usr/include" -type f; \
 	} | ctags -L- -f $@ --tag-relative=yes --c-kinds=defgmpstuv

@@ -19,9 +19,6 @@
 /Makefile
 /testconfig.sh
 /config.h
-/nacl/nacl-20110221/build
-/nacl/naclinc.txt
-/nacl/nacllib.txt
 /servald
 /servaldwrap
 /serval-tests

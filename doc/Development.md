@@ -1,6 +1,6 @@
 Notes for Serval DNA Developers
 ===============================
-[Serval Project][], September 2016
+[Serval Project][], September 2017
 
 Introduction
 ------------
@@ -8,8 +8,8 @@ Introduction
 This document is intended for all developers of [Serval DNA][], and also for
 non-developers who are experiencing errors in the [build][] process.
 
-Autoconf
---------
+Autotools
+---------
 
 The [configure.ac](../configure.ac) file is an [autoconf][] script that
 contains instructions for adapting the build of Serval DNA to different
@@ -30,13 +30,12 @@ directory.  In turn, it then includes this `aclocal.m4` file when invoking [GNU
 M4][] to convert the [configure.ac](../configure.ac) file into the
 `./configure` script.
 
-Internally, [autoconf][] generates the `aclocal.m4` file by invoking the
-[aclocal][] utility.  Used without arguments, [aclocal][] may emit some warning
-messages that look like this:
+When invoked without arguments, all [autoreconf][] versions up to 2.69 will
+emit warning messages like this:
 
     $ cd serval-dna
     $ aclocal
-    configure.ac:18: warning: Unsupported attribute section, the test may fail
+    configure.ac:19: warning: Unsupported attribute section, the test may fail
     ../../lib/autoconf/lang.m4:224: AC_LANG_SOURCE is expanded from...
     ../../lib/autoconf/lang.m4:241: AC_LANG_PROGRAM is expanded from...
     ../../lib/autoconf/lang.m4:193: AC_LANG_CONFTEST is expanded from...
@@ -46,21 +45,30 @@ messages that look like this:
     ../../lib/autoconf/general.m4:2042: AC_CACHE_VAL is expanded from...
     ../../lib/autoconf/general.m4:2063: AC_CACHE_CHECK is expanded from...
     /usr/share/aclocal/ax_gcc_var_attribute.m4:57: AX_GCC_VAR_ATTRIBUTE is expanded from...
-    configure.ac:18: the top level
+    configure.ac:19: the top level
     $
 
-These messages are harmless; the correct `aclocal.m4` is still generated.  To
-suppress most of these messages from the output of [aclocal][] and
-[autoreconf][], give the `-I m4` option:
+These messages mean that the generated `aclocal.m4` file does not contain the
+M4 macros provided by Serval DNA, but instead contains the default ones that
+from the [autoconf macro archive][].  As a consequence, the `./configure`
+script may not test for certain features correctly, leading to compilation
+failure or subtle bugs.
+
+The correct way to invoke [autoreconf][] versions 2.69 or earlier is to give
+the `-I m4` option, which will eliminate the warnings:
 
     $ cd serval-dna
     $ autoreconf -f -i -I m4
     $
 
+The `-I m4` option should be unnecessary in [autoreconf][] versions 2.70 and
+later, because they will deduce it from the `AC_CONFIG_MACRO_DIR([m4])`
+directive near the top of `configure.ac`.
+
 libsodium
 ---------
 
-**Libsodium** is the cryptographic library that [Serval DNA][] uses for all its
+[Serval DNA][] uses the [libsodium][] cryptographic library for elliptic curve
 encryption, authentication and secure hashing.
 
 [libsodium][] is a portable, cross-compilable fork of [NaCl][], with a
@@ -72,64 +80,37 @@ not describe the specific origins of certain constants.  Despite the emphasis
 on higher security, NaCl-libsodium primitives are faster across-the-board than
 most implementations of the NIST standards.
 
-  * In order to [build][] Serval DNA, the libsodium development files must be
-    available, such as the source header file `<sodium.h>` and the static
-    library `libsodium.a`.
+A copy of the libsodium source code is embedded within the Serval DNA source
+code under the `libsodium` subdirectory, using [git subtree][].  Developers do
+not need to take any special steps to compile or install this libsodium source
+code, because Serval DNA does it automatically:
 
-  * In order to **run** Serval DNA, the libsodium run-time files must be
-    available, such as the dynamic library `libsodium.so`.
+* the [autoreconf][] command automatically recurses into the libsodium
+  subdirectory;
+* [Autotools](#autotools) `./configure` script automatically runs the
+  `libsodium/configure` script;
+* the `make` command automatically recurses into the libsodium directory *the
+  first time that it is run*.
 
-### libsodium-dev
+The Serval DNA build system has not been set up to facilitate development of
+the libsodium source code itself.  The Serval DNA `make` command will only
+recurse into the libsodium directory the first time it runs.  If a developer
+subsequently alters a libsodium source file, he/she must run `cd libsodium;
+make` manually to compile it, then run the Serval DNA `make`, which will
+recompile the entire Serval DNA source code.
 
-On systems that provide a libsodium development package, simply install that
-package.  For example, on [Debian][] and [Ubuntu][]:
+Upgrading libsodium
+-------------------
 
-    $ sudo apt-get install libsodium-dev
-    Reading package lists... Done
-    Building dependency tree
-    Reading state information... Done
-    The following NEW packages will be installed:
-      libsodium-dev
-    0 upgraded, 1 newly installed, 0 to remove and 0 not upgraded.
-    Selecting previously unselected package libsodium-dev:amd64.
-    (Reading database ... 223406 files and directories currently installed.)
-    Preparing to unpack .../libsodium-dev_1.0.11-1_amd64.deb ...
-    Unpacking libsodium-dev:amd64 (1.0.11-1) ...
-    Setting up libsodium-dev:amd64 (1.0.11-1) ...
+To upgrade the embedded [libsodium](#libsodium) source code to a later version,
+for example to its (hypothetical) tag `1.0.77`:
+
+    $ cd serval-dna
+    $ git subtree pull --prefix libsodium git@github.com:jedisct1/libsodium.git \
+          --squash 1.0.77 --message 'Merge libsodium 1.0.77'
     $
 
-### build-libsodium.sh
-
-On systems that do not provide a libsodium development package (even though
-they may provide a run-time package), such as [Mac OS X](#apple-mac-os-x), the
-libsodium development files can be locally installed by downloading the
-[libsodium source code][] and building it.  The
-[build-libsodium.sh](../build-libsodium.sh) script will do this:
-
-    $ ./build-libsodium.sh
-    ...
-    The libsodium run-time and development files have been installed in:
-    /absolute/path/name/serval-dna/libsodium
-    
-    To use this installation of libsodium, set up the environment using the
-    shell's "dot" command to source its settings.sh script, for example:
-    
-       . libsodium/settings.sh ; ./configure
-    
-    $
-
-In the event of failure, check that:
-
-* the [github.com][libsodium source code] web site can be reached
-* there is at least 60 MB of available disk space
-* there is no other libsodium development package already installed
-
-For more information, refer to the [libsodium installation documentation][]
-and the script's help message:
-
-    $ ./build-libsodium.sh --help
-    ...
-    $
+Beware: Git does not support rebasing of subtree merge commits.
 
 Debian/Ubuntu
 -------------
@@ -137,20 +118,19 @@ Debian/Ubuntu
 A single [apt-get][] command will install all mandatory and testing
 dependencies before building on [Debian][] and [Ubuntu][] systems:
 
-    $ sudo apt-get --yes install libc6-dev libsodium-dev jq curl
+    $ sudo apt-get --yes install libc6-dev jq curl
     Reading package lists... Done
     Building dependency tree
     Reading state information... Done
     libc6-dev is already the newest version (2.23-5).
     The following NEW packages will be installed:
-      curl jq libsodium-dev
-    0 upgraded, 3 newly installed, 0 to remove and 0 not upgraded.
+      curl jq
+    0 upgraded, 2 newly installed, 0 to remove and 0 not upgraded.
     Need to get 544 kB of archives.
     After this operation, 1,683 kB of additional disk space will be used.
     Get:1 http://ftp.us.debian.org/debian testing/main amd64 curl amd64 7.50.1-1 [218 kB]
     Get:2 http://ftp.us.debian.org/debian testing/main amd64 jq amd64 1.5+dfsg-1 [156 kB]
-    Get:3 http://ftp.us.debian.org/debian testing/main amd64 libsodium-dev amd64 1.0.11-1 [170 kB]
-    Fetched 544 kB in 1s (304 kB/s)
+    Fetched 374 kB in 1s (304 kB/s)
     Selecting previously unselected package curl.
     (Reading database ... 205089 files and directories currently installed.)
     Preparing to unpack .../0-curl_7.50.1-1_amd64.deb ...
@@ -158,27 +138,13 @@ dependencies before building on [Debian][] and [Ubuntu][] systems:
     Selecting previously unselected package jq.
     Preparing to unpack .../1-jq_1.5+dfsg-1_amd64.deb ...
     Unpacking jq (1.5+dfsg-1) ...
-    Selecting previously unselected package libsodium-dev:amd64.
-    Preparing to unpack .../2-libsodium-dev_1.0.11-1_amd64.deb ...
-    Unpacking libsodium-dev:amd64 (1.0.11-1) ...
     Setting up jq (1.5+dfsg-1) ...
     Setting up curl (7.50.1-1) ...
-    Setting up libsodium-dev:amd64 (1.0.11-1) ...
     Processing triggers for man-db (2.7.5-1) ...
     $
 
 Apple Mac OS X
 --------------
-
-### libsodium for OS X
-
-Although the [libsodium][] package is available for Mac OS X using the
-[homebrew][] package manager, that package only provides the run-time library,
-not the development files; for example, it does not provide the `#include
-<sodium.h>` header.
-
-The libsodium development files can be installed locally on Mac OS X using the
-[build-libsodium.sh](#build-libsodiumsh) script.
 
 ### Test utilities
 
@@ -266,7 +232,7 @@ and may need to be changed for your particular circumstances.
 
 -----
 **Copyright 2015 Serval Project Inc.**  
-**Copyright 2016 Flinders University**  
+**Copyright 2016-2017 Flinders University**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 Available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 
@@ -280,17 +246,16 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [GNU M4]: http://www.gnu.org/software/m4/m4.html
 [GCC]: https://gcc.gnu.org/
 [Clang]: http://clang.llvm.org/
+[libsodium]: https://libsodium.org/
 [NaCl]: https://nacl.cr.yp.to/
 [NIST]: https://en.wikipedia.org/wiki/National_Institute_of_Standards_and_Technology
 [Curve25519]: https://en.wikipedia.org/wiki/Curve25519
 [build]: ../INSTALL.md
 [aclocal]: https://www.gnu.org/software/automake/manual/html_node/aclocal-Invocation.html
 [autoreconf]: https://www.gnu.org/savannah-checkouts/gnu/autoconf/manual/autoconf.html#autoreconf-Invocation
+[git subtree]: http://git-memo.readthedocs.io/en/latest/subtree.html
 [Debian]: http://www.debian.org/
 [Ubuntu]: http://www.ubuntu.com/
-[libsodium]: https://download.libsodium.org/doc/
-[libsodium source code]: https://github.com/jedisct1/libsodium
-[libsodium installation documentation]: https://download.libsodium.org/libsodium/content/installation/
 [apt-get]: https://www.debian.org/doc/manuals/apt-guide/ch2.en.html
 [OS X grep(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/grep.1.html
 [OS X sed(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/sed.1.html

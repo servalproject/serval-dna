@@ -84,9 +84,6 @@
 /* Define to 1 if you have the `rt' library (-lrt). */
 #undef HAVE_LIBRT
 
-/* Define to 1 if you have the `sodium' library (-lsodium). */
-#undef HAVE_LIBSODIUM
-
 /* Define to 1 if you have the <linux/if.h> header file. */
 #undef HAVE_LINUX_IF_H
 
@@ -143,9 +140,6 @@
 
 /* Define to 1 if the sinf() function is available. */
 #undef HAVE_SINF
-
-/* Define to 1 if you have the <sodium.h> header file. */
-#undef HAVE_SODIUM_H
 
 /* Define to 1 if you have the <stdint.h> header file. */
 #undef HAVE_STDINT_H

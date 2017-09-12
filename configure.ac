@@ -153,23 +153,10 @@ AC_CHECK_HEADERS(
 
 AC_SUBST([HAVE_JNI_H], [$ac_cv_header_jni_h])
 
-dnl libsodium
+dnl The entire libsodium source is in a subdirectory, and has its own configure
+dnl script.
 
-m4_define([LIBSODIUM_MESSAGE], [
-*** If your platform provides a libsodium development package, then
-*** install it and try again, eg, on Debian/Ubuntu:
-***     sudo apt-get install libsodium-dev
-*** If using a libsodium built locally from source, ensure that the
-*** $1 environment variable is set, eg, with the command:
-***     . libsodium/settings.sh
-*** See INSTALL.md and doc/Development.md for more information.
-])
-
-AC_CHECK_HEADERS(
-    sodium.h,, [AC_MSG_ERROR([missing sodium.h LIBSODIUM_MESSAGE([C_INCLUDE_PATH])])]
-)
-
-AC_CHECK_LIB(sodium, sodium_init,, [AC_MSG_ERROR([missing libsodium LIBSODIUM_MESSAGE([LIBRARY_PATH])])])
+AC_CONFIG_SUBDIRS([libsodium])
 
 dnl Check if the Linux gettid() and tgkill() system calls are supported.
 AC_CHECK_FUNCS([gettid tgkill])
