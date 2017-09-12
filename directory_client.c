@@ -139,8 +139,11 @@ int directory_registration(){
   return 0;
 }
 
-static void interface_change(struct overlay_interface *UNUSED(interface)){
-  directory_registration();
+static void interface_change(struct overlay_interface *UNUSED(interface), unsigned count){
+  if (count)
+    directory_registration();
+  else
+    unschedule(&directory_alarm);
 }
 
 DEFINE_TRIGGER(iupdown, interface_change);

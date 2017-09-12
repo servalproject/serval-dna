@@ -37,8 +37,8 @@ static time_ms_t waiting(time_ms_t now, time_ms_t next_run, time_ms_t next_wakeu
     jlong r = (*server_env)->CallLongMethod(server_env, JniCallback, aboutToWait, (jlong)now, (jlong)next_run, (jlong)next_wakeup);
     // stop the server if there are any issues
     if ((*server_env)->ExceptionCheck(server_env)){
-      serverMode=SERVER_CLOSING;
       INFO("Stopping server due to exception");
+      server_close();
       return now;
     }
     return r;
@@ -53,7 +53,7 @@ static void wokeup()
     // stop the server if there are any issues
     if ((*server_env)->ExceptionCheck(server_env)){
       INFO("Stopping server due to exception");
-      serverMode=SERVER_CLOSING;
+      server_close();
     }
   }
 }

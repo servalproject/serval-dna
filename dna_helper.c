@@ -60,6 +60,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "dataformats.h"
 #include "overlay_address.h"
+#include "server.h"
+
+static void dna_helper_shutdown();
 
 /*
   The challenge with making an interface for calling an external program to 
@@ -324,19 +327,19 @@ dna_helper_harvest(int blocking)
   return 0;
 }
 
-int dna_helper_shutdown()
+static void dna_helper_shutdown()
 {
   DEBUG(dnahelper, "DNAHELPER shutting down");
   dna_helper_close_pipes();
   switch (dna_helper_kill()) {
   case -1:
-    return -1;
   case 0:
-    return 0;
+    return;
   default:
-    return dna_helper_harvest(1);
+    dna_helper_harvest(1);
   }
 }
+DEFINE_TRIGGER(shutdown, dna_helper_shutdown);
 
 static void monitor_requests(struct sched_ent *alarm)
 {

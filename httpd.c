@@ -23,8 +23,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "net.h"
 #include "conf.h"
 #include "str.h"
+#include "server.h"
 
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
+
+static int httpd_dispatch(struct http_request *);
+static unsigned int http_request_uuid_counter = 0;
+static httpd_request * current_httpd_requests = NULL;
+unsigned int current_httpd_request_count = 0;
 
 static int httpd_dispatch(struct http_request *hr)
 {
@@ -100,6 +106,20 @@ int is_httpd_server_running()
 {
   return httpd_server_socket != -1;
 }
+
+static void httpd_server_shutdown()
+{
+  if (httpd_server_socket==-1)
+    return;
+  unwatch(&server_alarm);
+  close(httpd_server_socket);
+  httpd_server_socket=-1;
+
+  // forcefully close all requests immediately
+  while(current_httpd_requests)
+    http_request_finalise(&current_httpd_requests->http);
+}
+DEFINE_TRIGGER(shutdown, httpd_server_shutdown);
 
 /* Start the Rhizome HTTP server by creating a socket, binding it to an available port, and
    marking it as passive.  If called repeatedly and frequently, this function will only try to start
@@ -192,12 +212,6 @@ success:
  
   return 0;
 }
-
-static int httpd_dispatch(struct http_request *);
-
-static unsigned int http_request_uuid_counter = 0;
-static httpd_request * current_httpd_requests = NULL;
-unsigned int current_httpd_request_count = 0;
 
 static void httpd_server_finalise_http_request(struct http_request *hr)
 {

@@ -77,6 +77,7 @@ static const char *_server_pidfile_path(struct __sourceloc __whence);
 
 static int server_write_proc_state(const char *path, const char *fmt, ...);
 static int server_get_proc_state(const char *path, char *buff, size_t buff_len);
+static void server_stop_alarms();
 
 // Define our own gettid() and tgkill() if <unistd.h> doesn't provide them (eg, it does on Android).
 
@@ -303,16 +304,18 @@ int server_bind()
 
 void server_loop(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeup)())
 {
+  // possible race condition... Shutting down before we even started
   CALL_TRIGGER(conf_change);
-  
+
   // This log message is used by tests to wait for the server to start.
   INFOF("Server initialised, entering main loop");
-  
+
   /* Check for activitiy and respond to it */
-  while ((serverMode == SERVER_RUNNING) && fd_poll2(waiting, wokeup))
+  while (fd_poll2(waiting, wokeup))
     ;
 
   INFOF("Server finished, exiting main loop");
+  fd_showstats();
   serverCleanUp();
 
   if (server_pidfd!=-1){
@@ -497,6 +500,11 @@ static int server_get_proc_state(const char *path, char *buff, size_t buff_len)
 DEFINE_ALARM(server_config_reload);
 void server_config_reload(struct sched_ent *alarm)
 {
+  if (serverMode == SERVER_CLOSING){
+    CALL_TRIGGER(shutdown);
+    return;
+  }
+
   switch (cf_reload_strict()) {
   case -1:
     WARN("server continuing with prior config");
@@ -577,13 +585,13 @@ void server_watchdog(struct sched_ent *alarm)
       WHY_perror("fork");
       break;
     }
-  }
-  if (alarm) {
-    time_ms_t now = gettime_ms();
-    RESCHEDULE(alarm, 
-      now+config.server.watchdog.interval_ms, 
-      now+config.server.watchdog.interval_ms, 
-      now+100);
+    if (alarm) {
+      time_ms_t now = gettime_ms();
+      RESCHEDULE(alarm,
+	now+config.server.watchdog.interval_ms,
+	now+config.server.watchdog.interval_ms,
+	now+100);
+    }
   }
 }
 
@@ -599,17 +607,14 @@ void rhizome_clean_db(struct sched_ent *alarm)
   RESCHEDULE(alarm, now + 30*60*1000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
 }
 
-static void server_on_config_change();
-
-DEFINE_TRIGGER(conf_change, server_on_config_change);
-
 static void server_on_config_change()
 {
   if (!serverMode)
     return;
   
   time_ms_t now = gettime_ms();
-  
+
+  // TODO move to their own trigger
   dna_helper_start();
   directory_service_init();
   
@@ -643,6 +648,7 @@ static void server_on_config_change()
     rhizome_close_db();
   }
 }
+DEFINE_TRIGGER(conf_change, server_on_config_change);
 
 static void clean_proc()
 {
@@ -667,16 +673,44 @@ static void clean_proc()
   }
 }
 
+void server_close(){
+  if (serverMode != SERVER_RUNNING)
+    return;
+
+  DEBUGF(server,"Graceful shutdown");
+
+  serverMode = SERVER_CLOSING;
+
+  // trigger an alarm to finish cleanup
+  time_ms_t now = gettime_ms();
+  RESCHEDULE(&ALARM_STRUCT(server_config_reload),
+    now,
+    now,
+    TIME_MS_NEVER_WILL);
+}
+
+static void server_stop_alarms()
+{
+  DEBUGF(server,"Stopping alarms");
+  unschedule(&ALARM_STRUCT(fd_periodicstats));
+  unschedule(&ALARM_STRUCT(server_watchdog));
+  unschedule(&ALARM_STRUCT(server_config_reload));
+  unschedule(&ALARM_STRUCT(rhizome_clean_db));
+  unschedule(&ALARM_STRUCT(rhizome_fetch_status));
+}
+DEFINE_TRIGGER(shutdown, server_stop_alarms);
+
 static void serverCleanUp()
 {
   assert(serverMode != SERVER_NOT_RUNNING);
   INFOF("Server cleaning up");
-  overlay_queue_release();
+
+  // release alarms, in case we aborted without attempting a graceful close
+  server_stop_alarms();
+
   rhizome_close_db();
-  dna_helper_shutdown();
-  overlay_interface_close_all();
-  overlay_mdp_clean_socket_files();
   release_my_subscriber();
+
   serverMode = SERVER_NOT_RUNNING;
   clean_proc();
 }
@@ -693,7 +727,7 @@ static void signal_handler(int signum)
 	case SERVER_RUNNING:
 	  // Trigger the server to close gracefully after any current alarm has completed.
 	  INFOF("Caught signal %s -- attempting clean shutdown", alloca_signal_name(signum));
-	  serverMode = SERVER_CLOSING;
+	  server_close();
 	  return;
 	case SERVER_CLOSING:
 	  // If a second signal is received before the server has gracefully shut down, then forcibly
@@ -701,7 +735,8 @@ static void signal_handler(int signum)
 	  // serverCleanUp() if the signal was received by the same thread that is running the server,
 	  // because serverMode is thread-local.  The zero exit status indicates a clean shutdown.  So
 	  // the "stop" command must send SIGHUP to the correct thread.
-	  WARNF("Caught signal %s -- forced shutdown", alloca_signal_name(signum));
+	  WHYF("Caught signal %s -- forced shutdown", alloca_signal_name(signum));
+	  list_alarms(LOG_LEVEL_ERROR);
 	  serverCleanUp();
 	  exit(0);
 	case SERVER_NOT_RUNNING:

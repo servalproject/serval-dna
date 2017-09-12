@@ -111,6 +111,35 @@ static void _clear_transfer(struct __sourceloc __whence, struct transfers *ptr)
 }
 #define clear_transfer(P) _clear_transfer(__WHENCE__,P)
 
+static void sync_free_transfers(struct rhizome_sync_keys *sync_state){
+  // drop all transfer records
+  while(sync_state->queue){
+    struct transfers *msg = sync_state->queue;
+    sync_state->queue = msg->next;
+    clear_transfer(msg);
+    free(msg);
+  }
+}
+
+static void free_peer_sync_state(struct subscriber *peer){
+  if (sync_tree)
+    sync_free_peer_state(sync_tree, peer);
+
+  if (!peer->sync_keys_state)
+    return;
+
+  if (peer->sync_keys_state->connection){
+    msp_stop_stream(peer->sync_keys_state->connection);
+    time_ms_t now = gettime_ms();
+    RESCHEDULE(&ALARM_STRUCT(sync_send), now, now, now);
+    return;
+  }
+
+  sync_free_transfers(peer->sync_keys_state);
+  free(peer->sync_keys_state);
+  peer->sync_keys_state = NULL;
+}
+
 static struct transfers **find_and_update_transfer(struct subscriber *peer, struct rhizome_sync_keys *keys_state, const sync_key_t *key, uint8_t state, int rank)
 {
   if (rank>0xFF)
@@ -499,17 +528,12 @@ void sync_send(struct sched_ent *alarm)
     
     DEBUGF(rhizome_sync_keys, "Connection closed %s", alloca_tohex_sid_t(peer->sid));
 
-    // drop all transfer records
-    while(sync_state->queue){
-      struct transfers *msg = sync_state->queue;
-      sync_state->queue = msg->next;
-      clear_transfer(msg);
-      free(msg);
-    }
-    
+    sync_free_transfers(sync_state);
+
     sync_state->connection = NULL;
-    // eg connection timeout; drop all sync state
-    if (msp_get_connection_state(connection)& (MSP_STATE_ERROR|MSP_STATE_STOPPED))
+
+    // connection timeout? drop all sync state
+    if (sync_tree && msp_get_connection_state(connection) & (MSP_STATE_ERROR|MSP_STATE_STOPPED))
       sync_free_peer_state(sync_tree, peer);
   }
   
@@ -992,8 +1016,9 @@ static int sync_keys_recv(struct internal_mdp_header *header, struct overlay_buf
 static void sync_neighbour_changed(struct subscriber *neighbour, uint8_t found, unsigned count)
 {
   struct sched_ent *alarm = &ALARM_STRUCT(sync_send_keys);
-  
-  if (count>0 && is_rhizome_advertise_enabled()){
+  int enabled = is_rhizome_advertise_enabled();
+
+  if (count>0 && enabled){
     time_ms_t now = gettime_ms();
     if (alarm->alarm == TIME_MS_NEVER_WILL){
       DEBUG(rhizome_sync_keys,"Queueing next message now");
@@ -1001,17 +1026,28 @@ static void sync_neighbour_changed(struct subscriber *neighbour, uint8_t found, 
     }
   }else{
     DEBUG(rhizome_sync_keys,"Stop queueing messages");
-    RESCHEDULE(alarm, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
+    unschedule(alarm);
+    unschedule(&ALARM_STRUCT(sync_keys_status));
   }
   
-  if (!found){
-    struct rhizome_sync_keys *sync_state = get_peer_sync_state(neighbour);
-    // if there's no connection, there shouldn't be any items in the transfer queue
-    if (sync_state->connection)
-      msp_stop_stream(sync_state->connection);
-  }
+  if (!found || !enabled)
+    free_peer_sync_state(neighbour);
 }
 DEFINE_TRIGGER(nbr_change, sync_neighbour_changed);
+
+static void sync_config_changed(){
+  if (!is_rhizome_advertise_enabled()){
+    DEBUG(rhizome_sync_keys,"Stop queueing messages");
+    unschedule(&ALARM_STRUCT(sync_send_keys));
+    unschedule(&ALARM_STRUCT(sync_keys_status));
+
+    if (sync_tree){
+      sync_free_state(sync_tree);
+      sync_tree = NULL;
+    }
+  }
+}
+DEFINE_TRIGGER(conf_change, sync_config_changed);
 
 static void sync_bundle_add(rhizome_manifest *m)
 {

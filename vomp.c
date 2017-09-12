@@ -33,6 +33,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_address.h"
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
+#include "server.h"
 
 /*
  Typical call state lifecycle between 2 parties.
@@ -572,9 +573,8 @@ static int monitor_call_status(struct vomp_call_state *call)
 	   alloca_tohex_sid_t(call->local.subscriber->sid),
 	   alloca_tohex_sid_t(call->remote.subscriber->sid),
 	   call->local.did,call->remote.did);
-  
-  monitor_tell_clients(msg, n, MONITOR_VOMP);
-  return 0;
+
+  return monitor_tell_clients(msg, n, MONITOR_VOMP);
 }
 
 static int monitor_send_audio(struct vomp_call_state *call, int audio_codec, int time, int sequence, 
@@ -600,8 +600,7 @@ static int monitor_send_audio(struct vomp_call_state *call, int audio_codec, int
   bcopy(audio, &msg[msglen], audio_length);
   msglen+=audio_length;
   msg[msglen++]='\n';
-  monitor_tell_clients(msg, msglen, MONITOR_VOMP);
-  return 0;
+  return monitor_tell_clients(msg, msglen, MONITOR_VOMP);
 }
 
 // update local state and notify interested clients with the correct message
@@ -775,6 +774,13 @@ static int vomp_call_destroy(struct vomp_call_state *call)
   }
   return 0;
 }
+
+static void vomp_shutdown(){
+  int i=0;
+  for(i=vomp_call_count -1; i>=0; i--)
+    vomp_call_destroy(&vomp_call_states[i]);
+}
+DEFINE_TRIGGER(shutdown, vomp_shutdown);
 
 int vomp_dial(struct subscriber *local, struct subscriber *remote, const char *local_did, const char *remote_did)
 {
@@ -1083,11 +1089,17 @@ static void vomp_process_tick(struct sched_ent *alarm)
   struct vomp_call_state *call = (struct vomp_call_state *)alarm;
 
   /* See if any calls need to be expired.
+     if all monitor clients have disconnected
      Allow vomp.dial_timeout_ms for the other party to ring / request ringing
      Allow vomp.ring_timeout_ms for the ringing party to answer
      Allow vomp.network_timeout_ms between received packets
    */
-  
+
+  if (!monitor_client_interested(MONITOR_VOMP)){
+    call->rejection_reason=VOMP_REJECT_NOPHONE;
+    vomp_hangup(call);
+  }
+
   if ((call->remote.state < VOMP_STATE_RINGINGOUT && call->create_time + config.vomp.dial_timeout_ms < now) ||
       (call->local.state < VOMP_STATE_INCALL && call->create_time + config.vomp.ring_timeout_ms < now) ||
       (call->last_activity+config.vomp.network_timeout_ms<now) ){
@@ -1096,9 +1108,11 @@ static void vomp_process_tick(struct sched_ent *alarm)
     call->rejection_reason=VOMP_REJECT_TIMEOUT;
     vomp_update_local_state(call, VOMP_STATE_CALLENDED);
     vomp_update_remote_state(call, VOMP_STATE_CALLENDED);
-    vomp_update(call);
   }
   
+  /* update everyone if the state has changed */
+  vomp_update(call);
+
   /*
    If we are calling ourselves, mdp packets are processed as soon as they are sent.
    So we can't risk moving call entries around at that time as that will change pointers that are still on the stack.
@@ -1110,15 +1124,13 @@ static void vomp_process_tick(struct sched_ent *alarm)
     return;
   }
   
-  /* update everyone if the state has changed */
-  vomp_update(call);
   /* force a packet to the other party. We are still here */
   vomp_send_status_remote(call);
-  
+
   /* tell local monitor clients the call is still alive */
   len = snprintf(msg,sizeof(msg) -1,"\nKEEPALIVE:%06x\n", call->local.session);
   monitor_tell_clients(msg, len, MONITOR_VOMP);
-  
+
   alarm->alarm = gettime_ms() + VOMP_CALL_STATUS_INTERVAL;
   alarm->deadline = alarm->alarm + VOMP_CALL_STATUS_INTERVAL/2;
   schedule(alarm);

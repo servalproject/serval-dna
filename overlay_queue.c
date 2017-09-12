@@ -27,6 +27,7 @@
 #include "str.h"
 #include "strbuf.h"
 #include "route_link.h"
+#include "server.h"
 
 typedef struct overlay_txqueue {
   struct overlay_frame *first;
@@ -103,13 +104,14 @@ overlay_queue_remove(overlay_txqueue *queue, struct overlay_frame *frame){
   return next;
 }
 
-void overlay_queue_release(){
+static void overlay_queue_release(){
   unsigned i;
   for(i=0;i<OQ_MAX;i++) {
     while(overlay_tx[i].first)
       overlay_queue_remove(&overlay_tx[i], overlay_tx[i].first);
   }
 }
+DEFINE_TRIGGER(shutdown, overlay_queue_release);
 
 #if 0 // unused
 static int

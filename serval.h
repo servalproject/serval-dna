@@ -248,7 +248,6 @@ int lsif();
 int doifaddrs();
 
 int dna_helper_start();
-int dna_helper_shutdown();
 int dna_helper_enqueue(struct subscriber *source, mdp_port_t source_port, const char *did);
 int parseDnaReply(const char *buf, size_t len, char *token, char *did, char *name, char *uri, const char **bufp);
 
@@ -261,7 +260,6 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
 void rhizome_check_connections(struct sched_ent *alarm);
 
 int overlay_queue_init();
-void overlay_queue_release();
 
 void monitor_client_poll(struct sched_ent *alarm);
 void monitor_poll(struct sched_ent *alarm);

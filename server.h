@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "fdqueue.h"
 #include "os.h" // for time_ms_t
+#include "trigger.h"
 
 enum server_mode {
     SERVER_NOT_RUNNING = 0,
@@ -44,8 +45,12 @@ int server_pid();
 
 int server_bind();
 
+void server_close();
+
 void server_loop(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeup)());
 
 void server_rhizome_add_bundle(uint64_t rowid);
+
+DECLARE_TRIGGER(shutdown);
 
 #endif // __SERVAL_DNA__SERVER_H

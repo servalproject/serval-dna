@@ -224,6 +224,27 @@ static int mdp_bind_socket(const char *name)
   return sock;
 }
 
+static void overlay_mdp_shutdown()
+{
+  if (mdp_sock.poll.fd != -1) {
+    unwatch(&mdp_sock);
+    close(mdp_sock.poll.fd);
+    mdp_sock.poll.fd=-1;
+  }
+  if (mdp_sock2.poll.fd != -1) {
+    unwatch(&mdp_sock2);
+    close(mdp_sock2.poll.fd);
+    mdp_sock2.poll.fd=-1;
+  }
+  if (mdp_sock2_inet.poll.fd != -1) {
+    unwatch(&mdp_sock2_inet);
+    close(mdp_sock2_inet.poll.fd);
+    mdp_sock2_inet.poll.fd=-1;
+  }
+  overlay_mdp_clean_socket_files();
+}
+DEFINE_TRIGGER(shutdown, overlay_mdp_shutdown);
+
 int overlay_mdp_setup_sockets()
 {
   /* Delete stale socket files from instance directory. */
@@ -1130,7 +1151,7 @@ static void send_route_changed(struct subscriber *subscriber, int UNUSED(prior_r
 }
 DEFINE_TRIGGER(link_change, send_route_changed);
 
-static void send_interface_change(struct overlay_interface *interface)
+static void send_interface_change(struct overlay_interface *interface, unsigned UNUSED(count))
 {
   struct mdp_header header;
   bzero(&header, sizeof(header));

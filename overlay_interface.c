@@ -97,11 +97,16 @@ void overlay_interface_close(overlay_interface *interface)
   
   INFOF("Interface %s addr %s is down", 
 	interface->name, alloca_socket_address(&interface->address));
-  CALL_TRIGGER(iupdown, interface);
-  
+
+  unsigned i, count=0;
+  for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+    if (overlay_interfaces[i].state == INTERFACE_STATE_UP)
+      count++;
+  }
+  CALL_TRIGGER(iupdown, interface, count);
 }
 
-void overlay_interface_close_all()
+static void overlay_interface_close_all()
 {
   unsigned i;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
@@ -109,6 +114,7 @@ void overlay_interface_close_all()
       overlay_interface_close(&overlay_interfaces[i]);
   }
 }
+DEFINE_TRIGGER(shutdown, overlay_interface_close_all);
 
 void overlay_interface_monitor_up()
 {
@@ -647,7 +653,12 @@ overlay_interface_init(const char *name,
         interface->destination->transfer_limit.burst_size,
         interface->destination->transfer_limit.burst_length);
   
-  CALL_TRIGGER(iupdown, interface);
+  unsigned count=0;
+  for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+    if (overlay_interfaces[i].state == INTERFACE_STATE_UP)
+      count++;
+  }
+  CALL_TRIGGER(iupdown, interface, count);
   return 0;
   
 cleanup:
@@ -1319,6 +1330,18 @@ static int netlink_init()
   
   return 0;
 }
+
+static void netlink_shutdown()
+{
+  struct sched_ent *alarm=&ALARM_STRUCT(netlink_poll);
+  if (alarm->poll.fd != -1){
+    unwatch(alarm);
+    close(alarm->poll.fd);
+    DEBUGF(overlayinterfaces, "close(%d)", alarm->poll.fd);
+    alarm->poll.fd = -1;
+  }
+}
+DEFINE_TRIGGER(shutdown, netlink_shutdown);
 
 #else
 

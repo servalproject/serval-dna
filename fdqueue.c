@@ -67,27 +67,38 @@ struct profile_total poll_stats={NULL,0,"Idle (in poll)",0,0,0,0};
 
 #define alloca_alarm_name(alarm) ((alarm)->stats ? alloca_str_toprint((alarm)->stats->name) : "Unnamed")
 
-void list_alarms()
+int list_alarms(int log_level)
 {
+  int count=0;
   time_ms_t now = gettime_ms();
   struct sched_ent *alarm;
   
-  _DEBUG("Run now;");
-  for (alarm = run_now; alarm; alarm=alarm->_next_run)
-    _DEBUGF("%p %s deadline in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->run_before - now);
+  LOGF(log_level, "Run now;");
+  for (alarm = run_now; alarm; alarm=alarm->_next_run){
+    count ++;
+    LOGF(log_level, "%p %s deadline in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->run_before - now);
+  }
     
-  _DEBUG("Run soon;");
-  for (alarm = run_soon; alarm; alarm=alarm->_next_run)
-    _DEBUGF("%p %s run in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->run_after - now);
-  
-  _DEBUG("Wake at;");
-  for (alarm = wake_list; alarm; alarm = alarm->_next_wake)
-    _DEBUGF("%p %s wake in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->wake_at - now);
-  
-  _DEBUG("File handles;");
+  LOGF(log_level, "Run soon;");
+  for (alarm = run_soon; alarm; alarm=alarm->_next_run){
+    count ++;
+    LOGF(log_level, "%p %s run in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->run_after - now);
+  }
+
+  LOGF(log_level, "Wake at;");
+  for (alarm = wake_list; alarm; alarm = alarm->_next_wake){
+    count ++;
+    LOGF(log_level, "%p %s wake in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->wake_at - now);
+  }
+
+  LOGF(log_level, "File handles;");
   int i;
-  for (i = 0; i < fdcount; ++i)
-    _DEBUGF("%s watching #%d for %x", alloca_alarm_name(fd_callbacks[i]), fds[i].fd, fds[i].events);
+  for (i = 0; i < fdcount; ++i){
+    count ++;
+    LOGF(log_level, "%s watching #%d for %x", alloca_alarm_name(fd_callbacks[i]), fds[i].fd, fds[i].events);
+  }
+
+  return count;
 }
 
 static void insert_run_now(struct sched_ent *alarm)

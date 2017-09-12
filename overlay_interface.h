@@ -126,7 +126,6 @@ int overlay_interface_register(const char *name,
 			   struct socket_address *addr,
 			   const struct socket_address *netmask,
 			   struct socket_address *broadcast);
-void overlay_interface_close_all();
 overlay_interface * overlay_interface_get_default();
 overlay_interface * overlay_interface_find(struct in_addr addr, int return_default);
 overlay_interface * overlay_interface_find_name_addr(const char *name, struct socket_address *addr);
@@ -135,6 +134,6 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 void interface_state_html(struct strbuf *b, struct overlay_interface *interface);
 void overlay_interface_monitor_up();
 
-DECLARE_TRIGGER(iupdown, struct overlay_interface *);
+DECLARE_TRIGGER(iupdown, struct overlay_interface *, unsigned count);
 
 #endif // __SERVAL_DNA__OVERLAY_INTERFACE_H

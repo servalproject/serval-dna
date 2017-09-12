@@ -649,8 +649,7 @@ static void clean_neighbours(time_ms_t now)
       if (neighbour_count==0){
 	// clean up the routing table
 	enum_subscribers(NULL, free_subscriber_link_state, NULL);
-	RESCHEDULE(&ALARM_STRUCT(link_send), 
-	  TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
+	unschedule(&ALARM_STRUCT(link_send));
       }
     }else{
       n_ptr = &n->_next;
@@ -1003,6 +1002,8 @@ static void update_alarm(struct __sourceloc __whence, time_ms_t limit)
 {
   if (limit == 0)
     FATALF("limit == 0");
+  if (!neighbours)
+    return;
   if (ALARM_STRUCT(link_send).alarm>limit){
     RESCHEDULE(&ALARM_STRUCT(link_send), limit, limit, limit+20);
   }
@@ -1587,7 +1588,7 @@ void link_explained(struct subscriber *subscriber)
   update_alarm(__WHENCE__, now + 5);
 }
 
-static void link_interface_change(struct overlay_interface *UNUSED(interface))
+static void link_interface_change(struct overlay_interface *UNUSED(interface), unsigned UNUSED(count))
 {
   clean_neighbours(gettime_ms());
 }

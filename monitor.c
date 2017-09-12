@@ -178,7 +178,7 @@ static void monitor_close(struct monitor_context *c){
   
   if (serverMode && (c->flags & MONITOR_QUIT_ON_DISCONNECT)){
     INFOF("Stopping server due to client disconnecting");
-    serverMode=SERVER_CLOSING;
+    server_close();
   }
   unwatch(&c->alarm);
   close(c->alarm.poll.fd);
@@ -186,6 +186,20 @@ static void monitor_close(struct monitor_context *c){
   c->state=MONITOR_STATE_UNUSED;
   c->flags=0;
 }
+
+static void monitor_shutdown()
+{
+  if (named_socket.poll.fd == -1)
+    return;
+  unwatch(&named_socket);
+  close(named_socket.poll.fd);
+  named_socket.poll.fd=-1;
+
+  int i;
+  for(i=monitor_socket_count -1;i>=0;i--)
+    monitor_close(&monitor_sockets[i]);
+}
+DEFINE_TRIGGER(shutdown, monitor_shutdown);
 
 void monitor_client_poll(struct sched_ent *alarm)
 {
@@ -652,7 +666,7 @@ int monitor_client_interested(int mask){
 
 int monitor_tell_clients(char *msg, int msglen, int mask)
 {
-  int i;
+  int i, count=0;
   IN();
   for(i=monitor_socket_count -1;i>=0;i--) {
     if (monitor_sockets[i].flags & mask) {
@@ -660,10 +674,12 @@ int monitor_tell_clients(char *msg, int msglen, int mask)
       if ( write_all_nonblock(monitor_sockets[i].alarm.poll.fd, msg, msglen) == -1) {
 	INFOF("Tear down monitor client #%d due to write error", i);
 	monitor_close(&monitor_sockets[i]);
+      }else{
+	count++;
       }
     }
   }
-  RETURN(0);
+  RETURN(count);
 }
 
 int monitor_tell_formatted(int mask, char *fmt, ...){
@@ -674,11 +690,10 @@ int monitor_tell_formatted(int mask, char *fmt, ...){
   va_start(ap, fmt);
   n=vsnprintf(msg, sizeof(msg), fmt, ap);
   va_end(ap);
-  monitor_tell_clients(msg, n, mask);
-  return 0;
+  return monitor_tell_clients(msg, n, mask);
 }
 
-static void monitor_interface_change(struct overlay_interface *interface){
+static void monitor_interface_change(struct overlay_interface *interface, unsigned UNUSED(count)){
   unsigned i = interface - overlay_interfaces;
   if (interface->state==INTERFACE_STATE_UP)
     monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%u:%s:UP\n", i, interface->name);

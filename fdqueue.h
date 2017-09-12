@@ -173,6 +173,6 @@ unsigned fd_depth();
 #define RETURNVOID do { OUT(); return; } while (0)
 
 DECLARE_ALARM(fd_periodicstats);
-void list_alarms();
+int list_alarms(int log_level);
 
 #endif // __SERVAL_DNA__FDQUEUE_H
