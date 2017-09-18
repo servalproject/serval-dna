@@ -109,7 +109,8 @@ clean:
 		  libservaldaemon.so libservaldaemon.a \
 		  libservalclient.so libservalclient.a \
 		  libmonitorclient.so libmonitorclient.a \
-		  tfw_createfile directory_service fakeradio simulator serval-tests
+		  tfw_createfile directory_service fakeradio simulator serval-tests \
+		  tags
 
 # Only provide Java targets if the Java compiler is available.
 ifneq ($(JAVAC),)
@@ -308,6 +309,15 @@ libmonitorclient.a: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 libmonitorclient.so: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
 	@$(CC) -Wall -shared -o $@ $^ $(LDFLAGS)
+
+# The tags will always index all the Serval DNA headers and source files.  If
+# serval-tools is installed, then it will also index all the libsodium, JNI
+# and Android NDK header files.
+tags:	Makefile $(HDRS) $(ALL_SOURCES)
+	{ for file in $(HDRS) $(ALL_SOURCES); do echo "$$file"; done; \
+	  sp-find-gcc-headers $(CFLAGS) 2>/dev/null; \
+	  ndk_prefix=$$(sp-ndk-prefix . 2>/dev/null) && find "$$ndk_prefix/arch-arm/usr/include" -type f; \
+	} | ctags -L- -f $@ --tag-relative=yes --c-kinds=defgmpstuv
 
 # Helpful target to update the COPYRIGHT.txt file by harvesting copyright
 # information from the contents of all the source and header files.  This
