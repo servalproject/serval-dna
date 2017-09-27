@@ -57,7 +57,7 @@ public class MeshMBCommon {
     }
 
     public static int alterSubscription(ServalDHttpConnectionFactory connector, Subscriber id, SubscriptionAction action, Subscriber peer, String name) throws ServalDInterfaceException, IOException {
-        Vector<ServalDHttpConnectionFactory.QueryParam> parms = new Vector<>();
+        Vector<ServalDHttpConnectionFactory.QueryParam> parms = new Vector<ServalDHttpConnectionFactory.QueryParam>();
         parms.add(new ServalDHttpConnectionFactory.QueryParam("sender", peer.sid.toHex()));
         if (name!=null && !"".equals(name))
             parms.add(new ServalDHttpConnectionFactory.QueryParam("name", name));
