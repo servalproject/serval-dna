@@ -79,8 +79,24 @@ AC_PROG_JAVAC
 popdef([AC_MSG_ERROR])
 AC_SUBST([JAVAC])
 
-dnl Check for JNI includes, keep going if not present.
+dnl Check Java version, ditch Java if not adequate
 if test -n "$JAVAC"; then
+    dnl Discover the version of the Java compiler
+    AC_PROG_JAVAC_VERSION
+    dnl Check that the Java compiler is modern enough
+    AS_CASE($ax_cv_prog_javac_version,
+            [[1.[6-9].*|1.[1-9][0-9].*|2.*]], [],
+            [''], [ dnl
+                AC_MSG_WARN([Java version not detected; omitting Java API])
+                JAVAC=""
+            ], [ dnl
+                AC_MSG_WARN([Java version $ax_cv_prog_javac_version is too old; omitting Java API])
+                JAVAC=""
+            ])
+fi
+
+if test -n "$JAVAC"; then
+    dnl Discover the locations of JNI header files
     dnl *** Kludge: override AC_MSG_ERROR because AC_JNI_INCLUDE_DIR does not have
     dnl *** [if-found] and [if-not-found] action parameters.
     pushdef([AC_MSG_ERROR], defn([AC_MSG_WARN]))

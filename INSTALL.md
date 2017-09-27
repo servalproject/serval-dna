@@ -53,7 +53,7 @@ Mandatory dependencies:
 
 Optional:
 
- * Java compiler and SDK
+ * Java compiler and SDK 1.6.0 or later
  * ALSA sound library and headers (present on Linux, not on Android)
 
 Test dependencies:
