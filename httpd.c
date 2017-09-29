@@ -391,6 +391,11 @@ int authorize_restful(struct http_request *r)
     return 200;
   }
   if (!is_authorized_restful(&r->request_header.authorization)) {
+    DEBUGF(httpd, "Authorization failed: scheme=%d user=%s password=%s",
+	r->request_header.authorization.scheme,
+	alloca_str_toprint(r->request_header.authorization.scheme == BASIC ? r->request_header.authorization.credentials.basic.user : NULL),
+	alloca_str_toprint(r->request_header.authorization.scheme == BASIC ? r->request_header.authorization.credentials.basic.password : NULL)
+      );
     r->response.header.www_authenticate.scheme = BASIC;
     r->response.header.www_authenticate.realm = "Serval RESTful API";
     return 401;
