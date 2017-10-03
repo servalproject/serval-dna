@@ -372,7 +372,7 @@ libmonitorclient.so: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o $(LIBSODI
 # and Android NDK header files.
 $(SOURCE_PREFIX)tags:	Makefile $(PREFIXED_HEADERS) $(PREFIXED_SOURCES)
 	{ for file in $(PREFIXED_HEADERS) $(PREFIXED_SOURCES); do echo "$$file"; done; \
-	  find $(LIBSODIUM_DEV)/install -type f ; \
+	  find $(LIBSODIUM_DEV)/include -type f ; \
 	  sp-find-gcc-headers $(CFLAGS) 2>/dev/null; \
 	  ndk_prefix=$$(sp-ndk-prefix . 2>/dev/null) && find "$$ndk_prefix/arch-arm/usr/include" -type f; \
 	} | ctags -L- -f $@ --tag-relative=yes --c-kinds=defgmpstuv
