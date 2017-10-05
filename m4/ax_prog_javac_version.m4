@@ -43,12 +43,13 @@
 AU_ALIAS([AC_PROG_JAVAC_VERSION], [AX_PROG_JAVAC_VERSION])
 AC_DEFUN([AX_PROG_JAVAC_VERSION],[
     AC_REQUIRE([AC_PROG_SED])
+    AC_PROG_SED
     AC_CACHE_CHECK([Java compiler version],
                    ax_cv_prog_javac_version,
                    [ dnl
         dnl Many javac print their version number on standard output
         if AC_TRY_COMMAND([$JAVAC -version >java_version 2>&1]); then
-            ax_cv_prog_javac_version=`sed -n 's/^javac //p' java_version`
+            ax_cv_prog_javac_version=`$SED -n 's/^javac //p' java_version`
         else
             AC_MSG_ERROR([The Java compiler $JAVAC failed (see config.log)])
             ax_cv_prog_javac_version=""
