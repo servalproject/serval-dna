@@ -23,7 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "lang.h" // for FALLTHROUGH
 #define __SERVAL_DNA__UUID_H_INLINE
-#include "uuid.h"
+#include "serval_uuid.h"
 #include "os.h"
 #include "str.h"
 #include <sodium.h>
@@ -33,9 +33,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 # include <arpa/inet.h>
 #endif
 
-enum uuid_version uuid_get_version(const serval_uuid_t *uuid)
+enum serval_uuid_version serval_uuid_get_version(const serval_uuid_t *uuid)
 {
-  assert(uuid_is_valid(uuid));
+  assert(serval_uuid_is_valid(uuid));
   switch (ntohs(uuid->u.record.time_hi_and_version) & 0xf000) {
     case 0x1000: return UUID_VERSION_TIME_BASED;
     case 0x2000: return UUID_VERSION_DCE_SECURITY;
@@ -46,7 +46,7 @@ enum uuid_version uuid_get_version(const serval_uuid_t *uuid)
   return UUID_VERSION_UNSUPPORTED;
 }
 
-void uuid_set_version(serval_uuid_t *uuid, enum uuid_version version)
+void serval_uuid_set_version(serval_uuid_t *uuid, enum serval_uuid_version version)
 {
   uint16_t version_bits;
   switch (version) {
@@ -57,23 +57,23 @@ void uuid_set_version(serval_uuid_t *uuid, enum uuid_version version)
     case UUID_VERSION_NAME_SHA1:    version_bits = 0x5000; break;
     default: abort();
   }
-  assert(uuid_is_valid(uuid));
+  assert(serval_uuid_is_valid(uuid));
   uuid->u.record.time_hi_and_version = htons((ntohs(uuid->u.record.time_hi_and_version) & 0xfff) | version_bits);
 }
 
-int uuid_generate_random(serval_uuid_t *uuid)
+int serval_uuid_generate_random(serval_uuid_t *uuid)
 {
   randombytes_buf(uuid->u.binary, sizeof uuid->u.binary);
   // The following discards 6 random bits.
   uuid->u.record.clock_seq_hi_and_reserved &= 0x3f;
   uuid->u.record.clock_seq_hi_and_reserved |= 0x80;
-  uuid_set_version(uuid, UUID_VERSION_RANDOM);
+  serval_uuid_set_version(uuid, UUID_VERSION_RANDOM);
   return 0;
 }
 
 strbuf strbuf_uuid(strbuf sb, const serval_uuid_t *uuid)
 {
-  assert(uuid_is_valid(uuid));
+  assert(serval_uuid_is_valid(uuid));
   unsigned i;
   for (i = 0; i != sizeof uuid->u.binary; ++i) {
     switch (i) {
@@ -88,15 +88,15 @@ strbuf strbuf_uuid(strbuf sb, const serval_uuid_t *uuid)
   return sb;
 }
 
-char *uuid_to_str(const serval_uuid_t *uuid, char *const dst)
+char *serval_uuid_to_str(const serval_uuid_t *uuid, char *const dst)
 {
-  strbuf b = strbuf_local(dst, UUID_STRLEN + 1);
+  strbuf b = strbuf_local(dst, SERVAL_UUID_STRLEN + 1);
   strbuf_uuid(b, uuid);
   assert(!strbuf_overrun(b));
   return dst;
 }
 
-int str_to_uuid(const char *const str, serval_uuid_t *uuid, const char **afterp)
+int str_to_serval_uuid(const char *const str, serval_uuid_t *uuid, const char **afterp)
 {
   const char *end = str;
   int ret = 0;
@@ -110,8 +110,8 @@ int str_to_uuid(const char *const str, serval_uuid_t *uuid, const char **afterp)
       && *end == '-'
       && strn_fromhex(uuid->u.binary + 10, 6, end + 1, &end) == 6
   ) {
-    assert(end == str + UUID_STRLEN);
-    ret = uuid_is_valid(uuid);
+    assert(end == str + SERVAL_UUID_STRLEN);
+    ret = serval_uuid_is_valid(uuid);
   }
   if (afterp)
     *afterp = end;

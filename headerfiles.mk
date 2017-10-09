@@ -30,7 +30,7 @@ HDRS=	fifo.h \
 	rotbuf.h \
 	mem.h \
 	os.h \
-	uuid.h \
+	serval_uuid.h \
 	sighandlers.h \
 	strbuf.h \
 	strbuf_helpers.h \

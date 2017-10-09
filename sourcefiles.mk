@@ -34,7 +34,7 @@ SERVAL_CLIENT_SOURCES = \
 	strlcpy.c \
 	test_cli.c \
 	uri.c \
-	uuid.c \
+	serval_uuid.c \
 	version_cli.c \
 	whence.c \
         xprintf.c

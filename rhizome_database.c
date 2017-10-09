@@ -238,7 +238,7 @@ void verify_bundles()
 int rhizome_opendb()
 {
   if (rhizome_db) {
-    assert(uuid_is_valid(&rhizome_db_uuid));
+    assert(serval_uuid_is_valid(&rhizome_db_uuid));
     return 0;
   }
 
@@ -388,21 +388,21 @@ int rhizome_opendb()
    The above schema can be assumed to exist, no matter which version we upgraded from.
    All changes should attempt to preserve all existing interesting data */
 
-  char buf[UUID_STRLEN + 1];
+  char buf[SERVAL_UUID_STRLEN + 1];
   int r = sqlite_exec_strbuf_retry(&retry, strbuf_local_buf(buf), "SELECT uuid from IDENTITY LIMIT 1;", END);
   if (r == -1)
     RETURN(-1);
   if (r) {
-    if (!str_to_uuid(buf, &rhizome_db_uuid, NULL)) {
+    if (!str_to_serval_uuid(buf, &rhizome_db_uuid, NULL)) {
       WHYF("IDENTITY table contains malformed UUID %s -- overwriting", alloca_str_toprint(buf));
-      if (uuid_generate_random(&rhizome_db_uuid) == -1)
+      if (serval_uuid_generate_random(&rhizome_db_uuid) == -1)
 	RETURN(WHY("Cannot generate new UUID for Rhizome database"));
       if (sqlite_exec_void_retry(&retry, "UPDATE IDENTITY SET uuid = ? LIMIT 1;", SERVAL_UUID_T, &rhizome_db_uuid, END) == -1)
 	RETURN(WHY("Failed to update new UUID in Rhizome database"));
       DEBUGF(rhizome, "Updated Rhizome database UUID to %s", alloca_uuid_str(rhizome_db_uuid));
     }
   } else if (r == 0) {
-    if (uuid_generate_random(&rhizome_db_uuid) == -1)
+    if (serval_uuid_generate_random(&rhizome_db_uuid) == -1)
       RETURN(WHY("Cannot generate UUID for Rhizome database"));
     if (sqlite_exec_void_retry(&retry, "INSERT INTO IDENTITY (uuid) VALUES (?);", SERVAL_UUID_T, &rhizome_db_uuid, END) == -1)
       RETURN(WHY("Failed to insert UUID into Rhizome database"));
@@ -891,10 +891,10 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	      if (uuidp == NULL) {
 		BIND_NULL(SERVAL_UUID_T);
 	      } else {
-		char uuid_str[UUID_STRLEN + 1];
-		uuid_to_str(uuidp, uuid_str);
-		BIND_DEBUG(SERVAL_UUID_T, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", uuid_str, UUID_STRLEN);
-		BIND_RETRY(sqlite3_bind_text, uuid_str, UUID_STRLEN, SQLITE_TRANSIENT);
+		char uuid_str[SERVAL_UUID_STRLEN + 1];
+		serval_uuid_to_str(uuidp, uuid_str);
+		BIND_DEBUG(SERVAL_UUID_T, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", uuid_str, SERVAL_UUID_STRLEN);
+		BIND_RETRY(sqlite3_bind_text, uuid_str, SERVAL_UUID_STRLEN, SQLITE_TRANSIENT);
 	      }
 	    }
 	    break;
