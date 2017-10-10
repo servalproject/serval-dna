@@ -496,18 +496,19 @@ static int restful_meshmb_follow_ignore(httpd_request *r, const char *remainder)
     return 404;
   assert(r->finalise_union == NULL);
 
+  const char *name = http_request_get_query_param(&r->http, "name");
+  const char *sender_hex = http_request_get_query_param(&r->http, "sender");
+  sid_t sender;
+  bzero(&sender, sizeof sender);
+  if (sender_hex && *sender_hex){
+    if (str_to_sid_t(&sender, sender_hex) == -1)
+      return 400;
+  }
+
   struct meshmb_session *session = open_session(&r->bid);
   int ret=-1;
 
   if (session){
-    const char *name = http_request_get_query_param(&r->http, "name");
-    const char *sender_hex = http_request_get_query_param(&r->http, "sender");
-    sid_t sender;
-    bzero(&sender, sizeof sender);
-    if (sender_hex && *sender_hex){
-      if (str_to_sid_t(&sender, sender_hex) == -1)
-	goto fail;
-    }
 
     switch(r->ui64){
       case FLAG_FOLLOW:
@@ -527,7 +528,6 @@ static int restful_meshmb_follow_ignore(httpd_request *r, const char *remainder)
     }
   }
 
-fail:
   if (ret!=-1
     && meshmb_flush(session->feeds)!=-1){
     http_request_simple_response(&r->http, 201, "TODO, detailed response");
