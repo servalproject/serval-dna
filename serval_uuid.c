@@ -22,7 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 #include "lang.h" // for FALLTHROUGH
-#define __SERVAL_DNA__UUID_H_INLINE
+#define __SERVAL_DNA__SERVAL_UUID_H_INLINE
 #include "serval_uuid.h"
 #include "os.h"
 #include "str.h"
