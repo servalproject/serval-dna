@@ -108,6 +108,8 @@ public class JSONTokeniser {
 
 	private int _read()
 	{
+		if (closed)
+			return -1;
 		int p = pushedChar;
 		pushedChar = -1;
 		if (p!=-1)
@@ -128,6 +130,8 @@ public class JSONTokeniser {
 
 	private int _read(char[] buf, int offset, int length)
 	{
+		if (closed)
+			return -1;
 		if (length==0)
 			return 0;
 
@@ -528,8 +532,8 @@ public class JSONTokeniser {
 	public void close() throws IOException
 	{
 		closed = true;
-		this.reader.close();
 		this.underlyingStream.close();
+		this.reader.close();
 	}
 
 }
