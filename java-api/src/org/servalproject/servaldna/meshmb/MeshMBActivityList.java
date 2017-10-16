@@ -21,6 +21,7 @@
 package org.servalproject.servaldna.meshmb;
 
 import org.servalproject.json.JSONTableScanner;
+import org.servalproject.json.JSONTokeniser;
 import org.servalproject.servaldna.AbstractJsonList;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
@@ -41,7 +42,7 @@ public class MeshMBActivityList extends AbstractJsonList<MeshMBActivityMessage, 
 				.addColumn("ack_offset", Long.class)
 				.addColumn("id", SigningKey.class)
 				.addColumn("author", SubscriberId.class)
-				.addColumn("name", String.class)
+				.addColumn("name", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
 				.addColumn("timestamp", Long.class)
 				.addColumn("offset", Long.class)
 				.addColumn("message", String.class));
