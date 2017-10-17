@@ -77,8 +77,10 @@ test_AuthBasicMissing() {
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.output \
+         --trace-ascii curl.trace \
          --dump-header http.headers \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_preserve curl.trace
    assertStdoutIs '401'
    assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval RESTful API\"$CR\$"
    assertJq http.output 'contains({"http_status_code": 401})'
@@ -94,9 +96,11 @@ test_AuthBasicWrong() {
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.output \
+         --trace-ascii curl1.trace \
          --dump-header http.headers \
          --basic --user fred:nurks \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_preserve curl1.trace
    assertStdoutIs '401'
    assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval RESTful API\"$CR\$"
    assertJq http.output 'contains({"http_status_code": 401})'
@@ -104,9 +108,11 @@ test_AuthBasicWrong() {
    executeOk curl \
          --silent --fail --show-error --write-out '%{http_code}' \
          --output http.output \
+         --trace-ascii curl2.trace \
          --dump-header http.headers \
          --basic --user ron:weasley \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_preserve curl2.trace
    assertStdoutIs '200'
 }
 teardown_AuthBasicWrong() {
@@ -119,10 +125,12 @@ test_CORS_Request(){
    executeOk curl \
          --silent --fail --show-error --write-out '%{http_code}' \
          --output http.output \
+         --trace-ascii curl1.trace \
          --dump-header http.headers \
 	 --header "Origin: http://localhost" \
 	 --request "OPTIONS" \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_preserve curl1.trace
    assertStdoutIs '200'
    assertGrep http.headers "^Access-Control-Allow-Origin: http://localhost$CR\$"
    assertGrep http.headers "^Access-Control-Allow-Methods: GET, POST, OPTIONS$CR\$"
@@ -130,52 +138,64 @@ test_CORS_Request(){
    executeOk curl \
          --silent --fail --show-error --write-out '%{http_code}' \
          --output http.output \
+         --trace-ascii curl2.trace \
          --dump-header http.headers \
 	 --header "Origin: http://localhost:1234" \
 	 --request "OPTIONS" \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_preserve curl2.trace
    assertStdoutIs '200'
    assertGrep http.headers "^Access-Control-Allow-Origin: http://localhost:1234$CR\$"
    executeOk curl \
          --silent --fail --show-error --write-out '%{http_code}' \
          --output http.output \
+         --trace-ascii curl3.trace \
          --dump-header http.headers \
 	 --header "Origin: null" \
 	 --request "OPTIONS" \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_preserve curl3.trace
    assertStdoutIs '200'
    assertGrep http.headers "^Access-Control-Allow-Origin: null$CR\$"
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.output \
+         --trace-ascii curl4.trace \
          --dump-header http.headers \
 	 --header "Origin: http://malevolent.site.com" \
 	 --request "OPTIONS" \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_preserve curl4.trace
    assertStdoutIs '403'
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.output \
+         --trace-ascii curl5.trace \
          --dump-header http.headers \
 	 --header "Origin: http://localhost.malevolent.site.com" \
 	 --request "OPTIONS" \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_preserve curl5.trace
    assertStdoutIs '403'
    executeOk curl \
          --silent --fail --show-error --write-out '%{http_code}' \
          --output http.output \
+         --trace-ascii curl6.trace \
          --dump-header http.headers \
 	 --header "Origin: http://localhost" \
          --basic --user ron:weasley \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_preserve curl6.trace
    assertStdoutIs '200'
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.output \
+         --trace-ascii curl7.trace \
          --dump-header http.headers \
 	 --header "Origin: http://malevolent.site.com" \
          --basic --user ron:weasley \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_preserve curl7.trace
    assertStdoutIs '403'
 }
 teardown_CORS_Request() {
@@ -194,9 +214,11 @@ test_RhizomeList() {
    executeOk curl \
          --silent --fail --show-error \
          --output bundlelist.json \
+         --trace-ascii curl.trace \
          --dump-header http.headers \
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_preserve curl.trace
    tfw_cat http.headers bundlelist.json
    tfw_preserve bundlelist.json
    assert [ "$(jq '.rows | length' bundlelist.json)" = $NBUNDLES ]
@@ -240,9 +262,11 @@ setup_RhizomeListNewSince() {
    executeOk curl \
          --silent --fail --show-error \
          --output bundlelist.json \
+         --trace-ascii curl.trace \
          --dump-header http.headers \
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_preserve curl.trace
    assert [ "$(jq '.rows | length' bundlelist.json)" = 6 ]
    transform_list_json bundlelist.json array_of_objects.json
    token=$(jq --raw-output '.[0][".token"]' array_of_objects.json)
@@ -254,6 +278,7 @@ test_RhizomeListNewSince() {
             --silent --fail --show-error \
             --no-buffer \
             --output newsince$i.json \
+            --trace-ascii curl$i.trace \
             --basic --user harry:potter \
             "http://$addr_localhost:$PORTA/restful/rhizome/newsince/$token/bundlelist.json"
    done
@@ -270,7 +295,7 @@ test_RhizomeListNewSince() {
          assert [ $(jq . newsince$i.json | wc -c) -ne 0 ]
       fi
       transform_list_json newsince$i.json objects$i.json
-      tfw_preserve newsince$i.json objects$i.json
+      tfw_preserve curl$i.trace newsince$i.json objects$i.json
       for ((n = 0; n <= 5; ++n)); do
          assertJq objects$i.json "contains([{id:\"${BID[$n]}\"}]) | not"
       done
@@ -320,11 +345,12 @@ test_RhizomeManifest() {
       executeOk curl \
             --silent --fail --show-error \
             --output bundle$n.rhm \
+            --trace-ascii curl$n.trace \
             --dump-header http.headers$n \
             --basic --user harry:potter \
             "http://$addr_localhost:$PORTA/restful/rhizome/${BID[$n]}.rhm"
       tfw_cat http.headers$n bundle$n.rhm
-      tfw_preserve bundle$n.rhm
+      tfw_preserve curl$n.trace bundle$n.rhm
    done
    for n in 0 1 2; do
       assert diff file$n.manifest bundle$n.rhm
@@ -340,9 +366,11 @@ test_RhizomeManifestNonexist() {
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.content \
+         --trace-ascii curl.trace \
          --dump-header http.headers \
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/$BID_NONEXISTENT.rhm"
+   tfw_preserve curl.trace
    tfw_cat http.headers http.content
    assertStdoutIs 404
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
@@ -366,9 +394,11 @@ test_RhizomePayloadRaw() {
       executeOk curl \
             --silent --fail --show-error \
             --output raw.bin$n \
+            --trace-ascii curl$n.trace \
             --dump-header http.headers$n \
             --basic --user harry:potter \
             "http://$addr_localhost:$PORTA/restful/rhizome/${BID[$n]}/raw.bin"
+      tfw_preserve curl$n.trace
       tfw_cat http.headers$n raw.bin$n
    done
    for n in 0 1 2 3; do
@@ -389,9 +419,11 @@ test_RhizomePayloadRawNonexistManifest() {
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.content \
+         --trace-ascii curl.trace \
          --dump-header http.headers \
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/$BID_NONEXISTENT/raw.bin"
+   tfw_preserve curl.trace
    tfw_cat http.headers http.content
    assertStdoutIs 404
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
@@ -417,9 +449,11 @@ test_RhizomePayloadRawNonexistPayload() {
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.content \
+         --trace-ascii curl.trace \
          --dump-header http.headers \
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/${BID[0]}/raw.bin"
+   tfw_preserve curl.trace
    tfw_cat http.headers http.content
    assertStdoutIs 404
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 1$CR\$"
@@ -445,9 +479,11 @@ test_RhizomePayloadDecrypted() {
       executeOk curl \
             --silent --fail --show-error \
             --output decrypted.bin$n \
+            --trace-ascii curl$n.trace \
             --dump-header http.headers$n \
             --basic --user harry:potter \
             "http://$addr_localhost:$PORTA/restful/rhizome/${BID[$n]}/decrypted.bin"
+      tfw_preserve curl$n.trace
       tfw_cat http.headers$n decrypted.bin$n
    done
    for n in 0 1 2 3; do
@@ -475,9 +511,11 @@ test_RhizomePayloadDecryptedForeign() {
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
          --output decrypted.bin$n \
+         --trace-ascii curl.trace \
          --dump-header http.headers$n \
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/${BID[1]}/decrypted.bin"
+   tfw_preserve curl.trace
    tfw_cat http.headers$n decrypted.bin$n
    assertStdoutIs 419
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 1$CR\$"
@@ -494,9 +532,11 @@ test_RhizomePayloadDecryptedNonexistManifest() {
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.content \
+         --trace-ascii curl.trace \
          --dump-header http.headers \
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/$BID_NONEXISTENT/decrypted.bin"
+   tfw_preserve curl.trace
    tfw_cat http.headers http.content
    assertStdoutIs 404
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
@@ -522,9 +562,11 @@ test_RhizomePayloadDecryptedNonexistPayload() {
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.content \
+         --trace-ascii curl.trace \
          --dump-header http.headers \
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/${BID[0]}/decrypted.bin"
+   tfw_preserve curl.trace
    tfw_cat http.headers http.content
    assertStdoutIs 404
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 1$CR\$"
@@ -565,16 +607,19 @@ setup_RhizomeInsert() {
 test_RhizomeInsert() {
    for n in 1 2 3 4; do
       authorargs=()
-      [ -n "${author[$n]}" ] && authorargs=(--form "bundle-author=${author[$n]}")
+      [ -n "${author[$n]}" ] && authorargs=(--form "bundle-author=${author[$n]};type=serval/sid;format=hex")
       execute curl \
+            --trace-ascii curl.trace \
             --silent --show-error --write-out '%{http_code}' \
             --output file$n.manifest \
+            --trace-ascii curl1-$n.trace \
             --dump-header http.header$n \
             --basic --user harry:potter \
             "${authorargs[@]}" \
-            --form "manifest=@manifest$n;type=rhizome/manifest;format=\"text+binarysig\"" \
+            --form "manifest=@manifest$n;type=rhizome/manifest;format=text+binarysig" \
             --form "payload=@file$n${payload_filename[$n]:+;filename=\"${payload_filename[$n]}\"}" \
             "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+      tfw_preserve curl1-$n.trace
       tfw_cat http.header$n file$n.manifest
       assertExitStatus == 0
       assertStdoutIs 201
@@ -634,11 +679,13 @@ test_RhizomeInsert() {
       execute curl \
             --silent --show-error --write-out '%{http_code}' \
             --output nfile$n.manifest \
+            --trace-ascii curl2-$n.trace \
             --dump-header http.headers$n \
             --basic --user harry:potter \
-            --form "manifest=@nmanifest$n;type=rhizome/manifest;format=\"text+binarysig\"" \
+            --form "manifest=@nmanifest$n;type=rhizome/manifest;format=text+binarysig" \
             --form "payload=@nfile$n;filename=\"nfile$n\"" \
             "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+      tfw_preserve curl2-$n.trace
       tfw_cat http.headers$n nfile$n.manifest
       assertExitStatus == 0
       if [ -n "${author[$n]}" ]; then
@@ -667,11 +714,13 @@ test_RhizomeInsertBoundaries() {
       execute curl \
             --silent --show-error --write-out '%{http_code}' \
             --output file$n.manifest \
+            --trace-ascii curl$n.trace \
             --dump-header http.header$n \
             --basic --user harry:potter \
-            --form "manifest=@manifest$n;type=rhizome/manifest;format=\"text+binarysig\"" \
+            --form "manifest=@manifest$n;type=rhizome/manifest;format=text+binarysig" \
             --form "payload=@file$n" \
             "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+      tfw_preserve curl$n.trace
       tfw_cat http.header$n file$n.manifest
       assertExitStatus == 0
       assertStdoutIs 201
@@ -693,12 +742,14 @@ test_RhizomeInsertAnon() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output ifile2.manifest \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "bundle-secret=$SECRET" \
-         --form "manifest=@file2.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "bundle-secret=$SECRET;type=rhizome/bundlesecret;format=hex" \
+         --form "manifest=@file2.manifest;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file2" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header ifile2.manifest
    assertExitStatus == 0
    assertStdoutIs 201
@@ -722,12 +773,14 @@ test_RhizomeInsertAnonPassphrase() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output ifile1.manifest \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "bundle-secret=#$pass" \
-         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "bundle-secret=#$pass;type=rhizome/bundlesecret;format=hex" \
+         --form "manifest=;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header ifile1.manifest
    assertExitStatus == 0
    assertStdoutIs 201
@@ -746,12 +799,14 @@ test_RhizomeInsertAnonPassphrase() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output ifile2.manifest \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "bundle-secret=#$pass" \
-         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "bundle-secret=#$pass;type=rhizome/bundlesecret;format=hex" \
+         --form "manifest=;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file2" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header ifile2.manifest
    assertExitStatus == 0
    assertStdoutIs 201
@@ -780,13 +835,15 @@ test_RhizomeInsertPassphrase() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output ifile1.manifest \
+         --trace-ascii curl1.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "bundle-author=$SIDA" \
-         --form "bundle-secret=#$pass" \
-         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "bundle-author=$SIDA;type=serval/sid;format=hex" \
+         --form "bundle-secret=#$pass;type=rhizome/bundlesecret;format=hex" \
+         --form "manifest=;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl1.trace
    tfw_cat http.header ifile1.manifest
    assertExitStatus == 0
    assertStdoutIs 201
@@ -805,13 +862,15 @@ test_RhizomeInsertPassphrase() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output ifile2.manifest \
+         --trace-ascii curl2.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "bundle-author=$SIDA" \
-         --form "bundle-secret=#$pass" \
-         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "bundle-author=$SIDA;type=serval/sid;format=hex" \
+         --form "bundle-secret=#$pass;type=rhizome/bundlesecret;format=hex" \
+         --form "manifest=;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file2" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl2.trace
    tfw_cat http.header ifile2.manifest
    assertExitStatus == 0
    assertStdoutIs 201
@@ -840,11 +899,13 @@ test_RhizomeInsertEmpty() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output empty.manifest \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "manifest=;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@empty;filename=\"lucky\"" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header empty.manifest
    assertExitStatus == 0
    assertStdoutIs 201
@@ -875,12 +936,14 @@ test_RhizomeUpdateToEmpty() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output empty.manifest \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "bundle-id=$BID" \
-         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "bundle-id=$BID;type=rhizome/bid;format=hex" \
+         --form "manifest=;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@empty;filename=\"lethargic\"" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header empty.manifest
    assertExitStatus == 0
    assertStdoutIs 201
@@ -904,11 +967,13 @@ test_RhizomeInsertLarge() {
    execute --timeout=120 curl \
          --silent --show-error --write-out '%{http_code}' \
          --output file1.manifest \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "manifest=;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header -v file1.manifest
    assertExitStatus == 0
    assertStdoutIs 201
@@ -933,10 +998,12 @@ test_RhizomeInsertMissingManifest() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 400
@@ -956,11 +1023,13 @@ test_RhizomeInsertManifestOverflow() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 422
@@ -979,11 +1048,13 @@ test_RhizomeInsertIncorrectManifestType() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
          --form "manifest=;type=rhizome-manifest/text" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 415
@@ -1002,16 +1073,18 @@ test_RhizomeInsertIncorrectManifestFormat() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
          --form "manifest=;type=rhizome/manifest;format=\"text\"" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 415
    assertJq http.body 'contains({"http_status_code": 415})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'unsupported.*format.*manifest.*form.*part'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'unsupported content-type.*manifest.*form.*part'
    executeOk_servald rhizome list
    assert_rhizome_list
 }
@@ -1027,12 +1100,14 @@ test_RhizomeInsertDuplicateManifest() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
-         --form "manifest=@file2.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
+         --form "manifest=@file2.manifest;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 400
@@ -1052,11 +1127,13 @@ test_RhizomeInsertJournalForbidden() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 422
@@ -1077,10 +1154,12 @@ test_RhizomeInsertMissingPayload() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 400
@@ -1101,12 +1180,14 @@ test_RhizomeInsertDuplicatePayload() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file1" \
          --form "payload=@file2" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 400
@@ -1126,11 +1207,13 @@ test_RhizomeInsertPartOrder() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
          --form "payload=@file1" \
-         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 400
@@ -1150,12 +1233,14 @@ test_RhizomeInsertPartUnsupported() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file1" \
          --form "happyhappy=joyjoy" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 400
@@ -1178,11 +1263,13 @@ test_RhizomeInsertIncorrectFilesize() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 422
@@ -1193,11 +1280,13 @@ test_RhizomeInsertIncorrectFilesize() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file2.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "manifest=@file2.manifest;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file2" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 422
@@ -1219,11 +1308,13 @@ test_RhizomeInsertIncorrectFilehash() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 422
@@ -1252,11 +1343,13 @@ test_RhizomeImport() {
             --silent --show-error --write-out '%{http_code}' \
             --header 'Transfer-Encoding: chunked' \
             --output http.body \
+            --trace-ascii curl.trace \
             --dump-header http.header \
             --basic --user harry:potter \
-            --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+            --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
             --form "payload=@file1" \
             "http://$addr_localhost:$PORTA/restful/rhizome/import?id=${manifestid}&version=${version}"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertStdoutIs 201
    assertGrep http.header '100 Continue'
@@ -1266,11 +1359,13 @@ test_RhizomeImport() {
             --silent --show-error --write-out '%{http_code}' \
             --header 'Transfer-Encoding: chunked' \
             --output http.body \
+            --trace-ascii curl.trace \
             --dump-header http.header \
             --basic --user harry:potter \
-            --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+            --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
             --form "payload=@file1" \
             "http://$addr_localhost:$PORTA/restful/rhizome/import?id=${manifestid}&version=${version}"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertStdoutIs 200
    assertGrep --matches=0 http.header '100 Continue'
@@ -1295,11 +1390,13 @@ test_RhizomeImportLarge() {
             --silent --show-error --write-out '%{http_code}' \
             --header 'Transfer-Encoding: chunked' \
             --output http.body \
+            --trace-ascii curl.trace \
             --dump-header http.header \
             --basic --user harry:potter \
-            --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+            --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
             --form "payload=@file1" \
             "http://$addr_localhost:$PORTA/restful/rhizome/import?id=${manifestid}&version=${version}"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertStdoutIs 201
    assertGrep http.header '100 Continue'
@@ -1324,12 +1421,14 @@ test_RhizomeJournalAppend() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output file1.manifest \
+         --trace-ascii curl1.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "bundle-author=$SIDA" \
-         --form "manifest=@manifest1;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "bundle-author=$SIDA;type=serval/sid;format=hex" \
+         --form "manifest=@manifest1;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/append"
+   tfw_preserve curl1.trace
    tfw_cat http.header file1.manifest
    assertExitStatus == 0
    assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
@@ -1380,13 +1479,15 @@ test_RhizomeJournalAppend() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output file2.manifest \
+         --trace-ascii curl2.trace \
          --dump-header http.headers \
          --basic --user harry:potter \
-         --form "bundle-id=$BID" \
-         --form "bundle-author=$SIDA" \
-         --form "manifest=@manifest2;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "bundle-id=$BID;type=rhizome/bid;format=hex" \
+         --form "bundle-author=$SIDA;type=serval/sid;format=hex" \
+         --form "manifest=@manifest2;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file2" \
          "http://$addr_localhost:$PORTA/restful/rhizome/append"
+   tfw_preserve curl2.trace
    tfw_cat http.header file2.manifest
    assertExitStatus == 0
    assertStdoutIs 201
@@ -1419,12 +1520,14 @@ test_RhizomeJournalAppendSharedPayload() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output file1.manifest \
+         --trace-ascii curl1.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "bundle-author=$SIDA" \
-         --form "manifest=@manifest1;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "bundle-author=$SIDA;type=serval/sid;format=hex" \
+         --form "manifest=@manifest1;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/append"
+   tfw_preserve curl1.trace
    tfw_cat http.header file1.manifest
    assertExitStatus == 0
    assertStdoutIs 201
@@ -1439,12 +1542,14 @@ test_RhizomeJournalAppendSharedPayload() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output file2.manifest \
+         --trace-ascii curl2.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "bundle-id=$BID" \
-         --form "manifest=@manifest2;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "bundle-id=$BID;type=rhizome/bid;format=hex" \
+         --form "manifest=@manifest2;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file2" \
          "http://$addr_localhost:$PORTA/restful/rhizome/append"
+   tfw_preserve curl2.trace
    tfw_cat http.header file2.manifest
    assertExitStatus == 0
    assertStdoutIs 201
@@ -1471,12 +1576,14 @@ test_RhizomeAppendNonJournalForbidden() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
+         --trace-ascii curl.trace \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "bundle-id=$BID" \
-         --form "manifest=@file2.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "bundle-id=$BID;type=rhizome/bid;format=hex" \
+         --form "manifest=@file2.manifest;type=rhizome/manifest;format=text+binarysig" \
          --form "payload=@file2" \
          "http://$addr_localhost:$PORTA/restful/rhizome/append"
+   tfw_preserve curl.trace
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 422
