@@ -1,6 +1,6 @@
 Rhizome REST API
 ================
-[Serval Project][], February 2016
+[Serval Project][], October 2017
 
 Introduction
 ------------
@@ -74,9 +74,6 @@ Every [Bundle](#bundle) in Rhizome is identified by its *Bundle ID*
 256-bit public key in the [Curve25519][] key space, generated from the random
 [Bundle Secret](#bundle-secret) when the the bundle is first created.
 
-[BID]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:bid
-[Curve25519]: https://en.wikipedia.org/wiki/Curve25519
-
 ### Bundle version
 
 A Bundle's *version* is a 64-bit unsigned integer chosen by the bundle's
@@ -134,13 +131,38 @@ lost, then the bundle becomes immutable.
 ### Manifest
 
 A Rhizome bundle's *manifest* consists of two parts: a meta-data section and a
-signature section.
+signature section, separated by a NUL (zero) byte:
 
-The meta-data section is a set of key-value *fields*.  A field key consists of
-up to 80 alphanumeric ASCII characters, and the first character must be
-alphabetic.  A field's value consists of zero or more bytes that may have any
-value except ASCII NUL (0), CR (13) and NL (10).  Conventionally, numeric
-values are represented using their decimal ASCII representation.
+    MANIFEST = METADATA NUL SIGNATURE
+
+If the NUL byte is missing, then the manifest is *unsigned*.
+
+The meta-data section consists of a set of key-value *fields* in arbitrary
+order, conforming to the following grammar:
+
+    METADATA = ( KEY "=" VALUE LF ){0..*}
+    KEY = ALPHA ( ALPHANUM ){0..79}
+    VALUE = ( VALUECHAR ){0..*}
+    ALPHA = octet in set ASCII A..F or a..f
+    ALPHANUM = ALPHA or octet in set ASCII 0..9
+    VALUECHAR = any ASCII octet except NUL CR or LF
+    ASCII = any octet in range 0..127
+    NUL = octet with value 0
+    LF = octet with value 10
+    CR = octet with value 13
+
+The signature section uses a binary format, and consists of one or more
+concatenated signature blocks.  Each block begins with a single *type* byte,
+followed by the bytes of the signature itself.  The length of the signature is
+computed as `type × 4 + 4`, not counting the type byte:
+
+    SIGNATURE = ( BLOCK ){1..*}
+    BLOCK = TYPE ( ANY ){TYPE * 4 + 4}
+    TYPE = octet with value 23
+    ANY = any octet in range 0..255
+
+The only supported signature type is 23 (hex 17), which is a 96-byte signature
+that is verified using [Curve25519][].
 
 Every manifest must contain the following *core* fields, or it is *partial*:
 
@@ -292,31 +314,66 @@ journals by discarding bytes over which the tail has advanced.
 Rhizome REST API common features
 --------------------------------
 
-### text+binarysig manifest format
+### Rhizome HTTP content types
 
-The Rhizome REST API accepts and returns [manifest](#manifest)s in only one
-format, denoted **text+binarysig**.  The *Content-Type* for this format is
-**rhizome/manifest; format=text+binarysig**.
+#### rhizome/manifest
+
+Serval DNA [POST][] requests that take [Rhizome manifest](#manifest) parameters
+use the non-standard **rhizome/manifest** content type in the parameter's [form
+part][].  See the [insert request](#post-restfulrhizomeinsert) for an example.
+
+Serval DNA also uses this content type when it returns a manifest in an HTTP
+response.  See the [get manifest request](#get-restfulrhizomebidrhm) for an
+example.
+
+Currently only one format is supported, denoted **text+binarysig**, which must
+be explicitly specified, so the correct [Content-Type][] header is:
+
+    Content-Type: rhizome/manifest; format=text+binarysig
+
+This format is described in detail in the [manifest](#manifest) section.
 
 In future, other formats may be supported, for example, all-binary or all-text.
 
-The TEXT part of this format lists key-value fields in arbitrary order, using
-the following grammar:
+#### rhizome/bid
 
-    TEXT = ( KEY "=" VALUE "\n" ){0..*}
-    KEY = ALPHA ( ALPHANUM ){0..79}
-    VALUE = ( VALUECHAR ){0..*}
-    VALUECHAR = any ASCII except NUL "\r" "\n"
+Serval DNA [POST](#post) requests that take [Bundle ID](#bundle-id) parameters
+use the non-standard **rhizome/bid** content type in the parameter's [form
+part](#multipart-form-data).  See the [insert request](#post-restfulrhizomeinsert)
+for an example.
 
-Following the text is a single NUL byte, followed by the signature section in a
-binary format.  If the NUL byte is missing, then the manifest is *unsigned*.
+At present only the **hex** format is supported, and must be explicitly
+specified.  A missing or different format will cause a [415 Unsupported Media
+Type][415] response.  The correct [Content-Type][] header is:
 
-The signature section consists of one or more concatenated signature blocks.
-Each block begins with a single *type* byte, followed by the bytes of the
-signature itself.  The length of the signature is computed as `type × 4 + 4`.
+    Content-Type: rhizome/bid; format=hex
 
-The only supported signature type is 23 (hex 17), which is a 96-byte signature
-that is verified using [Curve25519][].
+Hex format parameter values may only contain ASCII characters from the set
+`0123456789ABCDEFabcdef`; any other character (such as a trailing newline) will
+cause a [400 Bad Request][400] response.
+
+In future other formats may be supported, such as Base-64, 7-bit binary, or
+8-bit binary.
+
+#### rhizome/bundlesecret
+
+Serval DNA [POST](#post) requests that take [bundle secret](#bundle-secret)
+parameters use the non-standard **rhizome/bundlesecret; format=hex** content
+type in the parameter's [form part](#multipart-form-data).  See the [insert
+request](#post-restfulrhizomeinsert) for an example.
+
+At present only the **hex** format is supported, and must be explicitly
+specified.  A missing or different format will cause a [415 Unsupported Media
+Type][415] response.  The correct [Content-Type][] header is:
+
+    Content-Type: rhizome/bundlesecret; format=hex
+
+Hex format parameter values may only contain ASCII characters from the set
+`0123456789ABCDEFabcdef`; any other character (such as a trailing newline) will
+cause a [400 Bad Request][400] response.
+
+In future other formats may be supported, such as Base-64, 7-bit binary, or
+8-bit binary.
 
 ### Rhizome HTTP response headers
 
@@ -597,11 +654,10 @@ be [200 OK][200] and:
 *  the [Rhizome response bundle headers](#rhizome-response-bundle-headers) give
    information about the found bundle, some of which is duplicated from the
    manifest
-*  the response's Content-Type is **rhizome/manifest; format=text+binarysig**
-*  the response's Content-Length is the size, in bytes, of the manifest with
-   its binary signature appended
-*  the response's content is the Rhizome manifest in [text+binarysig
-   format](#textbinarysig-manifest-format)
+*  the response's Content-Type is [rhizome/manifest](#rihzomemanifest)
+*  the response's Content-Length is the size, in bytes, of the entire manifest,
+   including its binary signature
+*  the response's content is the Rhizome [manifest](#manifest)
 
 If the **manifest is not found** in the local Rhizome store, then the response
 will be [404 Not Found][404] and:
@@ -664,55 +720,102 @@ eg:
 
     /restful/rhizome/1702BD647D614DB72C36BD634B6870CA31040C2EEC5069AEC0C0841D0CC671BE/decrypted.bin
 
-The responses are identical to those for [GET /restful/rhizome/BID/raw.bin](get-restfulrhizomebidrawbin),
-with the following additional case:
-
 If the **manifest and payload are both found** and the payload is **encrypted**
-(the manifest's `crypt` field is 1), but the **payload secret is not known**,
-then:
+(the manifest's `crypt` field is 1), then the *payload secret* is determined as
+follows:
 
-*  the [bundle status code](#bundle-status-code) will be 0
-*  the [payload status code](#payload-status-code) will be 5
+*  if the manifest has both *sender* and *recipient* [SID][]s:
+
+   *  if the recipient's identity is found (unlocked) in the keyring, then the
+      secret is derived from the recipient's [Serval ID](#serval-id) secret;
+      otherwise
+   *  if the recipient's identity is not found in the keyring (locked or missing)
+      but the sender's identity is found (unlocked) in the keyring, then the
+      secret is derived from the sender's [Serval ID](#serval-id) secret;
+      otherwise
+   *  if neither identity is found in the keyring (both are locked or missing),
+      then the the payload secret is unknown.
+
+*  otherwise, the payload secret is derived directly from the [Bundle
+   Secret](#bundle-secret), which in turn is deduced from the `BK` [Bundle
+   Key](#bundle-key) field in the manifest, if present, as long as the bundle's
+   author can be found (unlocked) in the keyring.  If there is no `BK` field,
+   or if no unlocked identity in the keyring can provide the necessary [Rhizome
+   Secret](#rhizome-secret), then the payload secret is unknown.
+
+The responses are identical to [GET /restful/rhizome/BID/raw.bin](get-restfulrhizomebidrawbin),
+with the following variations:
+
+If the **payload is encrypted** and the **payload secret is known**, then
+the response will be [200 OK][200] and:
+
+*  the [bundle status code](#bundle-status-code) will be 1
+*  the [payload status code](#payload-status-code) will be 0 if the decrypted
+   payload has zero length, otherwise 2
+*  the [Rhizome response bundle headers](#rhizome-response-bundle-headers) give
+   information about the found bundle, some of which is duplicated from the
+   manifest
+*  the response's Content-Type is **application/octet-stream**
+*  the response's Content-Length is the size, in bytes, of the decrypted
+   payload
+*  the response's content is the bundle's decrypted payload
+
+If the **payload is encrypted** and the **payload secret is not known** then:
+
+*  the request will fail with status [419 Authentication Timeout][419]
 *  the [Rhizome response bundle headers](#rhizome-response-bundle-headers) give
    information about the found manifest
-*  the response's content is the [Rhizome JSON result](#rhizome-json-result)
-   object
-
-For a bundle that has a *sender* and a *recipient*, the payload secret is
-determined as follows:
-
-*  if the recipient's identity is found (unlocked) in the keyring, then the
-   secret is derived from the recipient's [Serval ID](#serval-id) secret;
-   otherwise
-*  if the recipient's identity is not found in the keyring (locked or missing)
-   but the sender's identity is found (unlocked) in the keyring, then the
-   secret is derived from the sender's [Serval ID](#serval-id) secret;
-   otherwise
-*  neither identity is found in the keyring (both are locked or missing), so
-   the payload secret is unknown.
-
-For all other bundles, the payload secret is derived directly from the [Bundle
-Secret](#bundle-secret), whether supplied as a query parameter or deduced from
-the bundle's [Bundle Key](#bundle-key).  If the Bundle Secret is unknown, then
-the payload secret is unknown.
+*  the response body is a [Rhizome JSON result](#rhizome-json-result) object,
+   in which:
+   *  the [bundle status code](#bundle-status-code) is 0
+   *  the [payload status code](#payload-status-code) is 5
 
 ### POST /restful/rhizome/insert
 
-This request allows a client to add a new bundle to the Rhizome store, or
-update an existing bundle in the store.  This request cannot be used to create
-or update [journals](#journal); use the [append](#post-restfulrhizomeappend)
-request instead.
+The Rhizome insert [POST][] request allows a client to add a new bundle to the
+Rhizome store, or update an existing bundle in the store.  This request cannot
+be used to create or update [journals](#journal); use the
+[append](#post-restfulrhizomeappend) request instead.
 
-Takes the following parameters, all optional under various conditions:
+This request does not accept any [query parameters][] in the *path*, but does
+accept parameters using a [Content-Type][] of [multipart/form-data][], in which
+each parameter has its own content type.  For example:
 
-*  **bundle-id**  The [Bundle ID](#bundle-id) of an existing bundle to update;
-   64 hexadecimal digits.  If the bundle currently exists in the Rhizome store
-   then a copy of its manifest is used as the basis of the new bundle, omitting
-   its `version`, `filesize`, `filehash` fields (which must be supplied or
-   inferred anew).
+        POST /restful/rhizome/insert HTTP/1.0
+        Content-Type: multipart/form-data;boundary=OoOoOoOo
+        
+        --OoOoOoOo
+        Content-Disposition: form-data; name=bundle-author
+        Content-Type: serval/sid;format=hex
+        
+        3DA7BA5E97DF4918DB5528450875EC9F788F0C37BC2603FD1BA7FF276C575018
+        --OoOoOoOo
+        Content-Disposition: form-data; name=manifest
+        Content-Type: rhizome/manifest;format=text+binarysig
+        
+        service=file
+        name=helloworld.txt
+        
+        --OoOoOoOo
+        Content-Disposition: form-data; name=payload; filename="helloworld.txt"
+        Content-Type: application/octet-stream
+        
+        Hello world!
+        
+        --OoOoOoOo--
 
-*  **bundle-author**  The [SID][] of the bundle's [author](#bundle-author):
+The parameters are all optional under various conditions:
+
+*  **bundle-id** = the [Bundle ID](#bundle-id) of an existing bundle to update:
+   *  64 hexadecimal digits
+   *  [Content-Type][] must be [rhizome/bid](#rhizomebid)
+   *  if the bundle currently exists in the Rhizome store then a copy of its
+      manifest is used as the basis of the new bundle, omitting its `version`,
+      `filesize`, `filehash` fields (which must be supplied or inferred anew).
+
+*  **bundle-author** = the [SID][] of the bundle's [author](#bundle-author):
    *  64 hexadecimal digits;
+   *  [Content-Type][] must be [serval/sid][]
    *  the bundle author sets (or removes) the bundle's `BK` field, overriding
       any `BK` field in the partial manifest supplied in the *manifest*
       parameter or in the existing bundle nominated by the *bundle-id*
@@ -723,22 +826,24 @@ Takes the following parameters, all optional under various conditions:
       request fails with status [400 Bad Request][400] and the message
       ‘Spurious "bundle-id" form part’.
 
-*  **bundle-secret**  The [Bundle Secret](#bundle-secret); 64 hexadecimal
-   digits.  This is needed in order to create a bundle with a specific [Bundle
-   ID](#bundle-id) (supplied in the **manifest** parameter), or to update an
-   existing bundle that is anonymous or the author is not a currently unlocked
-   identity in the keyring.
+*  **bundle-secret** = the [Bundle Secret](#bundle-secret):
+   *  64 hexadecimal digits
+   *  [Content-Type][] must be [rhizome/bundlesecret](#rhizomebundlesecret)
+   *  is needed in order to create a bundle with a specific [Bundle ID](#bundle-id)
+      (supplied in the *manifest* parameter), or to update an existing bundle
+      that is anonymous or the author is not a currently unlocked identity in
+      the keyring.
 
-*  **manifest**  A partial, unsigned manifest in [text+binarysig
-   format](#textbinarysig-manifest-format), with a correct *Content-Type*
-   header.  The fields in this manifest are used to form the new bundle's
-   manifest, overwriting the fields of any existing manifest specified by the
-   *bundle-id* parameter, if given.
+*  **manifest** = a partial, unsigned [manifest](#manifest):
+   *  [Content-Type][] must be [rhizome/manifest](#rhizomemanifest)
+   *  the fields in this manifest are used to form the new bundle's manifest,
+      overwriting the fields of any existing manifest specified by the
+      *bundle-id* parameter, if given.
 
-*  **payload**  The content of the new bundle's payload:
-   *  the form part's *Content-Type* header is currently ignored, but in future
-      it may be used to determine the default values of some manifest fields;
-   *  this parameter must occur after the *manifest* parameter, otherwise the
+*  **payload** = the content of the new bundle's payload:
+   *  [Content-Type][] is currently ignored, but in future it may be used to
+      determine the default values of some manifest fields;
+   *  this parameter must come after the *manifest* parameter, otherwise the
       request fails with status [400 Bad Request][400] and the message ‘Missing
       "manifest" form part’;
    *  the *payload* parameter must not be supplied if the `filesize` field in
@@ -746,27 +851,26 @@ Takes the following parameters, all optional under various conditions:
 
 The insertion logic proceeds in the following steps:
 
-1.  If the partial manifest supplied in the *manifest* parameter is malformed
-    (syntax error) or contains a core field with an invalid value, then the
-    request fails with status [422 Unprocessable Entity][422] and the [bundle
-    status code](#bundle-status-code) for “invalid”.
-
-2.  If a *bundle-id* parameter was supplied and the given bundle exists in the
+1.  If a *bundle-id* parameter was supplied and the given bundle exists in the
     Rhizome store, then the new bundle's manifest is initialised by copying all
     the fields from the existing manifest.
 
-3.  If a partial manifest was supplied in the *manifest* parameter, then its
+2.  If a partial manifest was supplied in the *manifest* parameter, then its
     fields are copied into the new manifest, overwriting any that were copied
-    in step 2.
+    in step 1.  If the partial manifest is malformed (syntax error) or contains
+    a core field with an invalid value, then the request fails with status [422
+    Unprocessable Entity][422] and the [bundle status
+    code](#bundle-status-code) for “invalid”.
 
-4.  If the `tail` field is present in the new manifest then the new bundle is a
+3.  If the `tail` field is present in the new manifest then the new bundle is a
     [journal](#journal), so the request fails with status [422 Unprocessable
     Entity][422] and the [bundle status code](#bundle-status-code) for
     “invalid”.  Journals can only be created and updated using the
     [append](#post-restfulrhizomeappend) request.
 
-5.  If the *bundle-secret* parameter was supplied, then a public key ([Bundle
-    ID](#bundle-id)) is derived from the [Bundle Secret](#bundle-secret), and:
+4.  If the *bundle-secret* parameter was supplied, then a public key
+    ([Bundle ID](#bundle-id)) is derived from the [Bundle Secret](#bundle-secret),
+    and:
 
     * if the new manifest has no `id` field, then the `id` field is set to the
       derived public key;
@@ -778,16 +882,15 @@ The insertion logic proceeds in the following steps:
 
     Otherwise, if no *bundle-secret* parameter was supplied:
 
-    * if the new manifest has no `id` field, then a new [Bundle
-      Secret](#bundle-secret) is generated randomly, the [Bundle
-      ID](#bundle-id) is derived from the new Bundle Secret, and the `id` field
-      set to that Bundle ID;
+    * if the new manifest has no `id` field, then a new [Bundle Secret](#bundle-secret)
+      is generated randomly, the [Bundle ID](#bundle-id) is derived from the
+      new Bundle Secret, and the `id` field set to that Bundle ID;
 
-    * if the new manifest already has an `id` field but no `BK` field ([Bundle
-      Key](#bundle-key)) (ie, the bundle is *anonymous*), then the [Bundle
-      Secret](#bundle-secret) cannot be discovered, so the request fails with
-      status [419 Authentication Timeout][419] and the [bundle status
-      code](#bundle-status-code) for “readonly”.
+    * if the new manifest already has an `id` field but no `BK` field
+      ([Bundle Key](#bundle-key)) (ie, the bundle is *anonymous*), then the
+      [Bundle Secret](#bundle-secret) cannot be discovered, so the request
+      fails with status [419 Authentication Timeout][419] and the [bundle
+      status code](#bundle-status-code) for “readonly”.
 
     * otherwise, if the *bundle-author* parameter was given, then that [SID][]
       is looked up in the keyring.  If the identity is found, then the [Bundle
@@ -799,17 +902,21 @@ The insertion logic proceeds in the following steps:
       Authentication Timeout][419] and the [bundle status
       code](#bundle-status-code) for “readonly”.
 
-    * otherwise, if no *bundle-author* parameter was given, then the keyring is
-      searched for an identity whose [Rhizome Secret](#rhizome-secret) combined
-      with the `BK` field ([Bundle Key](#bundle-key)) produces a [Bundle
-      Secret](#bundle-secret) whose derived [Bundle ID](#bundle-id) matches the
-      `id` field.  The search starts with the identity given by the `sender`
-      field, if present.  If none is found, then the request fails with status
-      [419 Authentication Timeout][419] and the [bundle status
-      code](#bundle-status-code) for “readonly”, otherwise the author is
-      deduced to be the found identity.
+    * otherwise, if no *bundle-author* parameter was given but the manifest has
+      a `BK` field, then the keyring is searched for an identity whose [Rhizome
+      Secret](#rhizome-secret) combined with the `BK` field ([Bundle
+      Key](#bundle-key)) produces a [Bundle Secret](#bundle-secret) whose
+      derived [Bundle ID](#bundle-id) matches the `id` field.  The search
+      starts with the identity given by the `sender` field, if present.  If
+      none is found, then the request fails with status [419 Authentication
+      Timeout][419] and the [bundle status code](#bundle-status-code) for
+      “readonly”, otherwise the author is deduced to be the found identity.
 
-6.  If the *bundle-author* parameter was given and step 5 set the `id` field
+    * otherwise, if no *bundle-author* parameter was given and the manifest has
+      no `BK` field, then an *anonymous* bundle is produced, ie, with no `BK`
+      key.
+
+5.  If the *bundle-author* parameter was given and step 4 set the `id` field
     (either derived from the *bundle-secret* parameter or randomly generated),
     then the *bundle-author* [SID][] is looked up in the keyring.  If not
     found, then the request fails with status [419 Authentication Timeout][419]
@@ -817,14 +924,14 @@ The insertion logic proceeds in the following steps:
     found, then the author's [Rhizome Secret](#rhizome-secret) is used to
     calculate the [Bundle Key](#bundle-key) and set the `BK` field.
 
-7.  The following fields are initialised if they are missing:
+6.  The following fields are initialised if they are missing:
 
     *  `service` to the value `file`
     *  `version` to the current [Unix time][] in milliseconds since the epoch
     *  `date` to the current [Unix time][] in milliseconds since the epoch
     *  `crypt` to `1` if the `sender` and `recipient` fields are both set
 
-8.  If the *payload* parameter is given and is non-empty, then its value is
+7.  If the *payload* parameter is given and is non-empty, then its value is
     stored in the store, and its size and [SHA-512][] digest computed.  If the
     manifest is missing either or both of the `filesize` and `filehash` fields,
     then the missing ones are filled in from the computed values.  If the
@@ -833,7 +940,7 @@ The insertion logic proceeds in the following steps:
     Entity][422] and the [bundle status code](#bundle-status-code) for
     “inconsistent”.
 
-9.  The manifest is *validated* to ensure that:
+8.  The manifest is *validated* to ensure that:
 
     *  the `id` field is present
     *  the `version` field is present
@@ -850,7 +957,7 @@ The insertion logic proceeds in the following steps:
     Entity][422] and the [bundle status code](#bundle-status-code) for
     “invalid”.
 
-10. If step 5 set the `id` field (either derived from the *bundle-secret*
+9.  If step 4 set the `id` field (either derived from the *bundle-secret*
     parameter or randomly generated) and the bundle is a *duplicate* of a
     bundle that is already in the store, then the request finishes with status
     [200 OK][200] and the [bundle status code](#bundle-status-code) for
@@ -862,15 +969,15 @@ The insertion logic proceeds in the following steps:
     *  the same `sender` field, and
     *  the same `recipient` field.
 
-11. The manifest is signed using the [Bundle Secret](#bundle-secret), and the
+10. The manifest is signed using the [Bundle Secret](#bundle-secret), and the
     signature appended to the manifest after a single ASCII NUL (0) separator
     byte.  If the result exceeds the maximum manifest size (8 KiB) then the
     request fails with status [422 Unprocessable Entity][422] and the [bundle
     status code](#bundle-status-code) for “manifest too big”.
 
-12. If the Rhizome store already contains a manifest with the same [Bundle
-    ID](#bundle-id), then its version is compared with the new manifest's
-    version.
+11. If the Rhizome store already contains a manifest with the same
+    [Bundle ID](#bundle-id), then its version is compared with the new
+    manifest's version.
 
     *  If they have the same version, then the new manifest is not stored, and
        the request returns status [200 OK][200] and the [bundle status
@@ -881,7 +988,7 @@ The insertion logic proceeds in the following steps:
        Accepted][202] and the [bundle status code](#bundle-status-code) for
        “old”.
 
-13. The new manifest is stored in the Rhizome store, replacing any existing
+12. The new manifest is stored in the Rhizome store, replacing any existing
     manifest with the same [Bundle ID](#bundle-id).  The request returns status
     [201 Created][201] and the [bundle status code](#bundle-status-code) for
     “new”.
@@ -895,33 +1002,34 @@ identical in all respects except as follows:
 
 The steps of the insertion logic have these variations:
 
-1.  The validity checks on any partial manifest given in the *manifest*
-    parameter will also fail if the partial manifest contains a `version`,
-    `filesize` or `filehash` field.
-
-2.  If the *bundle-id* parameter specifies an existing manifest, then the
+1.  If the *bundle-id* parameter specifies an existing manifest, then the
     `version`, `filesize` and `filehash` fields are not copied from the
     existing manifest to the new manifest.
 
-3.  After the partial manifest has been copied into the new manifest, if the
-    *bundle-id* parameter was not given or specified a bundle that was not
-    found in the store (step 2), then the `filesize` and `tail` fields are
-    initialised to zero (0) if they are missing.
+2.  The validity checks on any partial manifest given in the *manifest*
+    parameter will also fail if the partial manifest contains a `version`,
+    `filesize` or `filehash` field.  After the partial manifest has been copied
+    into the new manifest, if the *bundle-id* parameter was not given or
+    specified a bundle that was not found in the store (step 1), then the
+    `filesize` and `tail` fields are initialised to zero (0) if they are
+    missing.
 
-4.  If the `tail` field is missing from the new manifest then the bundle is not
+3.  If the `tail` field is missing from the new manifest then the bundle is not
     a [journal](#journal), so the request fails with status [422 Unprocessable
     Entity][422] and the [bundle status code](#bundle-status-code) for
     “invalid”.
+
+4.  No change.
 
 5.  No change.
 
 6.  No change.
 
-7.  No change.
-
-8.  After the payload has been stored, the `filesize` and `filehash` fields are
+7.  After the payload has been stored, the `filesize` and `filehash` fields are
     always set, overriding any that were already present.  Also, the `version`
     is always set to `tail + filesize`.
+
+8.  No change.
 
 9.  No change.
 
@@ -931,28 +1039,34 @@ The steps of the insertion logic have these variations:
 
 12. No change.
 
-13. No change.
-
 ### POST /restful/rhizome/import
 
-This request allows the client to store a valid manifest and payload that have been 
-obtained through some other means.
+The import [POST](#post) request allows the client to store a valid bundle
+(manifest and payload) in the store that may have been obtained through some
+other means, such as exporting from another store using the [manifest
+request](#get-restfulrhizomebidrhm) and the [raw payload
+request](#get-restfulrhizomebidrawbin).
 
-*  **manifest**  A signed manifest in [text+binarysig format](#textbinarysig-manifest-format), 
-   with a correct *Content-Type* header. 
+This request accepts the following parameters using a [Content-Type][] of
+[multipart/form-data][], in which each parameter has its own content type:
 
-*  **payload**  The content of the bundle's payload:
-   *  the form part's *Content-Type* header is currently ignored, but in future
-      it may be used to determine the default values of some manifest fields;
-   *  this parameter must occur after the *manifest* parameter, otherwise the
+*  **manifest** (required) = a signed [manifest](#manifest):
+   *  [Content-Type][] must be [rhizome/manifest](#rhizomemanifest)
+
+*  **payload** = the content of the bundle's payload:
+   *  [Content-Type][] is currently ignored, but in future it may be used to
+      determine the default values of some manifest fields;
+   *  this parameter must come after the *manifest* parameter, otherwise the
       request fails with status [400 Bad Request][400] and the message ‘Missing
       "manifest" form part’;
    *  the *payload* parameter must not be supplied if the `filesize` field in
-      the *manifest* parameter is zero.
+      the *manifest* parameter is zero;
+   *  if the bundle is encrypted (the manifest `crypt` field is 1) then the
+      payload must be in encrypted form, not plain text.
 
 
 -----
-**Copyright 2015 Serval Project Inc.**  
+**Copyright 2015-2017 Serval Project Inc.**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 Available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 
@@ -960,9 +1074,12 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [Serval Project]: http://www.servalproject.org/
 [CC BY 4.0]: ../LICENSE-DOCUMENTATION.md
 [Rhizome]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:rhizome
+[BID]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:bid
 [Serval Mesh network]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mesh_network
 [Serval DNA]: ../README.md
 [REST-API]: ./REST-API.md
+[form part]: ./REST-API.md#multipart-form-data
+[POST]: ./REST-API.md#post
 [JSON result]: ./REST-API.md#json-result
 [store and forward]: https://en.wikipedia.org/wiki/Store_and_forward
 [SID]: ./REST-API-Keyring.md#serval-id
@@ -970,13 +1087,19 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [MeshMS]: ./REST-API-MeshMS.md
 [MeshMS conversations]: ./REST-API-MeshMS.md#conversation
 [JSON table]: ./REST-API.md#json-table
+[Curve25519]: https://en.wikipedia.org/wiki/Curve25519
 [Unix time]: https://en.wikipedia.org/wiki/Unix_time
 [Y2038 problem]: https://en.wikipedia.org/wiki/Year_2038_problem
+[query parameters]: https://en.wikipedia.org/wiki/Query_string
+[Content-Type]: ./REST-API.md#content-type-header
+[multipart/form-data]: ./REST-API.md#multipartform-data
+[serval/sid]: ./REST-API.md#servalsid
 [200]: ./REST-API.md#200-ok
 [201]: ./REST-API.md#201-created
 [202]: ./REST-API.md#202-accepted
 [400]: ./REST-API.md#400-bad-request
 [404]: ./REST-API.md#404-not-found
+[415]: ./REST-API.md#415-unsupported-media-type
 [419]: ./REST-API.md#419-authentication-timeout
 [422]: ./REST-API.md#422-unprocessable-entity
 [423]: ./REST-API.md#423-locked

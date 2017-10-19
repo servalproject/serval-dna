@@ -1,6 +1,6 @@
 REST API
 ========
-[Serval Project][], February 2016
+[Serval Project][], October 2017
 
 Introduction
 ------------
@@ -27,14 +27,16 @@ gives applications access to the network through two main classes of [API][]:
 
 This document describes the features in common to all the [HTTP REST][] APIs.
 
-### Protocol and port
+Protocol and port
+-----------------
 
 The Serval DNA [HTTP REST][] API is an [HTTP 1.0][] server that only accepts
 requests on the loopback interface (IPv4 address 127.0.0.1), TCP port 4110.  It
 rejects requests that do not originate on the local host, by replying
 [403 Forbidden](#403-forbidden).
 
-### Security
+Security
+--------
 
 The REST API uses plain HTTP *without* encryption.  REST requests and responses
 are not carried over any physical network link, only local (“logical”) links
@@ -50,7 +52,8 @@ Serval DNA and its clients, much more effective than intercepting their
 communications, so encrypting client-server communications would offer no
 protection whatsoever.
 
-### Authentication
+Authentication
+--------------
 
 Clients of the HTTP REST API must authenticate themselves using [Basic
 Authentication][].  This narrows the window for opportunistic attacks on the
@@ -77,11 +80,12 @@ PASSWORD is a cleartext secret, so the Serval DNA configuration file must be
 protected from unauthorised access or modification by other apps.  That makes
 this mechanism unsuitable for general use.
 
-### Request
+Request
+-------
 
 An HTTP REST request is a normal [HTTP 1.0][] [GET](#get) or [POST](#post):
 
-#### GET
+### GET
 
 A **GET** request consists of an initial "GET" line containing the *path* and
 *HTTP version*, followed by zero or more header lines, followed by a blank
@@ -94,98 +98,153 @@ For example:
     Accept: */*
     
 
-GET requests only accept parameters as [query parameters][] in the *path*.
+GET requests only accept parameters as [percent encoded][] [query parameters][]
+in the *path*.
 
 [query parameters]: http://tools.ietf.org/html/rfc3986#section-3.4
 
-#### POST
+### POST
 
-A **POST** request has a similar structure to a GET request except that the first word
-of the first line is "POST". 
+A **POST** request has a similar structure to a GET request except that the
+first word of the first line is "POST", and there may be a body of content
+following the blank line that ends the header.
 
-POST requests accept parameters as [query parameters][] in the *path* and also
-as a request body with a [Content-Type](#request-content-type) of
-[multipart/form-data][].  These two kinds of parameters are not exclusive; a
-request may contain a mixture of both.
+POST requests accept parameters as [percent encoded][] [query parameters][] in
+the *path* and also as a request body with a [Content-Type](#content-type-header)
+of [multipart/form-data][].  These two kinds of parameters are not exclusive; a
+POST request may contain a mixture of both.
 
-A POST request may also include a [Content-Length](#request-content-length)
-or [Transfer-Encoding](#request-transfer-encoding) header;
-a [Content-Type](#request-content-type); and an [Expect](#request-expect) header as described below.
+A POST request may also include the following headers as described below:
+*  [Content-Length](#content-length-header)
+*  [Content-Type](#content-type-header)
+*  [Range](#range-header)
+*  [Transfer-Encoding](#transfer-encoding-header)
+*  [Expect](#expect-header)
 
-#### Request Transfer-Encoding
+### Content-Length header
 
-In a request, a **Transfer-Encoding** header of "chunked", indicates that the
-client can generate and transmit the request body without pre-calculating the
-final length. No other transfer encodings are currently supported.
+In a [POST](#post) request, the **Content-Length** header gives the exact
+number of bytes (octets) in the request's body, which must be correct.  Serval
+DNA will not process a request until it receives Content-Length bytes, so if
+Content-Length is too large, the request will suspend and eventually time out.
+Serval DNA will ignore any bytes received after it has read Content-Length
+bytes, so if Content-Length is too small, the request body will be malformed.
 
-Each chunk is generated as the size of the chunk in hex, followed
-by '\r\n', followed by the request bytes, followed by another '\r\n'.
+Serval DNA treats a missing Content-Length header the same as a Content-Length
+of zero; it will not attempt to read the request body so any body content will
+be ignored if sent.
 
-The end of the input is indicated with a chunk of zero length.
+### Content-Type header
 
-#### Request Expect
+In a [POST](#post) request, the **Content-Type** header gives the [Internet
+Media Type][] of the body.
 
-The presense of an **Expect** header of "100-Continue" indicates that the server 
-should respond with an intermediate response of "HTTP/1.1 100 Continue" before the
-client begins to transmit a request body. 
-
-If for any reason the server determines that the request body is not needed, or
-the request is invalid, the server will generate the response immediately without 
-reading the contents of the request body.
-
-#### Request Content-Length
-
-In a request, the **Content-Length** header gives the exact number of bytes
-(octets) in the request's body, which must be correct.  Serval DNA will not
-process a request until it receives Content-Length bytes, so if Content-Length
-is too large, the request will suspend and eventually time out.  Serval DNA
-will ignore any bytes received after it has read Content-Length bytes, so if
-Content-Length is too small, the request body will be malformed.
-
-A missing Content-Length header will be treated the same as a Content-Length of zero.
-
-#### Request Content-Type
-
-In a request, the **Content-Type** header gives the [Internet Media Type][] of
-the body.  Serval DNA currently supports the following media types in requests:
-
-*   **[multipart/form-data][]** is used to send parameters in [POST](#post)
-    requests.  The **boundary** parameter must specify a string that does not
-    occur anywhere within the content of any form part.
-
-*   **text/plain; charset=utf-8** is used for [MeshMS][] message form parts.
-    The only supported charset is utf-8; a missing or different charset will
-    cause a [415 Unsupported Media Type](#415-unsupported-media-type) response.
-
-*   **rhizome/manifest; format=text+binarysig** is used for [Rhizome
-    manifest][]s in [text+binarysig format][].
-
-A missing Content-Type header in a `POST` request will cause a [400 Bad
+A missing Content-Type header in a [POST](#post) request will cause a [400 Bad
 Request](#400-bad-request) response.  An unsupported content type will cause a
 [415 Unsupported Media Type](#415-unsupported-media-type) response.
 
-The following media types are *not supported*:
+#### multipart/form-data
 
-*  [application/x-www-form-urlencoded][] is commonly used to send parameters in
-   [POST](#post) requests, and is the predecessor web standard to
-   [multipart/form-data][].  It has the benefit of being simpler than
-   [multipart/form-data][] for requests that take short, mainly textual
-   parameters, but is very inefficient for encoding large binary values and
-   does not provide any means to associate metadata such as content-type and
-   encoding with individual parameters.  In future, some REST API requests may
-   support [application/x-www-form-urlencoded][].
+Serval DNA [POST](#post) requests that take their parameters in the request
+body accept the **[multipart/form-data][]** content type.
 
-[multipart/form-data]: https://www.ietf.org/rfc/rfc2388.txt
-[application/x-www-form-urlencoded]: https://tools.ietf.org/html/rfc1866#section-8.2.1
+The multipart **boundary** must specify a string consisting of at most 70 ASCII
+characters that does not occur anywhere within the content of any part, and is
+used to delimit the parts of the request body.  Typically this string is
+generated using a large random number encoded into printable ASCII, eg:
 
-#### Request Range
+    Content-Type: multipart/form-data;boundary=081d31d4c3d23014
 
-[HTTP 1.1 Range][] retrieval is partially supported.  In a request, the
-**Range** header gives the start and end, in byte offsets, of the resource to
-be returned.  The server may respond with exactly the range requested, in which
-case the response status code will be [206 Partial Content](#206-partial-content),
-or it may ignore the Range header and respond with the entire requested
-resource.
+Each form part introduces one named parameter, and consists of its own header
+section, followed by a blank line (a CR-LF immediately following the CR-LF that
+terminates the last header), followed by a body that contains the parameter's
+content, followed by a CR-LF.  Every part must have a [Content-Disposition][]
+header that gives the parameter's name, and may have an optional
+[Content-Type][] header.
+
+The following example passes two parameters to a request, called `first` and
+`second`, the first is a single line of plain text terminated by a LF, the
+second is an HTML document with no terminating LF:
+
+    POST /an/example/request HTTP/1.0
+    Content-Type: multipart/form-data;boundary=4aceafdc5cc7295d
+    
+    --4aceafdc5cc7295d
+    Content-Disposition: form-data; name=first
+    Content-Type: text/plain; charset=utf-8
+    
+    Hello, world!
+    
+    --4aceafdc5cc7295d
+    Content-Disposition: form-data; name=second; filename="hello_world.html"
+    Content-Type: text/html; charset=utf-8
+    
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8">
+        <title>The second parameter</title>
+      </head>
+      <body>
+        <h1>Hello world!</h1>
+      </body>
+    </html>
+    --4aceafdc5cc7295d--
+
+#### application/x-www-form-urlencoded
+
+Serval DNA [POST](#post) requests *do not support* the
+[application/x-www-form-urlencoded][] content type, although some may do so in
+future.
+
+[application/x-www-form-urlencoded][] is the predecessor web standard to
+[multipart/form-data](#multipart-form-data).  It has the benefit of being
+simpler for requests that take short, mainly textual parameters, but is very
+inefficient for encoding large binary values and does not provide any means to
+associate metadata such as content-type, encoding and file name with individual
+parameters.
+
+#### text/plain
+
+Serval DNA [POST](#post) requests that take plain text parameters use the
+**text/plain** content type in the parameter's [form part](#multipart-form-data).
+See the [MeshMS send request][] for an example.
+
+The only supported charset is **utf-8**; a missing or different charset will
+cause a [415 Unsupported Media Type](#415-unsupported-media-type) response.
+The correct [Content-Type](#content-type-header) header is:
+
+    Content-Type: text/plain; charset=utf-8
+
+#### serval/sid
+
+Serval DNA [POST](#post) requests that take [SID][] parameters use the
+non-standard **serval/sid** content type within the parameter's [form
+part](#multipart-form-data).  See the [Rhizome insert request][] for an
+example.
+
+At present only the **hex** format is supported, and must be explicitly
+specified.  A missing or different format will cause a [415 Unsupported Media
+Type](#415-unsupported-media-type).  The correct [Content-Type](#content-type-header)
+header is:
+
+    Content-Type: serval/sid; format=hex
+
+Hex format parameter values may only contain ASCII characters from the set
+`0123456789ABCDEFabcdef`; any other character (such as a trailing newline) will
+cause a [400 Bad Request](#400-bad-request) response.
+
+In future other formats may be supported, such as Base-64, 7-bit binary, or
+8-bit binary.
+
+### Range header
+
+[HTTP 1.1 Range][] retrieval is partially supported.  In a [POST](#post)
+request, the **Range** header gives the start and end, in byte offsets, of the
+resource to be returned.  The server may respond with exactly the range
+requested, in which case the response status code will be [206 Partial
+Content](#206-partial-content), or it may ignore the Range header and respond
+with the entire requested resource.
 
 For example, the following header asks that the server omit the first 64 bytes
 and send only the next 64 bytes (note that ranges are inclusive of their end
@@ -200,9 +259,33 @@ response may be the entire content or [501 Not Implemented](#501-not-implemented
 
 [HTTP 1.1 Range]: http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.35
 
-### Responses
+### Transfer-Encoding header
 
-An HTTP REST response is a normal [HTTP 1.0][] response consisting of a header
+In a [POST](#post) request, a **Transfer-Encoding** header of "chunked",
+indicates that the client can generate and transmit the request body without
+pre-calculating the final length. No other transfer encodings are currently
+supported.
+
+Each chunk is generated as the size of the chunk in hex, followed by CR-LF,
+followed by the request bytes, followed by another CR-LF.
+
+The end of the input is indicated with a chunk of zero length.
+
+### Expect header
+
+In a [POST](#post) request, the presense of an **Expect** header of
+"100-Continue" indicates that the server should respond with an intermediate
+response of "HTTP/1.1 100 Continue" before the client begins to transmit a
+request body.
+
+If for any reason the server determines that the request body is not needed, or
+the request is invalid, the server will generate the response immediately without
+reading the contents of the request body.
+
+Responses
+---------
+
+An HTTP REST *response* is a normal [HTTP 1.0][] response consisting of a header
 block, a blank line, and an optional body, for example: As usual, all lines are
 terminated by an ASCII CR-LF sequence.  For example:
 
@@ -224,14 +307,15 @@ return to the client; for example, [Rhizome response headers](#rhizome-response-
 
 [application/json]: https://tools.ietf.org/html/rfc4627
 
-### Response status code
+Response status code
+--------------------
 
 The HTTP REST API response uses the [HTTP status code][] to indicate the
 outcome of the request as follows:
 
 [HTTP status code]: http://www.w3.org/Protocols/HTTP/1.0/spec.html#Status-Codes
 
-#### 200 OK
+### 200 OK
 
 The operation was successful and no new entity was created.  Most requests
 return this code to indicate success.  Requests that create a new entity only
@@ -245,13 +329,13 @@ entity twice yields the same state as creating it once.  This is an important
 property for a purely distributed network that has no central arbiter to
 enforce sequencing of operations.)
 
-#### 201 Created
+### 201 Created
 
 The operation was successful and the entity was created.  This code is only
 returned by requests that create new entities, in the case that the entity did
 not exist beforehand and has been created successfully.
 
-#### 202 Accepted
+### 202 Accepted
 
 The operation was successful but the entity was not created.  This code is only
 returned by requests that create new entities, in the case that the request was
@@ -261,23 +345,23 @@ this code when inserting a bundle to a full Rhizome store if the new bundle's
 rank falls below all other bundles, so the new bundle itself would be evicted
 to make room.
 
-#### 206 Partial Content
+### 206 Partial Content
 
 The operation was successful and the response contains part of the requested
 content.  This code is only returned by requests that fetch an entity (the
 fetched entity forms the body of the response) if the request supplied a
-[Range](#request-range) header that specified less than the entire entity.
+[Range](#range-header) header that specified less than the entire entity.
 
-#### 400 Bad Request
+### 400 Bad Request
 
 The HTTP request was malformed, and should not be repeated without
 modifications.  This could be for several reasons:
 - invalid syntax in the request header block
-- a `POST` request MIME part is missing, duplicated or out of order
-- a `POST` request was given an unsupported MIME part
-- a `POST` request MIME part has missing or malformed content
+- a [POST](#post) request parameter is missing, duplicated or out of order
+- a [POST](#post) request was given an unsupported parameter
+- a [POST](#post) request parameter has missing or malformed content
 
-#### 401 Unauthorized
+### 401 Unauthorized
 
 The request did not supply an "Authorization" header with a recognised
 credential.  This response contains a "WWW-Authenticate" header that describes
@@ -293,12 +377,12 @@ the missing credential:
      "http_status_message": "Unauthorized"
     }
 
-#### 403 Forbidden
+### 403 Forbidden
 
 The request failed because the server does not accept requests from the
 originating host.
 
-#### 404 Not Found
+### 404 Not Found
 
 The request failed because the [HTTP request URI][] does not exist.  This could
 be for several reasons:
@@ -311,7 +395,7 @@ be for several reasons:
 
 [HTTP request URI]: http://www.w3.org/Protocols/HTTP/1.0/spec.html#Request-URI
 
-#### 405 Method Not Allowed
+### 405 Method Not Allowed
 
 The request failed because the [HTTP request method][] is not supported for the
 given path.  Usually this means that a [GET](#get) request was attempted on a
@@ -319,23 +403,23 @@ path that only supports [POST](#post), or vice versa.
 
 [HTTP request method]: http://www.w3.org/Protocols/HTTP/1.0/spec.html#Method
 
-#### 411 Length Required
+### 411 Length Required
 
-A `POST` request did not supply either a [Content-Length](#request-content-length)
-or [Transfer-Encoding](#request-transfer-encoding) header.
+A [POST](#post) request did not supply either a [Content-Length](#content-length-header)
+or [Transfer-Encoding](#transfer-encoding-header) header.
 
-#### 414 Request-URI Too Long
+### 414 Request-URI Too Long
 
 The request failed because the [HTTP request URI][] was too long.  The server
 persists the path and a few other pieces of the request in a fixed size request
 buffer, and this response is triggered if the collective size of these does not
 leave enough buffer for receiving the remainder of the request.
 
-#### 415 Unsupported Media Type
+### 415 Unsupported Media Type
 
-A `POST` request failed because of an unsupported content type, which could be
-for several reasons:
-- the request's [Content-Type](#request-content-type) header specified an
+A [POST](#post) request failed because of an unsupported content type, which
+could be for several reasons:
+- the request's [Content-Type](#content-type-header) header specified an
   unsupported media type
 - a part of a [multipart/form-data][] request body has:
   - a missing `Content-Disposition` header, or
@@ -343,27 +427,27 @@ for several reasons:
   - a missing or unsupported `Content-Type` header (including a missing or
     unsupported `charset` parameter)
 
-#### 416 Requested Range Not Satisfiable
+### 416 Requested Range Not Satisfiable
 
-The [Range](#request-range) header specified a range whose start position falls
+The [Range](#range-header) header specified a range whose start position falls
 outside the size of the requested entity.
 
-#### 419 Authentication Timeout
+### 419 Authentication Timeout
 
 The request failed because the server does not possess and cannot derive the
 necessary cryptographic secret or credential.  For example, updating a [Rhizome
 bundle][] without providing the [bundle secret][].  This code is not part of
 the HTTP standard.
 
-#### 422 Unprocessable Entity
+### 422 Unprocessable Entity
 
-A `POST` request supplied data that was inconsistent or violates semantic
+A [POST](#post) request supplied data that was inconsistent or violates semantic
 constraints, so cannot be processed.  For example, the [Rhizome
 insert](./REST-API-Rhizome.md#post-restfulrhizomeinsert) operation responds
 with 422 if the manifest *filesize* and *filehash* fields do not match the
 supplied payload.
 
-#### 423 Locked
+### 423 Locked
 
 The request cannot be performed because a necessary resource is busy for
 reasons outside the control of the requester and server.
@@ -375,7 +459,7 @@ from directly accessing the Rhizome database.  Once these improvements are
 done, this code should no longer occur except during unusual testing and
 development situations.
 
-#### 429 Too Many Requests
+### 429 Too Many Requests
 
 The request cannot be performed because a necessary resource is temporarily
 unavailable due to a high volume of concurrent requests.
@@ -390,7 +474,7 @@ resources.  For example, if [Serval DNA][] is ever limited to service only a
 few HTTP requests at a time, then this code will be returned to new requests
 that would exceed the limit.
 
-#### 431 Request Header Fields Too Large
+### 431 Request Header Fields Too Large
 
 The request header block was too long.
 
@@ -399,7 +483,7 @@ buffer memory for each [request](#request), and the HTTP server read each
 header line entirely into that buffer before parsing it.  If a single header
 exceeded the size of this buffer, then the 431 response was returned.
 
-#### 500 Internal Server Error
+### 500 Internal Server Error
 
 The request failed because of an internal error in [Serval DNA][], not an error
 in the request itself.  This could be for several reasons:
@@ -412,14 +496,15 @@ re-tried, but in general they will persist because the cause is not transient.
 Temporary failures that can be resolved by re-trying the request are generally
 indicated by other status codes, such as [423 Locked](#423-locked).
 
-#### 501 Not Implemented
+### 501 Not Implemented
 
 The requested operation is valid but not yet implemented.  This is used for the
 following cases:
 
-- a request [Range](#request-range) header specifies a multi range
+- a [POST](#post) request [Range](#range-header) header specifies a multi range
 
-#### Cross-Origin Resource Sharing (CORS)
+Cross-Origin Resource Sharing (CORS)
+------------------------------------
 
 To support client-side JavaScript applications, Serval DNA has a limited
 implementation of [Cross-Origin Resource Sharing][CORS].  If a request contains
@@ -445,7 +530,8 @@ Serval DNA will respond:
 
 [CORS]: http://www.w3.org/TR/cors/
 
-#### JSON result
+JSON result
+-----------
 
 All responses that convey no special content return the following *JSON result*
 object:
@@ -468,7 +554,8 @@ found”, “Payload not found”, etc.
 Some responses augment the *JSON result* object with extra fields; for example,
 [Rhizome JSON result][] and [Keyring JSON result][].
 
-### JSON table
+JSON table
+----------
 
 Many HTTP REST responses that return a list of regular objects (eg, [GET
 /restful/rhizome/bundlelist.json](./REST-API-Rhizome.md#get-restfulrhizomebundlelistjson))
@@ -517,7 +604,7 @@ expression to perform the transformation:
     ]
 
 -----
-**Copyright 2015 Serval Project Inc.**  
+**Copyright 2015-2017 Serval Project Inc.**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 Available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 
@@ -546,9 +633,15 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [Rhizome bundle]: ./REST-API-Rhizome.md#bundle
 [Rhizome manifest]: ./REST-API-Rhizome.md#manifest
 [Rhizome JSON result]: ./REST-API-Rhizome.md#rhizome-json-result
+[Rhizome insert request]: ./REST-API-Rhizome.md#post-restfulrhizomeinsert
+[MeshMS send request]: ./REST-API-MeshMS.md#post-restfulmeshmssendersidrecipientsidsendmessage
 [Keyring JSON result]: ./REST-API-Keyring.md#keyring-json-result
 [bundle secret]: ./REST-API-Rhizome.md#bundle-secret
-[text+binarysig format]: ./REST-API-Rhizome.md#textbinarysig-manifest-format
+[multipart/form-data]: https://www.ietf.org/rfc/rfc7578
+[Content-Disposition]: https://tools.ietf.org/html/rfc7578#section-4.2
+[Content-Type]: https://tools.ietf.org/html/rfc7578#section-4.4
+[application/x-www-form-urlencoded]: https://tools.ietf.org/html/rfc1866#section-8.2.1
+[percent encoded]: https://en.wikipedia.org/wiki/Percent-encoding
 [JSON]: https://en.wikipedia.org/wiki/JSON
 [UTF-8]: https://en.wikipedia.org/wiki/UTF-8
 [jq(1)]: https://stedolan.github.io/jq/
