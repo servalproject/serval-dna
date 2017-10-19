@@ -162,7 +162,22 @@ static int static_page(httpd_request *r, const char *remainder)
   
   r->finalise_union=finalise_union_close_file;
   
-  // TODO find extension and set content type properly
+  // Set Content-Type header based on the extension of the file name.  All text and html is assumed
+  // to be in UTF-8 encoding.
+  const struct mime_content_type *content_type = &CONTENT_TYPE_BLOB;
+  if (strcase_endswith(path, ".txt", NULL)) {
+    content_type = &CONTENT_TYPE_TEXT;
+  }
+  else if (strcase_endswith(path, ".htm", NULL) || strcase_endswith(path, ".html", NULL)) {
+    content_type = &CONTENT_TYPE_HTML;
+  }
+  else if (strcase_endswith(path, ".json", NULL)) {
+    content_type = &CONTENT_TYPE_JSON;
+  }
+  else if (strcase_endswith(path, ".rhm", NULL)) {
+    content_type = &CONTENT_TYPE_RHIZOME_MANIFEST;
+  }
+
   http_response_init_content_range(r, stat.st_size);
   if (r->http.response.header.content_range_start){
     if (lseek64(r->u.file.fd, r->http.response.header.content_range_start, SEEK_SET)){
@@ -171,6 +186,6 @@ static int static_page(httpd_request *r, const char *remainder)
     }
   }
   r->u.file.offset=r->http.response.header.content_range_start;
-  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_HTML, static_file_generator);
+  http_request_response_generated(&r->http, 200, content_type, static_file_generator);
   return 1;
 }
