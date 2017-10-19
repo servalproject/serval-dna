@@ -635,6 +635,15 @@ strbuf strbuf_append_quoted_string(strbuf sb, const char *str)
   return sb;
 }
 
+strbuf strbuf_append_token_or_quoted_string(strbuf sb, const char *str)
+{
+  for (const char *s = str; *s; ++s)
+    if (!is_http_token(*s))
+      return strbuf_append_quoted_string(sb, str);
+  strbuf_puts(sb, str);
+  return sb;
+}
+
 static void _html_char(strbuf sb, char c)
 {
   if (c == '&')
@@ -943,15 +952,15 @@ strbuf strbuf_append_mime_content_type(strbuf sb, const struct mime_content_type
   strbuf_puts(sb, ct->subtype);
   if (ct->charset[0]) {
     strbuf_puts(sb, "; charset=");
-    strbuf_append_quoted_string(sb, ct->charset);
+    strbuf_append_token_or_quoted_string(sb, ct->charset);
   }
   if (ct->multipart_boundary[0]) {
     strbuf_puts(sb, "; boundary=");
-    strbuf_append_quoted_string(sb, ct->multipart_boundary);
+    strbuf_append_token_or_quoted_string(sb, ct->multipart_boundary);
   }
   if (ct->format[0]) {
     strbuf_puts(sb, "; format=");
-    strbuf_append_quoted_string(sb, ct->format);
+    strbuf_append_token_or_quoted_string(sb, ct->format);
   }
   return sb;
 }

@@ -71,10 +71,19 @@ static struct {
 #undef VERB_ENTRY
 };
 
-const char CONTENT_TYPE_TEXT[] = "text/plain";
-const char CONTENT_TYPE_HTML[] = "text/html";
-const char CONTENT_TYPE_JSON[] = "application/json";
-const char CONTENT_TYPE_BLOB[] = "application/octet-stream";
+int mime_content_types_are_equal(const struct mime_content_type *a, const struct mime_content_type *b) {
+  return strcmp(a->type, b->type) == 0
+      && strcmp(a->subtype, b->subtype) == 0
+      && strcmp(a->multipart_boundary, b->multipart_boundary) == 0
+      && strcmp(a->charset, b->charset) == 0
+      && strcmp(a->format, b->format) == 0;
+}
+
+const struct mime_content_type CONTENT_TYPE_FAVICON = { .type = "image", .subtype = "vnd.microsoft.icon" };
+const struct mime_content_type CONTENT_TYPE_TEXT = { .type = "text", .subtype = "plain", .charset = "utf-8" };
+const struct mime_content_type CONTENT_TYPE_HTML = { .type = "text", .subtype = "html", .charset = "utf-8" };
+const struct mime_content_type CONTENT_TYPE_JSON = { .type = "application", .subtype = "json" };
+const struct mime_content_type CONTENT_TYPE_BLOB = { .type = "application", .subtype = "octet-stream" };
 
 static struct profile_total http_server_stats = {
   .name = "http_server_poll",
@@ -2212,10 +2221,12 @@ static const char *http_reason_phrase(int response_code)
 
 static strbuf strbuf_status_body(strbuf sb, struct http_response *hr)
 {
-  if (   hr->header.content_type == CONTENT_TYPE_TEXT
-      || (hr->header.content_type && strcmp(hr->header.content_type, CONTENT_TYPE_TEXT) == 0)
+  if (   hr->header.content_type == &CONTENT_TYPE_TEXT
+      || (   hr->header.content_type
+	  && strcmp(hr->header.content_type->type, CONTENT_TYPE_TEXT.type) == 0
+	  && strcmp(hr->header.content_type->subtype, CONTENT_TYPE_TEXT.subtype) == 0)
   ) {
-    hr->header.content_type = CONTENT_TYPE_TEXT;
+    hr->header.content_type = &CONTENT_TYPE_TEXT;
     strbuf_sprintf(sb, "%03u %s", hr->status_code, hr->reason);
     unsigned i;
     for (i = 0; i < NELS(hr->result_extra); ++i)
@@ -2227,10 +2238,12 @@ static strbuf strbuf_status_body(strbuf sb, struct http_response *hr)
       }
     strbuf_puts(sb, "\r\n");
   }
-  else if (    hr->header.content_type == CONTENT_TYPE_JSON
-           || (hr->header.content_type && strcmp(hr->header.content_type, CONTENT_TYPE_JSON) == 0)
+  else if (    hr->header.content_type == &CONTENT_TYPE_JSON
+           || (	  hr->header.content_type
+	       && strcmp(hr->header.content_type->type, CONTENT_TYPE_JSON.type) == 0
+	       && strcmp(hr->header.content_type->subtype, CONTENT_TYPE_JSON.subtype) == 0)
   ) {
-    hr->header.content_type = CONTENT_TYPE_JSON;
+    hr->header.content_type = &CONTENT_TYPE_JSON;
     strbuf_sprintf(sb, "{\n \"http_status_code\": %u,\n \"http_status_message\": ", hr->status_code);
     strbuf_json_string(sb, hr->reason);
     unsigned i;
@@ -2244,7 +2257,7 @@ static strbuf strbuf_status_body(strbuf sb, struct http_response *hr)
     strbuf_puts(sb, "\n}");
   }
   else {
-    hr->header.content_type = CONTENT_TYPE_HTML;
+    hr->header.content_type = &CONTENT_TYPE_HTML;
     strbuf_sprintf(sb, "<html>\n<h1>%03u %s</h1>", hr->status_code, hr->reason);
     strbuf_puts(sb, "\n<dl>");
     unsigned i;
@@ -2323,18 +2336,13 @@ static int _render_response(struct http_request *r)
     hr.header.content_range_start = 0;
   }
   assert(hr.header.content_type != NULL);
-  assert(hr.header.content_type[0]);
+  assert(hr.header.content_type->type[0]);
+  assert(hr.header.content_type->subtype[0]);
   strbuf_sprintf(sb, "HTTP/1.%d %03u %s\r\n", hr.header.minor_version, hr.status_code, hr.reason);
   strbuf_puts(sb, "Connection: Close\r\n");
   strbuf_sprintf(sb, "Server: servald %s\r\n", version_servald);
-  strbuf_sprintf(sb, "Content-Type: %s", hr.header.content_type);
-  if (hr.header.boundary) {
-    strbuf_puts(sb, "; boundary=");
-    if (strchr(hr.header.boundary, '"') || strchr(hr.header.boundary, '\\'))
-      strbuf_append_quoted_string(sb, hr.header.boundary);
-    else
-      strbuf_puts(sb, hr.header.boundary);
-  }
+  strbuf_puts(sb, "Content-Type: ");
+  strbuf_append_mime_content_type(sb, hr.header.content_type);
   strbuf_puts(sb, "\r\n");
   if (hr.status_code == 206) {
     // Must only use result code 206 (Partial Content) if the content is in fact less than the whole
@@ -2439,7 +2447,8 @@ static void http_request_start_response(struct http_request *r)
   _release_reserved(r);
   if (r->response.content || r->response.content_generator) {
     assert(r->response.header.content_type != NULL);
-    assert(r->response.header.content_type[0]);
+    assert(r->response.header.content_type->type[0]);
+    assert(r->response.header.content_type->subtype[0]);
   }
   // If HTTP responses are disabled (eg, for testing purposes) then skip all response construction
   // and close the connection.
@@ -2480,19 +2489,20 @@ static void http_request_start_response(struct http_request *r)
 }
 
 /* Start sending a static (pre-computed) response back to the client.  The response's Content-Type
- * is set by the 'mime_type' parameter (in the standard format "type/subtype").  The response's
+ * is set by the 'content_type' parameter (in the standard format "type/subtype").  The response's
  * content is set from the 'body' and 'bytes' parameters, which need not point to persistent data,
  * ie, the memory pointed to by 'body' is no longer referenced once this function returns.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-void http_request_response_static(struct http_request *r, int result, const char *mime_type, const char *body, uint64_t bytes)
+void http_request_response_static(struct http_request *r, int result, const struct mime_content_type *content_type, const char *body, uint64_t bytes)
 {
   assert(r->phase == RECEIVE);
-  assert(mime_type != NULL);
-  assert(mime_type[0]);
+  assert(content_type != NULL);
+  assert(content_type->type[0]);
+  assert(content_type->subtype[0]);
   r->response.status_code = result;
-  r->response.header.content_type = mime_type;
+  r->response.header.content_type = content_type;
   r->response.header.content_range_start = 0;
   r->response.header.content_length = r->response.header.resource_length = bytes;
   r->response.content = body;
@@ -2500,13 +2510,14 @@ void http_request_response_static(struct http_request *r, int result, const char
   http_request_start_response(r);
 }
 
-void http_request_response_generated(struct http_request *r, int result, const char *mime_type, HTTP_CONTENT_GENERATOR generator)
+void http_request_response_generated(struct http_request *r, int result, const struct mime_content_type *content_type, HTTP_CONTENT_GENERATOR generator)
 {
   assert(r->phase == RECEIVE);
-  assert(mime_type != NULL);
-  assert(mime_type[0]);
+  assert(content_type != NULL);
+  assert(content_type->type[0]);
+  assert(content_type->subtype[0]);
   r->response.status_code = result;
-  r->response.header.content_type = mime_type;
+  r->response.header.content_type = content_type;
   r->response.content = NULL;
   r->response.content_generator = generator;
   http_request_start_response(r);

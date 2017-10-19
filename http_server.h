@@ -60,11 +60,6 @@ http_size_t http_range_bytes(const struct http_range *range, unsigned nranges);
 
 #define CONTENT_LENGTH_UNKNOWN   UINT64_MAX
 
-extern const char CONTENT_TYPE_TEXT[];
-extern const char CONTENT_TYPE_HTML[];
-extern const char CONTENT_TYPE_JSON[];
-extern const char CONTENT_TYPE_BLOB[];
-
 struct mime_content_type {
   char type[64];
   char subtype[64];
@@ -72,6 +67,14 @@ struct mime_content_type {
   char charset[31];
   char format[31];
 };
+
+int mime_content_types_are_equal(const struct mime_content_type *a, const struct mime_content_type *b);
+
+extern const struct mime_content_type CONTENT_TYPE_FAVICON;
+extern const struct mime_content_type CONTENT_TYPE_TEXT;
+extern const struct mime_content_type CONTENT_TYPE_HTML;
+extern const struct mime_content_type CONTENT_TYPE_JSON;
+extern const struct mime_content_type CONTENT_TYPE_BLOB;
 
 struct http_client_authorization {
   enum http_authorization_scheme { NOAUTH = 0, BASIC } scheme;
@@ -111,7 +114,7 @@ struct http_response_headers {
   http_size_t content_length;
   http_size_t content_range_start; // range_end = range_start + content_length - 1
   http_size_t resource_length; // size of entire resource
-  const char *content_type; // "type/subtype"
+  const struct mime_content_type *content_type; // one of the CONTENT_TYPE_ consts declared above
   const char *boundary;
   struct http_origin allow_origin;
   const char *allow_methods;
@@ -177,8 +180,8 @@ int http_request_set_response_bufsize(struct http_request *r, size_t bufsiz);
 void http_request_finalise(struct http_request *r);
 void http_request_pause_response(struct http_request *r, time_ms_t until);
 void http_request_resume_response(struct http_request *r);
-void http_request_response_static(struct http_request *r, int result, const char *mime_type, const char *body, uint64_t bytes);
-void http_request_response_generated(struct http_request *r, int result, const char *mime_type, HTTP_CONTENT_GENERATOR *);
+void http_request_response_static(struct http_request *r, int result, const struct mime_content_type *content_type, const char *body, uint64_t bytes);
+void http_request_response_generated(struct http_request *r, int result, const struct mime_content_type *content_type, HTTP_CONTENT_GENERATOR *);
 void http_request_simple_response(struct http_request *r, uint16_t result, const char *body);
 
 typedef int (HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER)(struct http_request *, strbuf);

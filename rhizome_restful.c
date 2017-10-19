@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "rhizome.h"
 #include "conf.h"
 #include "httpd.h"
 #include "str.h"
@@ -226,13 +227,13 @@ static int restful_open_cursor(httpd_request *r)
   if (ret == -1)
     return http_request_rhizome_response(r, 500, "Failed to open list");
 
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_rhizome_bundlelist_json_content);
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_JSON, restful_rhizome_bundlelist_json_content);
   return 1;
 }
 
 static int restful_rhizome_bundlelist_json(httpd_request *r, const char *remainder)
 {
-  r->http.response.header.content_type = CONTENT_TYPE_JSON;
+  r->http.response.header.content_type = &CONTENT_TYPE_JSON;
   r->http.render_extra_headers = render_manifest_headers;
   if (!is_rhizome_http_enabled())
     return 404;
@@ -259,7 +260,7 @@ static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsi
 
 static int restful_rhizome_newsince(httpd_request *r, const char *remainder)
 {
-  r->http.response.header.content_type = CONTENT_TYPE_JSON;
+  r->http.response.header.content_type = &CONTENT_TYPE_JSON;
   if (!is_rhizome_http_enabled())
     return 404;
   int ret = authorize_restful(&r->http);
@@ -418,7 +419,7 @@ static int insert_mime_part_body(struct http_request *, char *, size_t);
 
 static int restful_rhizome_insert(httpd_request *r, const char *remainder)
 {
-  r->http.response.header.content_type = CONTENT_TYPE_JSON;
+  r->http.response.header.content_type = &CONTENT_TYPE_JSON;
   r->http.render_extra_headers = render_manifest_headers;
   if (!is_rhizome_http_enabled())
     return 404;
@@ -583,7 +584,11 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     // Reject a request if this parameter comes after the manifest part.
     if (r->u.insert.received_manifest || r->u.insert.importing)
       return http_response_form_part(r, 400, "Spurious", PART_AUTHOR, NULL, 0);
-    // TODO enforce correct content type
+    if (!h->content_type.type[0])
+      ; // missing Content-Type defaults to CONTENT_TYPE_SID_HEX
+	// TODO deprecate this default and insist that Content-Type be supplied
+    else if (!mime_content_types_are_equal(&h->content_type, &CONTENT_TYPE_SID_HEX))
+      return http_response_form_part(r, 415, "Unsupported Content-Type in", PART_AUTHOR, NULL, 0);
     r->u.insert.current_part = PART_AUTHOR;
     assert(r->u.insert.author_hex_len == 0);
   }
@@ -593,7 +598,11 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     // Reject a request if this parameter comes after the manifest part.
     if (r->u.insert.received_manifest || r->u.insert.importing)
       return http_response_form_part(r, 400, "Spurious", PART_SECRET, NULL, 0);
-    // TODO enforce correct content type
+    if (!h->content_type.type[0])
+      ; // missing Content-Type defaults to CONTENT_TYPE_RHIZOME_BUNDLE_SECRET
+	// TODO deprecate this default and insist that Content-Type be supplied
+    else if (!mime_content_types_are_equal(&h->content_type, &CONTENT_TYPE_RHIZOME_BUNDLE_SECRET))
+      return http_response_form_part(r, 415, "Unsupported Content-Type in", PART_SECRET, NULL, 0);
     r->u.insert.current_part = PART_SECRET;
     assert(r->u.insert.secret_text_len == 0);
   }
@@ -603,7 +612,11 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     // Reject a request if this parameter comes after the manifest part.
     if (r->u.insert.received_manifest || r->u.insert.importing)
       return http_response_form_part(r, 400, "Spurious", PART_BUNDLEID, NULL, 0);
-    // TODO enforce correct content type
+    if (!h->content_type.type[0])
+      ; // missing Content-Type defaults to CONTENT_TYPE_RHIZOME_BUNDLE_ID
+	// TODO deprecate this default and insist that Content-Type be supplied
+    else if (!mime_content_types_are_equal(&h->content_type, &CONTENT_TYPE_RHIZOME_BUNDLE_ID))
+      return http_response_form_part(r, 415, "Unsupported Content-Type in", PART_BUNDLEID, NULL, 0);
     r->u.insert.current_part = PART_BUNDLEID;
     assert(r->u.insert.bid_text_len == 0);
   }
@@ -612,13 +625,8 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     if (r->u.insert.received_manifest)
       return http_response_form_part(r, 400, "Duplicate", PART_MANIFEST, NULL, 0);
     form_buf_malloc_init(&r->u.insert.manifest, MAX_MANIFEST_BYTES);
-    if (   strcmp(h->content_type.type, "rhizome") != 0
-	|| strcmp(h->content_type.subtype, "manifest") != 0
-    )
+    if (!mime_content_types_are_equal(&h->content_type, &CONTENT_TYPE_RHIZOME_MANIFEST))
       return http_response_form_part(r, 415, "Unsupported Content-Type in", PART_MANIFEST, NULL, 0);
-    if ((strcmp(h->content_type.format, "text+binarysig") != 0)
-        &&strlen(h->content_type.format))
-      return http_response_form_part(r, 415, "Unsupported rhizome/manifest format in", PART_MANIFEST, NULL, 0);
     r->u.insert.current_part = PART_MANIFEST;
   }
   else if (strcmp(h->content_disposition.name, PART_PAYLOAD) == 0) {
@@ -880,7 +888,7 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     return http_request_rhizome_response(r, http_status, NULL);
   }else{
     rhizome_authenticate_author(r->manifest);
-    http_request_response_static(&r->http, http_status, "rhizome-manifest/text",
+    http_request_response_static(&r->http, http_status, &CONTENT_TYPE_RHIZOME_MANIFEST,
 	(const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes
       );
   }
@@ -893,7 +901,7 @@ static HTTP_HANDLER restful_rhizome_bid_decrypted_bin;
 
 static int restful_rhizome_(httpd_request *r, const char *remainder)
 {
-  r->http.response.header.content_type = CONTENT_TYPE_JSON;
+  r->http.response.header.content_type = &CONTENT_TYPE_JSON;
   r->http.render_extra_headers = render_manifest_headers;
   if (!is_rhizome_http_enabled())
     return 404;
@@ -949,7 +957,7 @@ static int restful_rhizome_bid_rhm(httpd_request *r, const char *remainder)
     return 404;
   if (r->manifest == NULL)
     return http_request_rhizome_response(r, 404, "Bundle not found"); // Not Found
-  http_request_response_static(&r->http, 200, "rhizome-manifest/text",
+  http_request_response_static(&r->http, 200, &CONTENT_TYPE_RHIZOME_MANIFEST,
       (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes
     );
   return 1;
@@ -962,13 +970,13 @@ static int restful_rhizome_bid_raw_bin(httpd_request *r, const char *remainder)
   if (r->manifest == NULL)
     return http_request_rhizome_response(r, 404, "Bundle not found"); // Not Found
   if (r->manifest->filesize == 0) {
-    http_request_response_static(&r->http, 200, CONTENT_TYPE_BLOB, "", 0);
+    http_request_response_static(&r->http, 200, &CONTENT_TYPE_BLOB, "", 0);
     return 1;
   }
   int ret = rhizome_response_content_init_filehash(r, &r->manifest->filehash);
   if (ret)
     return ret;
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_BLOB, rhizome_payload_content);
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_BLOB, rhizome_payload_content);
   return 1;
 }
 
@@ -980,14 +988,14 @@ static int restful_rhizome_bid_decrypted_bin(httpd_request *r, const char *remai
     return http_request_rhizome_response(r, 404, "Bundle not found"); // Not Found
   if (r->manifest->filesize == 0) {
     // TODO use Content Type from manifest (once it is implemented)
-    http_request_response_static(&r->http, 200, CONTENT_TYPE_BLOB, "", 0);
+    http_request_response_static(&r->http, 200, &CONTENT_TYPE_BLOB, "", 0);
     return 1;
   }
   int ret = rhizome_response_content_init_payload(r, r->manifest);
   if (ret)
     return ret;
   // TODO use Content Type from manifest (once it is implemented)
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_BLOB, rhizome_payload_content);
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_BLOB, rhizome_payload_content);
   return 1;
 }
 

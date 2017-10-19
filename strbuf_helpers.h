@@ -211,6 +211,13 @@ strbuf strbuf_append_file_meta(strbuf sb, const struct file_meta *metap);
  */
 strbuf strbuf_append_quoted_string(strbuf sb, const char *str);
 
+/* Append a string using HTTP token|quoted-string format: if it contains only
+ * token characters, then unmodified, otherwise as a quoted-string
+ * (strbuf_append_quoted_string).
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_token_or_quoted_string(strbuf sb, const char *str);
+
 /* Escape HTML entities.
  * @author Andrew Bettison <andrew@servalproject.com>
  */

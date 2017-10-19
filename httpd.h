@@ -1,6 +1,7 @@
 /*
-Serval DNA Rhizome HTTP interface
+Serval DNA HTTP interface - common definitions
 Copyright (C) 2013-2014 Serval Project Inc.
+Copyright (C) 2017 Flinders University
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -32,6 +33,12 @@ int is_httpd_server_running();
 
 extern uint16_t httpd_server_port;
 extern unsigned int current_httpd_request_count;
+
+// Some non-standard MIME types for the Content-Type header
+extern const struct mime_content_type CONTENT_TYPE_SID_HEX;
+extern const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_ID;
+extern const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_SECRET;
+extern const struct mime_content_type CONTENT_TYPE_RHIZOME_MANIFEST;
 
 enum list_phase { LIST_HEADER = 0, LIST_FIRST, LIST_ROWS, LIST_END, LIST_DONE };
 

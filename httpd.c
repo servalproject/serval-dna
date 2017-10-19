@@ -27,6 +27,27 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
 
+const struct mime_content_type CONTENT_TYPE_SID_HEX = {
+  .type = "serval",
+  .subtype = "sid",
+  .format = "hex"
+};
+const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_ID = {
+  .type = "rhizome",
+  .subtype = "bid",
+  .format = "hex"
+};
+const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_SECRET = {
+  .type = "rhizome",
+  .subtype = "bundlesecret",
+  .format = "hex"
+};
+const struct mime_content_type CONTENT_TYPE_RHIZOME_MANIFEST = {
+  .type = "rhizome",
+  .subtype = "manifest",
+  .format = "text+binarysig"
+};
+
 static int httpd_dispatch(struct http_request *);
 static unsigned int http_request_uuid_counter = 0;
 static httpd_request * current_httpd_requests = NULL;

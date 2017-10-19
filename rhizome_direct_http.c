@@ -94,7 +94,7 @@ static void http_request_rhizome_bundle_status_response(httpd_request *r, struct
     break;
   }
   if (m)
-    http_request_response_static(&r->http, http_status, CONTENT_TYPE_TEXT, (const char *)m->manifestdata, m->manifest_all_bytes);
+    http_request_response_static(&r->http, http_status, &CONTENT_TYPE_TEXT, (const char *)m->manifestdata, m->manifest_all_bytes);
   else
     http_request_simple_response(&r->http, http_status, rhizome_bundle_result_message(result));
 }
@@ -188,7 +188,7 @@ int rhizome_direct_enquiry_end(struct http_request *hr)
     if (http_request_set_response_bufsize(&r->http, bytes) == -1)
       http_request_simple_response(&r->http, 500, "Internal Error: Out of memory");
     else
-      http_request_response_static(&r->http, 200, "binary/octet-stream", (const char *)c->buffer, bytes);
+      http_request_response_static(&r->http, 200, &CONTENT_TYPE_BLOB, (const char *)c->buffer, bytes);
     rhizome_direct_bundle_iterator_free(&c);
   } else
     http_request_simple_response(&r->http, 500, "Internal Error: No response to enquiry");
@@ -504,10 +504,9 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   strbuf_sprintf(content_preamble,
       "--%s\r\n"
       "Content-Disposition: form-data; name=\"data\"; filename=\"IHAVEs\"\r\n"
-      "Content-Type: %s\r\n"
-      "\r\n",
-      boundary, CONTENT_TYPE_BLOB
-    );
+      "Content-Type: ", boundary);
+  strbuf_append_mime_content_type(content_preamble, &CONTENT_TYPE_BLOB);
+  strbuf_puts(content_preamble, "\r\n\r\n");
   strbuf_sprintf(content_postamble, "\r\n--%s--\r\n", boundary);
   assert(!strbuf_overrun(content_preamble));
   assert(!strbuf_overrun(content_postamble));

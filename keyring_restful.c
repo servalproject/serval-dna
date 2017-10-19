@@ -39,7 +39,7 @@ static HTTP_HANDLER restful_keyring_set;
 
 static int restful_keyring_(httpd_request *r, const char *remainder)
 {
-  r->http.response.header.content_type = CONTENT_TYPE_JSON;
+  r->http.response.header.content_type = &CONTENT_TYPE_JSON;
   int ret = authorize_restful(&r->http);
   if (ret)
     return ret;
@@ -134,7 +134,7 @@ static int restful_keyring_identitylist_json(httpd_request *r, const char *remai
     keyring_enter_pin(keyring, pin);
   r->u.sidlist.phase = LIST_HEADER;
   keyring_iterator_start(keyring, &r->u.sidlist.it);
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_keyring_identitylist_json_content);
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_JSON, restful_keyring_identitylist_json_content);
   return 1;
 }
 

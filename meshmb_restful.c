@@ -435,7 +435,7 @@ static int restful_meshmb_list(httpd_request *r, const char *remainder)
   r->u.plylist.rowcount = 0;
   r->u.plylist.end_offset = r->ui64;
 
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshmb_list_json_content);
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_JSON, restful_meshmb_list_json_content);
   return 1;
 }
 
@@ -673,7 +673,7 @@ static int restful_meshmb_feedlist(httpd_request *r, const char *remainder)
   r->u.meshmb_feeds.generation = meshmb_flush(session->feeds);
   bzero(&r->u.meshmb_feeds.bundle_id, sizeof r->u.meshmb_feeds.bundle_id);
 
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshmb_feedlist_json_content);
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_JSON, restful_meshmb_feedlist_json_content);
   return 1;
 }
 
@@ -878,14 +878,14 @@ static int restful_meshmb_activity(httpd_request *r, const char *remainder)
   r->u.meshmb_feeds.current_msg_offset = 0;
   bzero(&r->u.meshmb_feeds.bundle_id, sizeof r->u.meshmb_feeds.bundle_id);
 
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshmb_activity_json_content);
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_JSON, restful_meshmb_activity_json_content);
   return 1;
 }
 
 DECLARE_HANDLER("/restful/meshmb/", restful_meshmb_);
 static int restful_meshmb_(httpd_request *r, const char *remainder)
 {
-  r->http.response.header.content_type = CONTENT_TYPE_JSON;
+  r->http.response.header.content_type = &CONTENT_TYPE_JSON;
   if (!is_rhizome_http_enabled())
     return 404;
   int ret = authorize_restful(&r->http);

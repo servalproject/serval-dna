@@ -50,7 +50,7 @@ static int rhizome_file_page(httpd_request *r, const char *remainder)
     return ret;
   // backwards compatibility, rhizome_fetch used to allow HTTP/1.0 responses only
   r->http.response.header.minor_version=0;
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_BLOB, rhizome_payload_content);
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_BLOB, rhizome_payload_content);
   return 1;
 }
 
@@ -71,7 +71,7 @@ static int manifest_by_prefix_page(httpd_request *r, const char *remainder)
     case RHIZOME_BUNDLE_STATUS_SAME:
       // backwards compatibility, rhizome_fetch used to allow HTTP/1.0 responses only
       r->http.response.header.minor_version=0;
-      http_request_response_static(&r->http, 200, CONTENT_TYPE_BLOB, (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes);
+      http_request_response_static(&r->http, 200, &CONTENT_TYPE_BLOB, (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes);
       return 1;
     case RHIZOME_BUNDLE_STATUS_NEW:
       return 404;
@@ -97,6 +97,6 @@ static int rhizome_status_page(httpd_request *r, const char *remainder)
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b))
     return -1;
-  http_request_response_static(&r->http, 200, CONTENT_TYPE_HTML, buf, strbuf_len(b));
+  http_request_response_static(&r->http, 200, &CONTENT_TYPE_HTML, buf, strbuf_len(b));
   return 1;
 }

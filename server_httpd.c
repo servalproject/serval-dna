@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "overlay_address.h"
 #include "overlay_interface.h"
+#include "str.h"
 #include "os.h"
 #include "route_link.h"
 
@@ -67,7 +68,7 @@ static int root_page(httpd_request *r, const char *remainder)
     WHY("HTTP Root page buffer overrun");
     return 500;
   }
-  http_request_response_static(&r->http, 200, CONTENT_TYPE_HTML, temp, strbuf_len(b));
+  http_request_response_static(&r->http, 200, &CONTENT_TYPE_HTML, temp, strbuf_len(b));
   return 1;
 }
 
@@ -75,7 +76,7 @@ static int fav_icon_header(httpd_request *r, const char *remainder)
 {
   if (*remainder)
     return 404;
-  http_request_response_static(&r->http, 200, "image/vnd.microsoft.icon", (const char *)favicon_bytes, favicon_len);
+  http_request_response_static(&r->http, 200, &CONTENT_TYPE_FAVICON, (const char *)favicon_bytes, favicon_len);
   return 1;
 }
 
@@ -96,7 +97,7 @@ static int neighbour_page(httpd_request *r, const char *remainder)
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b))
     return -1;
-  http_request_response_static(&r->http, 200, CONTENT_TYPE_HTML, buf, strbuf_len(b));
+  http_request_response_static(&r->http, 200, &CONTENT_TYPE_HTML, buf, strbuf_len(b));
   return 1;
 }
 
@@ -114,7 +115,7 @@ static int interface_page(httpd_request *r, const char *remainder)
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b))
     return -1;
-  http_request_response_static(&r->http, 200, CONTENT_TYPE_HTML, buf, strbuf_len(b));
+  http_request_response_static(&r->http, 200, &CONTENT_TYPE_HTML, buf, strbuf_len(b));
   return 1;
 }
 
@@ -170,6 +171,6 @@ static int static_page(httpd_request *r, const char *remainder)
     }
   }
   r->u.file.offset=r->http.response.header.content_range_start;
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_HTML, static_file_generator);
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_HTML, static_file_generator);
   return 1;
 }

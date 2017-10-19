@@ -150,7 +150,7 @@ static HTTP_HANDLER restful_meshms_read_to_offset;
 
 static int restful_meshms_(httpd_request *r, const char *remainder)
 {
-  r->http.response.header.content_type = CONTENT_TYPE_JSON;
+  r->http.response.header.content_type = &CONTENT_TYPE_JSON;
   if (!is_rhizome_http_enabled())
     return 404;
   int ret = authorize_restful(&r->http);
@@ -246,7 +246,7 @@ static int restful_meshms_conversationlist_json(httpd_request *r, const char *re
     return http_request_meshms_response(r, 0, NULL, status);
   if (r->u.mclist.conv != NULL)
     meshms_conversation_iterator_start(&r->u.mclist.iter, r->u.mclist.conv);
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshms_conversationlist_json_content);
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_JSON, restful_meshms_conversationlist_json_content);
   return 1;
 }
 
@@ -363,7 +363,7 @@ static int restful_meshms_messagelist_json(httpd_request *r, const char *remaind
   enum meshms_status status;
   if (meshms_failed(status = reopen_meshms_message_iterator(r)))
     return http_request_meshms_response(r, 0, NULL, status);
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshms_messagelist_json_content);
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_JSON, restful_meshms_messagelist_json_content);
   return 1;
 }
 
@@ -381,7 +381,7 @@ static int restful_meshms_newsince_messagelist_json(httpd_request *r, const char
   if (meshms_failed(status = reopen_meshms_message_iterator(r)))
     return http_request_meshms_response(r, 0, NULL, status);
   r->u.msglist.end_time = gettime_ms() + config.api.restful.newsince_timeout * 1000;
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshms_messagelist_json_content);
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_JSON, restful_meshms_messagelist_json_content);
   return 1;
 }
 
