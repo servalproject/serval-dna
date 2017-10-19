@@ -1326,7 +1326,7 @@ test_RhizomeInsertIncorrectFilehash() {
    assert_rhizome_list
 }
 
-doc_RhizomeImport="HTTP RESTful import Rhizome bundle"
+doc_RhizomeImport="HTTP RESTful Rhizome import"
 setup_RhizomeImport() {
    setup
    set_instance +B
@@ -1335,45 +1335,82 @@ setup_RhizomeImport() {
    executeOk_servald rhizome add file $SIDB file1 file1.manifest
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
-   executeOk_servald rhizome export manifest "${manifestid}" file1.manifest
+   extract_manifest_filehash filehash file1.manifest
+   executeOk_servald rhizome export manifest "$manifestid" file1.manifest
    set_instance +A
 }
 test_RhizomeImport() {
+   # The first import with no 'id' and 'version' params adds the bundle to the
+   # store.
    execute curl \
             --silent --show-error --write-out '%{http_code}' \
             --header 'Transfer-Encoding: chunked' \
             --output http.body \
-            --trace-ascii curl.trace \
+            --trace-ascii curl1.trace \
             --dump-header http.header \
             --basic --user harry:potter \
             --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
             --form "payload=@file1" \
             "http://$addr_localhost:$PORTA/restful/rhizome/import?id=${manifestid}&version=${version}"
-   tfw_preserve curl.trace
+   tfw_preserve curl1.trace
    tfw_cat http.header http.body
-   assertStdoutIs 201
+   assertStdoutIs 201 # added to store
    assertGrep http.header '100 Continue'
+   assertGrep http.header "^Serval-Rhizome-Bundle-Id: $manifestid$CR\$"
+   assertGrep http.header "^Serval-Rhizome-Bundle-Version: $version$CR\$"
+   assertGrep http.header "^Serval-Rhizome-Bundle-Filesize: 100$CR\$"
+   assertGrep http.header "^Serval-Rhizome-Bundle-Filehash: $filehash$CR\$"
    assertJq http.body 'contains({"http_status_code": 201})'
    assertJq http.body 'contains({"http_status_message": "Created"})'
+   # Repeating the first import with no 'id' and 'version' params detects that
+   # the bundle is already in the store.
    execute curl \
             --silent --show-error --write-out '%{http_code}' \
             --header 'Transfer-Encoding: chunked' \
             --output http.body \
-            --trace-ascii curl.trace \
+            --trace-ascii curl2.trace \
             --dump-header http.header \
             --basic --user harry:potter \
             --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
             --form "payload=@file1" \
-            "http://$addr_localhost:$PORTA/restful/rhizome/import?id=${manifestid}&version=${version}"
-   tfw_preserve curl.trace
+            "http://$addr_localhost:$PORTA/restful/rhizome/import"
+   tfw_preserve curl2.trace
    tfw_cat http.header http.body
-   assertStdoutIs 200
+   assertStdoutIs 200 # already in store
+   assertGrep http.header '100 Continue'
+   assertGrep http.header "^Serval-Rhizome-Bundle-Id: $manifestid$CR\$"
+   assertGrep http.header "^Serval-Rhizome-Bundle-Version: $version$CR\$"
+   assertGrep http.header "^Serval-Rhizome-Bundle-Filesize: 100$CR\$"
+   assertGrep http.header "^Serval-Rhizome-Bundle-Filehash: $filehash$CR\$"
+   assertJq http.body 'contains({"http_status_code": 200})'
+   assertJq http.body 'contains({"http_status_message": "Bundle already in store"})'
+   # Repeating the first import with 'id' and 'version' query params, we get an
+   # early hit so the 'manifest' and 'payload' form parts can be omitted (and a
+   # dummy form part supplied to cause curl(1) to construct a POST request
+   # instead of GET) without error, because the server never tries to read the
+   # request body.
+   execute curl \
+            --silent --show-error --write-out '%{http_code}' \
+            --header 'Transfer-Encoding: chunked' \
+            --output http.body \
+            --trace-ascii curl3.trace \
+            --dump-header http.header \
+            --basic --user harry:potter \
+            --form 'dummy=never-parsed' \
+            "http://$addr_localhost:$PORTA/restful/rhizome/import?id=${manifestid}&version=${version}"
+   tfw_preserve curl3.trace
+   tfw_cat http.header http.body
+   assertStdoutIs 200 # already in store
    assertGrep --matches=0 http.header '100 Continue'
+   assertGrep http.header "^Serval-Rhizome-Bundle-Id: $manifestid$CR\$"
+   assertGrep http.header "^Serval-Rhizome-Bundle-Version: $version$CR\$"
+   assertGrep http.header "^Serval-Rhizome-Bundle-Filesize: 100$CR\$"
+   assertGrep --matches=0 http.header "^Serval-Rhizome-Bundle-Filehash:"
    assertJq http.body 'contains({"http_status_code": 200})'
    assertJq http.body 'contains({"http_status_message": "Bundle already in store"})'
 }
 
-doc_RhizomeImportLarge="HTTP RESTful import 50 MiB Rhizome bundle"
+doc_RhizomeImportLarge="HTTP RESTful Rhizome import 50 MiB"
 setup_RhizomeImportLarge() {
    setup
    set_instance +B
@@ -1382,7 +1419,7 @@ setup_RhizomeImportLarge() {
    executeOk_servald rhizome add file $SIDB file1 file1.manifest
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
-   executeOk_servald rhizome export manifest "${manifestid}" file1.manifest
+   executeOk_servald rhizome export manifest "$manifestid" file1.manifest
    set_instance +A
 }
 test_RhizomeImportLarge() {
@@ -1402,6 +1439,56 @@ test_RhizomeImportLarge() {
    assertGrep http.header '100 Continue'
    assertJq http.body 'contains({"http_status_code": 201})'
    assertJq http.body 'contains({"http_status_message": "Created"})'
+}
+
+doc_RhizomeImportParamsBad="HTTP RESTful Rhizome import parameters must match manifest"
+setup_RhizomeImportParamsBad() {
+   setup
+   set_instance +B
+   create_single_identity
+   create_file file1 100
+   executeOk_servald rhizome add file $SIDB file1 file1.manifest
+   extract_manifest_id manifestid file1.manifest
+   extract_manifest_version version file1.manifest
+   executeOk_servald rhizome export manifest "$manifestid" file1.manifest
+   set_instance +A
+}
+test_RhizomeImportParamsBad() {
+   # The 'id' query parameter must match the manifest's ID.
+   execute curl \
+            --silent --show-error --write-out '%{http_code}' \
+            --header 'Transfer-Encoding: chunked' \
+            --output http.body \
+            --trace-ascii curl1.trace \
+            --dump-header http.header \
+            --basic --user harry:potter \
+            --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
+            --form "payload=@file1" \
+            "http://$addr_localhost:$PORTA/restful/rhizome/import?id=${BID_NONEXISTENT}&version=${version}"
+   tfw_preserve curl1.trace
+   tfw_cat http.header http.body
+   assertStdoutIs 422
+   assertGrep http.header '100 Continue'
+   assertJq http.body 'contains({"http_status_code": 422})'
+   assertJq http.body 'contains({"http_status_message": "query"})'
+   # The 'version' query parameter must match the manifest's version.
+   wrongversion=$((version + 1))
+   execute curl \
+            --silent --show-error --write-out '%{http_code}' \
+            --header 'Transfer-Encoding: chunked' \
+            --output http.body \
+            --trace-ascii curl2.trace \
+            --dump-header http.header \
+            --basic --user harry:potter \
+            --form "manifest=@file1.manifest;type=rhizome/manifest;format=text+binarysig" \
+            --form "payload=@file1" \
+            "http://$addr_localhost:$PORTA/restful/rhizome/import?id=${manifestid}&version=${wrongversion}"
+   tfw_preserve curl2.trace
+   tfw_cat http.header http.body
+   assertStdoutIs 422
+   assertGrep http.header '100 Continue'
+   assertJq http.body 'contains({"http_status_code": 422})'
+   assertJq http.body 'contains({"http_status_message": "query"})'
 }
 
 doc_RhizomeJournalAppend="HTTP RESTful Rhizome journal create and append"

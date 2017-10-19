@@ -1401,7 +1401,7 @@ struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const ch
     FALLTHROUGH; // to set the BK field...
   case NEW_BUNDLE_ID:
     assert(m->has_id);
-    // If no 'authorSidp' parameter was supplied but the manifest has a 'sender' field, then use the
+    // If the manifest has no author but does have a 'sender' field, then use the
     // sender as the author.
     if (m->authorship == ANONYMOUS && m->has_sender)
       rhizome_manifest_set_author(m, &m->sender);

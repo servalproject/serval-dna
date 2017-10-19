@@ -80,7 +80,8 @@ typedef struct httpd_request
    */
   rhizome_bid_t bid;
 
-  /* For requests/responses that contain a 64-bit unsigned integer (eg, SQLite ROWID, byte offset).
+  /* For requests/responses that contain a 64-bit unsigned integer (eg,
+   * manifest version, SQLite ROWID, byte offset).
    */
   uint64_t ui64;
 
@@ -140,7 +141,12 @@ typedef struct httpd_request
 
       // If this is really a (journal) append request
       bool_t appending:1;
+      // Whether this is an import request
       bool_t importing:1;
+      // Whether the Bundle ID and version were supplied on the command line
+      // (must be consistent with the supplied manifest); the supplied values are
+      // in 'bid' and 'ui64'.
+      bool_t verify_id_version:1;
       // Which parts have already been received
       bool_t received_author:1;
       bool_t received_secret:1;

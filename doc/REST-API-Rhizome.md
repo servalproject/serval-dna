@@ -222,6 +222,25 @@ The manifest's signature section is a sequence of one or more concatenated
 signature, made using its Bundle Secret, although the manifest format allows
 for the possibility of multi-signed bundles in future.
 
+### Valid manifest
+
+A [manifest](#manifest) is *valid* if:
+
+*  the `id` field is present and valid
+*  the `version` field is present and valid
+*  the `filesize` field is present and valid
+*  the `service` field is present and valid
+*  the `date` field is present and valid
+*  if `filesize` is zero then there is no `filehash` field, otherwise the
+   `filehash` field is present and valid
+*  if `service` is `file` then a `name` field is present
+*  if `service` is `MeshMS1` or `MeshMS2` then the `sender` and `recipient`
+   fields are both present and valid
+
+Note that *validity* does not require that the manifest's signature be
+*verified*.  A manifest with an unverified or missing signature may still be
+*valid*.
+
 ### Bundle author
 
 A bundle's *author* is the identity whose [Rhizome Secret](#rhizome-secret)
@@ -238,7 +257,7 @@ author's identity can only be deduced if it is an [unlocked
 identity](#get-restfulkeyringidentitiesjson) in the local keyring.  Serval
 DNA tries the [Rhizome Secret](#rhizome-secret) of every unlocked identity
 until it finds one that, when used to decode the Bundle Key, yields a [Bundle
-Secret](#bundle secret) that correctly generates the manifest's signature.  If
+Secret](#bundle-secret) that correctly generates the manifest's signature.  If
 no unlocked identity is found, then the author is unknown.
 
 Rhizome nodes that do not possess the unlocked author identity cannot derive
@@ -514,17 +533,18 @@ insertions.  The payload status code overrides the [HTTP response
 code](#response-status-code) derived from the [bundle status
 code](#bundle-status-code) if it is numerically higher.
 
-| code |   HTTP  | meaning                                                               |
-|:----:|:-------:|:--------------------------------------------------------------------- |
-|  -1  | [500][] | internal error                                                        |
-|   0  | [201][] | empty payload (zero length)                                           |
-|   1  | [201][] | (fetch) payload not found; (insert) payload added to store            |
-|   2  | [200][] | (fetch) payload found; (insert) payload already in store              |
-|   3  | [422][] | payload size does not match manifest *filesize* field                 |
-|   4  | [422][] | payload hash does not match manifest *filehash* field                 |
-|   5  | [419][] | payload key unknown: (fetch) cannot decrypt; (insert) cannot encrypt  |
-|   6  | [202][] | (insert only) payload is too big to fit in store                      |
-|   7  | [202][] | (insert only) payload evicted; other payloads are ranked higher       |
+| code |   HTTP  | meaning                                                                    |
+|:----:|:-------:|:-------------------------------------------------------------------------- |
+|  -1  | [500][] | internal error                                                             |
+|   0  | [201][] | "empty"; zero length payload                                               |
+|   1  | [201][] | "new"; (fetch) payload not found; (insert) payload added to store          |
+|   2  | [200][] | "found"; (fetch) payload found; (insert) payload already in store          |
+|   3  | [422][] | "wrong size"; payload size does not match manifest *filesize* field        |
+|   4  | [422][] | "wrong hash"; payload hash does not match manifest *filehash* field        |
+|   5  | [419][] | "key unknown"; (fetch) cannot decrypt; (insert) cannot encrypt             |
+|   6  | [202][] | "too big"; (insert only) payload is too big to fit in store                |
+|   7  | [202][] | "evicted"; (insert only) payload evicted; other payloads are ranked higher |
+|   8  | [423][] | "busy"; Rhizome store database is currently busy (re-try)                  |
 
 ### Payload status message
 
@@ -648,12 +668,11 @@ Fetches the manifest for the bundle whose id is `BID` (64 hex digits), eg:
 If the **manifest is found** in the local Rhizome store, then the response will
 be [200 OK][200] and:
 
-*  the [bundle status code](#bundle-status-code) will be 1
+*  the [bundle status code](#bundle-status-code) for "same"
 *  the [payload status code](#payload-status-code), if present in the response,
    is not relevant, so must be ignored
-*  the [Rhizome response bundle headers](#rhizome-response-bundle-headers) give
-   information about the found bundle, some of which is duplicated from the
-   manifest
+*  the [bundle headers](#rhizome-http-response-bundle-headers) give information
+   about the found bundle, some of which is duplicated from the manifest
 *  the response's Content-Type is [rhizome/manifest](#rihzomemanifest)
 *  the response's Content-Length is the size, in bytes, of the entire manifest,
    including its binary signature
@@ -662,11 +681,11 @@ be [200 OK][200] and:
 If the **manifest is not found** in the local Rhizome store, then the response
 will be [404 Not Found][404] and:
 
-*  the [bundle status code](#bundle-status-code) will be 0
+*  the [bundle status code](#bundle-status-code) for "new"
 *  the [payload status code](#payload-status-code), if present in the response,
    is not relevant, so must be ignored
-*  the [Rhizome response bundle headers](#rhizome-response-bundle-headers) are
-   absent from the response
+*  the [bundle headers](#rhizome-http-response-bundle-headers) are absent from
+   the response
 *  the response's content is the [Rhizome JSON result](#rhizome-json-result)
    object
 
@@ -680,12 +699,12 @@ digits), eg:
 If the **manifest and the payload are both found** in the local Rhizome store,
 then the response will be [200 OK][200] and:
 
-*  the [bundle status code](#bundle-status-code) will be 1
-*  the [payload status code](#payload-status-code) will be 0 if the payload has
-   zero length, otherwise 2
-*  the [Rhizome response bundle headers](#rhizome-response-bundle-headers) give
-   information about the found bundle, some of which is duplicated from the
-   manifest
+*  the [bundle status code](#bundle-status-code) for "same"
+*  the [payload status code](#payload-status-code) for "empty" if the payload
+   has zero length, otherwise "found"
+*  the [bundle headers](#rhizome-http-response-bundle-headers) give information
+   about the found bundle, some of which is duplicated from
+   the manifest
 *  the response's Content-Type is **application/octet-stream**
 *  the response's Content-Length is the size, in bytes, of the raw payload
 *  the response's content is the bundle's payload exactly as stored in Rhizome;
@@ -695,21 +714,21 @@ then the response will be [200 OK][200] and:
 If the **manifest is not found** in the local Rhizome store, then the response
 will be [404 Not Found][404] and:
 
-*  the [bundle status code](#bundle-status-code) will be 0
+*  the [bundle status code](#bundle-status-code) for "new"
 *  the [payload status code](#payload-status-code), if present in the response,
    is not relevant, so must be ignored
-*  the [Rhizome response bundle headers](#rhizome-response-bundle-headers) are
-   absent from the response
+*  the [bundle headers](#rhizome-http-response-bundle-headers) are absent from
+   the response
 *  the response's content is the [Rhizome JSON result](#rhizome-json-result)
    object
 
 If the **manifest is found** in the local Rhizome store but the **payload is
 not found**, then the response will be [404 Not Found][404] and:
 
-*  the [bundle status code](#bundle-status-code) will be 1
-*  the [payload status code](#payload-status-code) will be 1
-*  the [Rhizome response bundle headers](#rhizome-response-bundle-headers) give
-   information about the found manifest
+*  the [bundle status code](#bundle-status-code) for "same"
+*  the [payload status code](#payload-status-code) for "new"
+*  the [bundle headers](#rhizome-http-response-bundle-headers) give information
+   about the found manifest
 *  the response's content is the [Rhizome JSON result](#rhizome-json-result)
    object
 
@@ -749,12 +768,11 @@ with the following variations:
 If the **payload is encrypted** and the **payload secret is known**, then
 the response will be [200 OK][200] and:
 
-*  the [bundle status code](#bundle-status-code) will be 1
-*  the [payload status code](#payload-status-code) will be 0 if the decrypted
-   payload has zero length, otherwise 2
-*  the [Rhizome response bundle headers](#rhizome-response-bundle-headers) give
-   information about the found bundle, some of which is duplicated from the
-   manifest
+*  the [bundle status code](#bundle-status-code) for "same"
+*  the [payload status code](#payload-status-code) for "empty" if the decrypted
+   payload has zero length, otherwise "found"
+*  the [bundle headers](#rhizome-http-response-bundle-headers) give information
+   about the found bundle, some of which is duplicated from the manifest
 *  the response's Content-Type is **application/octet-stream**
 *  the response's Content-Length is the size, in bytes, of the decrypted
    payload
@@ -763,12 +781,12 @@ the response will be [200 OK][200] and:
 If the **payload is encrypted** and the **payload secret is not known** then:
 
 *  the request will fail with status [419 Authentication Timeout][419]
-*  the [Rhizome response bundle headers](#rhizome-response-bundle-headers) give
-   information about the found manifest
+*  the [bundle headers](#rhizome-http-response-bundle-headers) give information
+   about the found manifest
 *  the response body is a [Rhizome JSON result](#rhizome-json-result) object,
    in which:
-   *  the [bundle status code](#bundle-status-code) is 0
-   *  the [payload status code](#payload-status-code) is 5
+   *  the [bundle status code](#bundle-status-code) is for "new"
+   *  the [payload status code](#payload-status-code) is for "key unknown"
 
 ### POST /restful/rhizome/insert
 
@@ -849,6 +867,10 @@ The parameters are all optional under various conditions:
    *  the *payload* parameter must not be supplied if the `filesize` field in
       the *manifest* parameter is zero.
 
+The response body is always a [Rhizome JSON result](#rhizome-json-result)
+object, and the [bundle headers](#rhizome-http-response-bundle-headers) give
+information about the manifest.
+
 The insertion logic proceeds in the following steps:
 
 1.  If a *bundle-id* parameter was supplied and the given bundle exists in the
@@ -859,8 +881,8 @@ The insertion logic proceeds in the following steps:
     fields are copied into the new manifest, overwriting any that were copied
     in step 1.  If the partial manifest is malformed (syntax error) or contains
     a core field with an invalid value, then the request fails with status [422
-    Unprocessable Entity][422] and the [bundle status
-    code](#bundle-status-code) for “invalid”.
+    Unprocessable Entity][422] and the [bundle status code](#bundle-status-code)
+    for “invalid”.
 
 3.  If the `tail` field is present in the new manifest then the new bundle is a
     [journal](#journal), so the request fails with status [422 Unprocessable
@@ -935,27 +957,13 @@ The insertion logic proceeds in the following steps:
     stored in the store, and its size and [SHA-512][] digest computed.  If the
     manifest is missing either or both of the `filesize` and `filehash` fields,
     then the missing ones are filled in from the computed values.  If the
-    manifest had a `filesize` or `filehash` field that does not match the
-    computed value, then the request fails with status [422 Unprocessable
-    Entity][422] and the [bundle status code](#bundle-status-code) for
-    “inconsistent”.
+    manifest `filesize` or `filehash` fields do not match the computed values,
+    then the request fails with status [422 Unprocessable Entity][422] and the
+    [bundle status code](#bundle-status-code) for “inconsistent”.
 
-8.  The manifest is *validated* to ensure that:
-
-    *  the `id` field is present
-    *  the `version` field is present
-    *  the `filesize` field is present
-    *  if `filesize` is zero then there is no `filehash` field
-    *  if `filesize` is non-zero then the `filehash` field is present
-    *  if `service` is `file` then a `name` field is present
-    *  if `service` is `MeshMS1` or `MeshMS2` then the `sender` and `recipient`
-       fields are both present
-    *  the `service` field contains no invalid characters
-    *  the `date` field is present
-
-    If validation fails, the request fails with status [422 Unprocessable
-    Entity][422] and the [bundle status code](#bundle-status-code) for
-    “invalid”.
+8.  If the manifest is not [valid](#valid-manifest) then the request fails with
+    status [422 Unprocessable Entity][422] and the [bundle status
+    code](#bundle-status-code) for “invalid”.
 
 9.  If step 4 set the `id` field (either derived from the *bundle-secret*
     parameter or randomly generated) and the bundle is a *duplicate* of a
@@ -988,10 +996,10 @@ The insertion logic proceeds in the following steps:
        Accepted][202] and the [bundle status code](#bundle-status-code) for
        “old”.
 
-12. The new manifest is stored in the Rhizome store, replacing any existing
-    manifest with the same [Bundle ID](#bundle-id).  The request returns status
-    [201 Created][201] and the [bundle status code](#bundle-status-code) for
-    “new”.
+12. Otherwise, the new manifest is stored in the Rhizome store, replacing any
+    existing manifest with the same [Bundle ID](#bundle-id).  The request
+    returns status [201 Created][201] and the [bundle status
+    code](#bundle-status-code) for “new”.
 
 ### POST /restful/rhizome/append
 
@@ -1047,23 +1055,89 @@ other means, such as exporting from another store using the [manifest
 request](#get-restfulrhizomebidrhm) and the [raw payload
 request](#get-restfulrhizomebidrawbin).
 
-This request accepts the following parameters using a [Content-Type][] of
+The response body is always a [Rhizome JSON result](#rhizome-json-result)
+object, and the [bundle headers](#rhizome-http-response-bundle-headers) give
+information about the imported manifest, whether or not it was already present
+in the store.
+
+This request accepts the following optional [query parameters][] in the *path*:
+
+*  **id** = the [ID](#bundle-id) of the bundle
+*  **version** = the [version](#bundle-version) of the bundle
+
+Both query parameters must be supplied together, or neither.  If only one is
+supplied, or has an invalid value, then then the request fails with status [400
+Bad request][400] and a message like ‘Missing "id" parameter’ or ‘Invalid
+"version" parameter’.
+
+This request also accepts the following parameters using a [Content-Type][] of
 [multipart/form-data][], in which each parameter has its own content type:
 
 *  **manifest** (required) = a signed [manifest](#manifest):
-   *  [Content-Type][] must be [rhizome/manifest](#rhizomemanifest)
+   *  [Content-Type][] must be [rhizome/manifest](#rhizomemanifest);
+   *  if the **id** and **version** query parameters were supplied, then their
+      values must match the corresponding manifest fields.
 
 *  **payload** = the content of the bundle's payload:
-   *  [Content-Type][] is currently ignored, but in future it may be used to
-      determine the default values of some manifest fields;
+   *  the *payload* parameter must be supplied if the `filesize` field in the
+      *manifest* parameter is non-zero, otherwise it must not be supplied;
    *  this parameter must come after the *manifest* parameter, otherwise the
       request fails with status [400 Bad Request][400] and the message ‘Missing
       "manifest" form part’;
-   *  the *payload* parameter must not be supplied if the `filesize` field in
-      the *manifest* parameter is zero;
+   *  [Content-Type][] is currently ignored, but in future it may be used to
+      determine the default values of some manifest fields;
    *  if the bundle is encrypted (the manifest `crypt` field is 1) then the
       payload must be in encrypted form, not plain text.
 
+The import logic proceeds in the following steps:
+
+1.  If the `id` and `version` [query parameters][] were given, then check if the
+    store already contains a bundle with that [Bundle ID](#bundle-id) and
+    [Bundle version](#bundle-version).  If so, then the request succeeds with
+    status [200 OK][200] and:
+    *  the remaining body of the request will not be read
+    *  the [bundle status code](#bundle-status-code) is "same"
+    *  the [payload status code](#payload-status-code) is "empty" if the
+       payload has zero length, otherwise "found"
+    *  the only [bundle headers](#rhizome-http-response-bundle-headers) in the
+       response are:
+       *  `Serval-Rhizome-Bundle-Id`
+       *  `Serval-Rhizome-Bundle-Version`
+       *  `Serval-Rhizome-Bundle-Filesize`
+
+2.  As soon as the `manifest` form part is received, if the manifest is not
+    [valid](#valid-manifest) or if the `id` and `version` query parameters were
+    supplied but do not match the `id` and `version` fields of the manifest,
+    then the request fails with status [422 Unprocessable Entity][422] and the
+    [bundle status code](#bundle-status-code) for “invalid”.
+
+3.  If the manifest's signature does not verify, then the request fails with
+    status [419 Authentication Timeout][419] and the  [bundle status
+    code](#bundle-status-code) for “fake”.
+
+4.  If the *payload* form part is provided and is non-empty, then its content
+    is stored in the store, and its size and [SHA-512][] digest computed.  If
+    the manifest `filesize` and `filehash` fields do not match the computed
+    values, then the request fails with status [422 Unprocessable Entity][422]
+    and the [bundle status code](#bundle-status-code) for “inconsistent”.
+
+5.  If the Rhizome store already contains a manifest with the same
+    [Bundle ID](#bundle-id), then its version is compared with the new
+    manifest's version.
+
+    *  If they have the same version, then the new manifest is not stored, and
+       the request returns status [200 OK][200] and the [bundle status
+       code](#bundle-status-code) for “same”.
+
+    *  If the new manifest's version is less than the stored manifest's, then
+       the new manifest is not stored, and the request returns status [202
+       Accepted][202] and the [bundle status code](#bundle-status-code) for
+       “old”.
+
+6.  Otherwise, the new manifest is stored in the Rhizome store, replacing any
+    existing manifest with the same [Bundle ID](#bundle-id).  The request
+    returns status [201 Created][201] and the [bundle status
+    code](#bundle-status-code) for “new”.
 
 -----
 **Copyright 2015-2017 Serval Project Inc.**  

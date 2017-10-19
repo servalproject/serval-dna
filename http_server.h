@@ -188,7 +188,7 @@ typedef int (HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER)(struct http_request *, strbu
 int generate_http_content_from_strbuf_chunks(struct http_request *, char *, size_t, struct http_content_generator_result *, HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER *);
 
 typedef int HTTP_REQUEST_PARSER(struct http_request *);
-typedef void HTTP_RENDERER(struct http_request *, strbuf);
+typedef void HTTP_RENDERER(const struct http_request *, strbuf);
 
 struct http_request {
   struct sched_ent alarm; // MUST BE FIRST ELEMENT

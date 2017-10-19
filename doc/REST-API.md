@@ -101,8 +101,6 @@ For example:
 GET requests only accept parameters as [percent encoded][] [query parameters][]
 in the *path*.
 
-[query parameters]: http://tools.ietf.org/html/rfc3986#section-3.4
-
 ### POST
 
 A **POST** request has a similar structure to a GET request except that the
@@ -356,6 +354,7 @@ fetched entity forms the body of the response) if the request supplied a
 
 The HTTP request was malformed, and should not be repeated without
 modifications.  This could be for several reasons:
+- invalid [query parameter][] in the *path*
 - invalid syntax in the request header block
 - a [POST](#post) request parameter is missing, duplicated or out of order
 - a [POST](#post) request was given an unsupported parameter
@@ -642,6 +641,7 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [Content-Type]: https://tools.ietf.org/html/rfc7578#section-4.4
 [application/x-www-form-urlencoded]: https://tools.ietf.org/html/rfc1866#section-8.2.1
 [percent encoded]: https://en.wikipedia.org/wiki/Percent-encoding
+[query parameter]: https://en.wikipedia.org/wiki/Query_string
 [JSON]: https://en.wikipedia.org/wiki/JSON
 [UTF-8]: https://en.wikipedia.org/wiki/UTF-8
 [jq(1)]: https://stedolan.github.io/jq/

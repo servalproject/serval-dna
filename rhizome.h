@@ -74,9 +74,9 @@ typedef struct rhizome_manifest
    * before the first byte in the payload), its size (number of bytes) and the
    * hash of its content.  Bundle size = tail + filesize.
    */
-  uint64_t tail;
+  uint64_t tail;               // only valid if is_journal
   uint64_t filesize;
-  rhizome_filehash_t filehash;
+  rhizome_filehash_t filehash; // only valid if filesize != 0 and has_filehash
 
   /* All the manifest fields in original order (the order affects the manifest
    * hash which was used to sign the manifest, so the signature can only be
@@ -121,7 +121,7 @@ typedef struct rhizome_manifest
    */
   bool_t selfSigned:1;
 
-  /* Set if the ID field (sign_key.public_key) contains a bundle ID.
+  /* Set if the ID field (keypair.public_key) contains a bundle ID.
    */
   bool_t has_id:1;
 
@@ -622,8 +622,8 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs);
 enum rhizome_bundle_status rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
 int rhizome_manifest_to_bar(rhizome_manifest *m, rhizome_bar_t *bar);
 enum rhizome_bundle_status rhizome_is_bar_interesting(const rhizome_bar_t *bar);
-enum rhizome_bundle_status rhizome_is_interesting(const rhizome_bid_t *bid, uint64_t version);
-#define rhizome_is_manifest_interesting(M) rhizome_is_interesting(&(M)->keypair.public_key, (M)->version)
+enum rhizome_bundle_status rhizome_is_interesting(const rhizome_bid_t *bid, uint64_t version, uint64_t *filesizep);
+#define rhizome_is_manifest_interesting(M) rhizome_is_interesting(&(M)->keypair.public_key, (M)->version, NULL)
 enum rhizome_bundle_status rhizome_retrieve_manifest(const rhizome_bid_t *bid, rhizome_manifest *m);
 enum rhizome_bundle_status rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m);
 enum rhizome_bundle_status rhizome_retrieve_manifest_by_hash_prefix(const uint8_t *prefix, unsigned prefix_len, rhizome_manifest *m);
