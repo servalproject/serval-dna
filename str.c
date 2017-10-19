@@ -417,6 +417,26 @@ int strncase_startswith(const char *str, size_t len, const char *substring, cons
   return 1;
 }
 
+int str_endswith(const char *str, const char *substring, const char **startp) {
+  size_t len = strlen(str);
+  size_t sublen = strlen(substring);
+  if (len < sublen || strcmp(&str[len - sublen], substring) != 0)
+    return 0;
+  if (startp)
+    *startp = &str[len - sublen];
+  return 1;
+}
+
+int strcase_endswith(const char *str, const char *substring, const char **startp) {
+  size_t len = strlen(str);
+  size_t sublen = strlen(substring);
+  if (len < sublen || strcasecmp(&str[len - sublen], substring) != 0)
+    return 0;
+  if (startp)
+    *startp = &str[len - sublen];
+  return 1;
+}
+
 int strn_str_cmp(const char *str1, size_t len1, const char *str2)
 {
   int r = strncmp(str1, str2, len1);

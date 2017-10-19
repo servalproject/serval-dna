@@ -328,6 +328,19 @@ int strcase_startswith(const char *str, const char *substring, const char **afte
  */
 int strncase_startswith(const char *str, size_t len, const char *substring, const char **afterp);
 
+/* Check if a given nul-terminated string 'str' ends with a given nul-terminated sub-string.  If
+ * so, return 1 and, if startp is not NULL, set *startp to point to the first character of the
+ * found substring.  Otherwise return 0.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_endswith(const char *str, const char *substring, const char **startp);
+
+/* Case-insensitive form of str_endswith().
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int strcase_endswith(const char *str, const char *substring, const char **startp);
+
 /* Compare the given string 'str1' of a given length 'len1' with a given nul-terminated string
  * 'str2'.  Equivalent to { str1[len1] = '\0'; return strcmp(str1, str2); } except without modifying
  * str1[].
