@@ -195,8 +195,8 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [Serval Keyring]: ./doc/REST-API-Keyring.md
 [MDP]: ./doc/Mesh-Datagram-Protocol.md
 [VoMP]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:vomp
-[MeshMS]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:meshms
 [Rhizome]: ./doc/REST-API-Rhizome.md
+[MeshMS]: ./doc/REST-API-MeshMS.md
 [Serval Infrastructure]: ./doc/Serval-Infrastructure.md
 [JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface
 [Bash]: http://en.wikipedia.org/wiki/Bash_(Unix_shell)

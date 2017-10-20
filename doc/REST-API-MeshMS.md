@@ -11,35 +11,40 @@ distributed one-to-one messaging using [Rhizome][] as transport.
 The [Serval DNA][] daemon that runs on every node gives applications access to
 the [MeshMS][] service via the **MeshMS REST API** described in this document.
 
-### Basic concepts
+Basic concepts
+--------------
 
 #### Ply
 
-In rhizome, each author can only update rhizome bundles that they first created. 
-A ply is a rhizome journal bundle where each participant records their outgoing messages, 
-and any other changes to the conversation.
+In rhizome, each author can only update rhizome bundles that they first
+created.  A ply is a rhizome journal bundle where each participant records
+their outgoing messages, and any other changes to the conversation.
 
 A ply can contain the following types of records;
 
- * ACK - A pointer to a range of content within another ply.
- * MESSAGE - A plain text message encoded in UTF-8.
- * TIME - A timestamp related to the previous record.
+ * ACK - A pointer to a range of content within another ply
+ * MESSAGE - A plain text message encoded in UTF-8
+ * TIME - A timestamp related to the previous record
 
 #### Conversation
 
-A MeshMS conversation consists of one or two message ply's. Each participant sets
-the sender and recipient manifest fields to the identities of the two parties in the 
-conversation.
+A MeshMS conversation consists of one or two message [plys](#ply). Each
+participant sets the sender and recipient manifest fields to the identities of
+the two parties in the conversation.
 
-Both ply's are encrypted such that only the sender and recipient can read their contents.
+Both ply's are encrypted such that only the sender and recipient can read their
+contents.
 
-Whenever a new MESSAGE is detected on an incoming ply, a new ACK record is written to the
-end of the outgoing ply. This is used to indicate successful delivery, and to thread the
-display of messages in the conversation.
+Whenever a new MESSAGE is detected on an incoming ply, a new ACK record is
+written to the end of the outgoing ply. This is used to indicate successful
+delivery, and to thread the display of messages in the conversation.
 
-There is no central server to assign a common ordering to messages in a conversation,
-both parties will see their outgoing messages threaded with received messages in the order
-they arrived locally. 
+There is no central server to assign a common ordering to messages in a
+conversation, both parties will see their outgoing messages threaded with
+received messages in the order they arrived locally.
+
+MeshMS REST API operations
+--------------------------
 
 ### GET /restful/meshms/SENDERSID/conversationlist.json
 
@@ -60,6 +65,7 @@ Send a new message from SENDERSID to RECIPIENTSID.
 
 -----
 **Copyright 2015 Serval Project Inc.**  
+**Copyright 2016 Flinders University**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 Available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 
