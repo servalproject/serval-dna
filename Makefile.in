@@ -409,7 +409,9 @@ servaldwrap: $(OBJSDIR_SERVALD)/servalwrap.o
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
-serval-tests: $(OBJSDIR_SERVALD)/test_features.o libservaldaemon.a
+serval-tests: 	$(OBJSDIR_SERVALD)/test_features.o \
+		$(OBJSDIR_SERVALD)/log_output_console.o \
+		libservaldaemon.a
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 

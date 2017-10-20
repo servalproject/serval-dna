@@ -52,7 +52,7 @@ static struct broadcast bpilist[MAX_BPIS];
 #define OA_CODE_P2P_ME 0xfc
 #define OA_CODE_SIGNKEY 0xfb // full sign key of an identity, from which a SID can be derived
 
-static __thread struct tree_root root={.binary_length=SID_SIZE};
+static __thread struct tree_root root={.index_size_bytes=SID_SIZE};
 
 static __thread struct subscriber *my_subscriber=NULL;
 

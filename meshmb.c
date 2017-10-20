@@ -640,7 +640,7 @@ int meshmb_open(keyring_identity *id, struct meshmb_feeds **feeds)
 
   *feeds = emalloc_zero(sizeof(struct meshmb_feeds));
   if (*feeds){
-    (*feeds)->root.binary_length = sizeof(rhizome_bid_t);
+    (*feeds)->root.index_size_bytes = sizeof(rhizome_bid_t);
     (*feeds)->id = id;
     rhizome_manifest *m = rhizome_new_manifest();
     if (m){

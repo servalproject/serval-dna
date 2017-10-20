@@ -1,6 +1,7 @@
 /*
  Serval testing command line functions
  Copyright (C) 2014 Serval Project Inc.
+ Copyright (C) 2018 Flinders University
  
  This program is free software; you can redistribute it and/or
  modify it under the terms of the GNU General Public License
@@ -34,6 +35,7 @@
 #include "mem.h"
 #include "str.h"
 #include "debug.h"
+#include "nibble_tree.h"
 
 DEFINE_FEATURE(cli_tests);
 
@@ -321,5 +323,209 @@ static int app_config_test(const struct cli_parsed *UNUSED(parsed), struct cli_c
     DEBUGF(verbose, "   .address = %s", inet_ntoa(config.hosts.av[j].value.address));
     DEBUGF(verbose, "   .port = %u", config.hosts.av[j].value.port);
   }
+  return 0;
+}
+
+// Nibble Tree test
+
+#define ASSERT(C)	 do { if (!(C)) FATALF("(%s)", #C); } while (0)
+#define ASSERTF(C,F,...) do { if (!(C)) FATALF("(%s) " F, "" #C, ##__VA_ARGS__); } while (0)
+
+struct data {
+  uint8_t binary[4];
+};
+
+struct node {
+  size_t nbits;
+  struct data data;
+};
+
+static void *create_node_callback(void *context, const uint8_t *binary, size_t binary_size_bytes)
+{
+  ASSERT(binary_size_bytes == sizeof(struct data));
+  struct node *ret = (struct node *) emalloc_zero(sizeof(struct node));
+  ASSERT(ret);
+  ret->data = *(const struct data *)binary;
+  *(struct node **)context = ret;
+  return ret;
+}
+
+static struct node *create_node(struct tree_root *root, uint32_t index) {
+  uint8_t binary[4] = { index >> 24, index >> 16, index >> 8, index };
+  struct node *result = NULL;
+  struct node *created_node = NULL;
+  tree_find(root, (void**)&result, binary, 4, create_node_callback, &created_node);
+  ASSERT(result);
+  ASSERT(created_node);
+  ASSERTF(created_node == result, "created_node=%p, result=%p", created_node, result);
+  ASSERTF(memcmp(result->data.binary, binary, 4) == 0,
+	  "result->data.binary=%s, should be %s",
+	  alloca_tohex(result->data.binary, sizeof result->data.binary),
+	  alloca_tohex(binary, sizeof binary));
+  DEBUGF(verbose, "created %s -> %p, nbits=%zu", alloca_tohex(binary, sizeof binary), result, result->nbits);
+  return created_node;
+}
+
+static void advance_to(tree_iterator *it, uint32_t index, size_t bytes) {
+  uint8_t binary[4] = { index >> 24, index >> 16, index >> 8, index };
+  assert(bytes <= sizeof binary);
+  DEBUGF(verbose, "advance to %s", alloca_tohex(binary, bytes));
+  tree_iterator_advance_to(it, binary, bytes);
+}
+
+static void assert_current_node(tree_iterator *it, struct node *node) {
+  DEBUGF(verbose, "assert that current node is %p", node);
+  struct node **current = (struct node **) tree_iterator_get_node(it);
+  if (node) {
+    ASSERT(current);
+    ASSERTF(*current == node, "*current=%p, should be %p", *current, node);
+  }
+  else {
+    ASSERTF(current == NULL, "*current=%p, should be NULL", *current);
+  }
+}
+
+static void delete_current_node(tree_iterator *it) {
+  struct node **node = (struct node **) tree_iterator_get_node(it);
+  ASSERT(node);
+  ASSERT(*node);
+  struct data data = (*node)->data; // copy
+  free(*node);
+  *node = NULL;
+  DEBUGF(verbose, "deleted %s", alloca_tohex(data.binary, sizeof data.binary));
+}
+
+DEFINE_CMD(app_nibble_tree_test, 0,
+  "Run nibble tree test",
+  "test","nibble-tree");
+static int app_nibble_tree_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
+{
+  struct tree_root root = {.index_size_bytes = sizeof(struct data)};
+  struct tree_statistics stats;
+  tree_iterator it;
+  // Creation.
+  struct node *node1 = create_node(&root, 0x12345670);
+  stats = tree_compute_statistics(&root);
+  ASSERTF(stats.record_count == 1, "record_count=%zu", stats.record_count);
+  ASSERTF(stats.node_count == 1, "node_count=%zu", stats.node_count);
+  ASSERTF(stats.empty_node_count == 0, "empty_node_count=%zu", stats.empty_node_count);
+  ASSERTF(stats.maximum_depth == 0, "maximum_depth=%zu", stats.maximum_depth);
+  struct node *node2 = create_node(&root, 0x12345671);
+  stats = tree_compute_statistics(&root);
+  ASSERTF(stats.record_count == 2, "record_count=%zu", stats.record_count);
+  ASSERTF(stats.node_count == 8, "node_count=%zu", stats.node_count);
+  ASSERTF(stats.empty_node_count == 0, "empty_node_count=%zu", stats.empty_node_count);
+  ASSERTF(stats.maximum_depth == 7, "maximum_depth=%zu", stats.maximum_depth);
+  struct node *node3 = create_node(&root, 0x12345672);
+  stats = tree_compute_statistics(&root);
+  ASSERTF(stats.record_count == 3, "record_count=%zu", stats.record_count);
+  ASSERTF(stats.node_count == 8, "node_count=%zu", stats.node_count);
+  ASSERTF(stats.empty_node_count == 0, "empty_node_count=%zu", stats.empty_node_count);
+  ASSERTF(stats.maximum_depth == 7, "maximum_depth=%zu", stats.maximum_depth);
+  struct node *node4 = create_node(&root, 0x01234567);
+  stats = tree_compute_statistics(&root);
+  ASSERTF(stats.record_count == 4, "record_count=%zu", stats.record_count);
+  ASSERTF(stats.node_count == 8, "node_count=%zu", stats.node_count);
+  ASSERTF(stats.empty_node_count == 0, "empty_node_count=%zu", stats.empty_node_count);
+  ASSERTF(stats.maximum_depth == 7, "maximum_depth=%zu", stats.maximum_depth);
+  struct node *node5 = create_node(&root, 0x23456789);
+  stats = tree_compute_statistics(&root);
+  ASSERTF(stats.record_count == 5, "record_count=%zu", stats.record_count);
+  ASSERTF(stats.node_count == 8, "node_count=%zu", stats.node_count);
+  ASSERTF(stats.empty_node_count == 0, "empty_node_count=%zu", stats.empty_node_count);
+  ASSERTF(stats.maximum_depth == 7, "maximum_depth=%zu", stats.maximum_depth);
+  // Simple iteration through all nodes in order.
+  tree_iterator_start(&it, &root);
+  assert_current_node(&it, node4);
+  tree_iterator_advance(&it);
+  assert_current_node(&it, node1);
+  tree_iterator_advance(&it);
+  assert_current_node(&it, node2);
+  assert_current_node(&it, node2);
+  tree_iterator_advance(&it);
+  assert_current_node(&it, node3);
+  tree_iterator_advance(&it);
+  assert_current_node(&it, node5);
+  assert_current_node(&it, node5);
+  tree_iterator_advance(&it);
+  assert_current_node(&it, NULL);
+  assert_current_node(&it, NULL);
+  tree_iterator_advance(&it);
+  assert_current_node(&it, NULL);
+  tree_iterator_free(&it);
+  // Simple iteration through all nodes after a given starting point.
+  tree_iterator_start(&it, &root);
+  advance_to(&it, 0x12345672, 4);
+  assert_current_node(&it, node3);
+  tree_iterator_advance(&it);
+  assert_current_node(&it, node5);
+  tree_iterator_advance(&it);
+  assert_current_node(&it, NULL);
+  tree_iterator_free(&it);
+  // Simple advance to a prefix starting point.
+  tree_iterator_start(&it, &root);
+  advance_to(&it, 0x12340000, 2);
+  assert_current_node(&it, node1);
+  tree_iterator_advance(&it);
+  assert_current_node(&it, node2);
+  tree_iterator_advance(&it);
+  assert_current_node(&it, node3);
+  tree_iterator_advance(&it);
+  assert_current_node(&it, node5);
+  tree_iterator_advance(&it);
+  assert_current_node(&it, NULL);
+  tree_iterator_free(&it);
+  // Delete a record from a node, leaving it non-empty.
+  tree_iterator_start(&it, &root);
+  advance_to(&it, 0x12345672, 4);
+  assert_current_node(&it, node3);
+  delete_current_node(&it);
+  node3 = NULL;
+  stats = tree_compute_statistics(&root);
+  ASSERTF(stats.record_count == 4, "record_count=%zu", stats.record_count);
+  ASSERTF(stats.node_count == 8, "node_count=%zu", stats.node_count);
+  ASSERTF(stats.empty_node_count == 0, "empty_node_count=%zu", stats.empty_node_count);
+  ASSERTF(stats.maximum_depth == 7, "maximum_depth=%zu", stats.maximum_depth);
+  tree_iterator_free(&it);
+  // Delete records from a node, leaving it empty.  A second iterator positioned in the node
+  // prevents the node from being free()d until it advances.
+  tree_iterator it2;
+  tree_iterator_start(&it2, &root);
+  advance_to(&it2, 0x12345670, 4);
+  assert_current_node(&it2, node1);
+  //
+  tree_iterator_start(&it, &root);
+  advance_to(&it, 0x12345670, 4);
+  assert_current_node(&it, node1);
+  delete_current_node(&it);
+  node1 = NULL;
+  stats = tree_compute_statistics(&root);
+  ASSERTF(stats.record_count == 3, "record_count=%zu", stats.record_count);
+  ASSERTF(stats.node_count == 8, "node_count=%zu", stats.node_count);
+  ASSERTF(stats.empty_node_count == 0, "empty_node_count=%zu", stats.empty_node_count);
+  ASSERTF(stats.maximum_depth == 7, "maximum_depth=%zu", stats.maximum_depth);
+  assert_current_node(&it, node2); // node is not empty yet
+  assert_current_node(&it2, node2);
+  delete_current_node(&it); // makes the node empty
+  node2 = NULL;
+  stats = tree_compute_statistics(&root);
+  ASSERTF(stats.record_count == 2, "record_count=%zu", stats.record_count);
+  ASSERTF(stats.node_count == 8, "node_count=%zu", stats.node_count);
+  ASSERTF(stats.empty_node_count == 1, "empty_node_count=%zu", stats.empty_node_count);
+  ASSERTF(stats.maximum_depth == 7, "maximum_depth=%zu", stats.maximum_depth);
+  assert_current_node(&it, node5); // does not free() the empty node
+  stats = tree_compute_statistics(&root);
+  ASSERTF(stats.record_count == 2, "record_count=%zu", stats.record_count);
+  ASSERTF(stats.node_count == 8, "node_count=%zu", stats.node_count);
+  ASSERTF(stats.empty_node_count == 1, "empty_node_count=%zu", stats.empty_node_count);
+  ASSERTF(stats.maximum_depth == 7, "maximum_depth=%zu", stats.maximum_depth);
+  assert_current_node(&it2, node5); // free()s the empty node
+  stats = tree_compute_statistics(&root);
+  ASSERTF(stats.record_count == 2, "record_count=%zu", stats.record_count);
+  ASSERTF(stats.node_count == 1, "node_count=%zu", stats.node_count);
+  ASSERTF(stats.empty_node_count == 0, "empty_node_count=%zu", stats.empty_node_count);
+  ASSERTF(stats.maximum_depth == 0, "maximum_depth=%zu", stats.maximum_depth);
+  tree_iterator_free(&it2);
+  tree_iterator_free(&it);
   return 0;
 }
