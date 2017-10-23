@@ -1,5 +1,6 @@
 # Common definitions for all test suites.
 # Copyright 2012 Serval Project Inc.
+# Copyright 2017 Flinders University
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -19,10 +20,26 @@ shopt -s extglob
 
 testdefs_sh=$(abspath "${BASH_SOURCE[0]}")
 servald_source_root="${testdefs_sh%/*}"
-servald_build_root="$servald_source_root"
+
+if [ -r "$SERVAL_TEST_TARGETDIR/testconfig.sh" ]; then
+   servald_build_root="$(abspath "$SERVAL_TEST_TARGETDIR")"
+elif [ -r "$PWD/testconfig.sh" ]; then
+   servald_build_root="$PWD"
+elif [ -r "$servald_source_root/testconfig.sh" ]; then
+   servald_build_root="$servald_source_root"
+else
+   echo "$0: ERROR: cannot find testconfig.sh" >&2
+   echo "Set either the current working directory or the SERVAL_TEST_TARGETDIR" >&2
+   echo "environment variable to the directory that contains the configured and" >&2
+   echo "built servald." >&2
+   exit 1
+fi
+
+export PATH="$servald_build_root:$PATH"
+export TFW_LOGDIR="${SERVAL_TEST_LOGDIR:-$servald_build_root/testlog}"
+
 servald_basename="servald"
 servald_build_executable="$servald_build_root/$servald_basename"
-export TFW_LOGDIR="${TFW_LOGDIR:-$servald_build_root/testlog}"
 addr_localhost="127.0.0.1"
 
 declare -a instance_stack=()

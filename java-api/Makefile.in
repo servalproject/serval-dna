@@ -6,13 +6,14 @@ bindir=@bindir@
 sbindir=@sbindir@
 sysconfdir=@sysconfdir@
 localstatedir=@localstatedir@
+srcdir=@srcdir@
 
 JAVAC =		@JAVAC@
 CLASSDIR =	classes
 TESTCLASSDIR =	testclasses
 
-SOURCES := $(shell find $(SOURCE_PREFIX)src -name '*.java')
-TEST_SOURCES := $(shell find $(SOURCE_PREFIX)test -name '*.java')
+SOURCES := $(shell find $(srcdir)/src -name '*.java')
+TEST_SOURCES := $(shell find $(srcdir)/test -name '*.java')
 
 .PHONY: all check clean classes testclasses
 

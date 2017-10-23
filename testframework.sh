@@ -163,7 +163,6 @@ runTests() {
    _tfw_stderr=2
    _tfw_log_fd=
    _tfw_checkBashVersion
-   export PATH="$(_tfw_abspath "${BASH_SOURCE%/*}"):$PATH"
    _tfw_checkTerminfo
    _tfw_checkCommandInPATH tfw_createfile
    _tfw_invoking_script=$(abspath "${BASH_SOURCE[1]}")

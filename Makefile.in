@@ -6,13 +6,14 @@ bindir=@bindir@
 sbindir=@sbindir@
 sysconfdir=@sysconfdir@
 localstatedir=@localstatedir@
+srcdir=@srcdir@
 
 SQLITE3_AMALGAMATION = sqlite-amalgamation-3140200
 
-include $(SOURCE_PREFIX)sourcefiles.mk
-include $(SOURCE_PREFIX)headerfiles.mk
+include $(srcdir)/sourcefiles.mk
+include $(srcdir)/headerfiles.mk
 
-LIBSODIUM_SUBDIR =	$(SOURCE_PREFIX)libsodium/
+LIBSODIUM_SUBDIR =	libsodium/
 LIBSODIUM_DEV =		libsodium-dev
 LIBSODIUM_HEADERS =	$(LIBSODIUM_DEV)/include/sodium.h
 LIBSODIUM_A =		$(LIBSODIUM_DEV)/lib/libsodium.a
@@ -58,14 +59,14 @@ MONITOR_CLIENT_OBJS = \
 SIMULATOR_OBJS = \
 	$(addprefix $(OBJSDIR_TOOLS)/, $(SIMULATOR_SOURCES:.c=.o))
 
-PREFIXED_HEADERS = $(addprefix $(SOURCE_PREFIX), $(HDRS))
-PREFIXED_SOURCES = $(addprefix $(SOURCE_PREFIX), $(ALL_SOURCES))
+PREFIXED_HEADERS = $(addprefix $(srcdir)/, $(HDRS))
+PREFIXED_SOURCES = $(addprefix $(srcdir)/, $(ALL_SOURCES))
 
 CC= @CC@
 
 LDFLAGS=@LDFLAGS@ @LIBS@
 
-CFLAGS= -I$(SOURCE_PREFIX)$(SQLITE3_AMALGAMATION) @CPPFLAGS@ @CFLAGS@
+CFLAGS= -I. -I$(srcdir)/$(SQLITE3_AMALGAMATION) @CPPFLAGS@ @CFLAGS@
 CFLAGS+=-DSYSCONFDIR="\"$(sysconfdir)\"" -DLOCALSTATEDIR="\"$(localstatedir)\""
 CFLAGS+=-DSQLITE_THREADSAFE=0 \
 	-DSQLITE_OMIT_DATETIME_FUNCS \
@@ -88,7 +89,7 @@ INSTALL=        install
 INSTALL_PROGRAM=$(INSTALL)
 INSTALL_DATA=   $(INSTALL) -m 644
 
--include $(SOURCE_PREFIX)Makefile.dbg
+-include $(srcdir)/Makefile.dbg
 
 DEFS= @DEFS@
 
@@ -138,18 +139,12 @@ clean:	java-api-clean
 
 .PHONY: java-api java-api-clean
 
-ifneq ($(SOURCE_PREFIX:/%=),)
-SOURCE_PREFIX_JAVA_API=	$(SOURCE_PREFIX)../java-api/
-else
-SOURCE_PREFIX_JAVA_API=	$(SOURCE_PREFIX)
-endif
-
 java-api:
 	@mkdir -p java-api
-	@cd java-api && $(MAKE) SOURCE_PREFIX=$(SOURCE_PREFIX_JAVA_API) all
+	@cd java-api && $(MAKE) all
 
 java-api-clean:
-	@cd java-api 2>/dev/null && $(MAKE) SOURCE_PREFIX=$(SOURCE_PREFIX_JAVA_API) clean
+	@cd java-api 2>/dev/null && $(MAKE) clean
 
 endif # $(JAVAC)
 
@@ -223,31 +218,31 @@ coverage_html/index.html: Makefile servald-initial.info servald-coverage.info
 
 # Autconf support -- helpful messages to help avoid some common build mistakes.
 
-.PRECIOUS: Makefile config.status $(SOURCE_PREFIX)configure
+.PRECIOUS: Makefile config.status $(srcdir)/configure
 
-Makefile: $(SOURCE_PREFIX)Makefile.in config.status
+Makefile: $(srcdir)/Makefile.in config.status
 	$(warning Makefile may be out of date, please run ./config.status)
 
-config.status: $(SOURCE_PREFIX)configure
-	$(warning config.status may be out of date, please run $(if $(SOURCE_PREFIX),$(SOURCE_PREFIX),./)configure)
+config.status: $(srcdir)/configure
+	$(warning config.status may be out of date, please run $(srcdir)/configure
 
-$(SOURCE_PREFIX)configure: $(SOURCE_PREFIX)configure.ac
-	$(warning $(SOURCE_PREFIX)configure may be out of date, please run $(if $(SOURCE_PREFIX),cd $(SOURCE_PREFIX) && ,)autoreconf -f -i -I m4)
+$(srcdir)/configure: $(srcdir)/configure.ac
+	$(warning $(srcdir)configure may be out of date, please run $(if $(srcdir:.=),cd $(srcdir) && ,)autoreconf -f -i -I m4)
 
 # Embed Serval DNA's version into libraries and executables.
 
 $(OBJSDIR_TOOLS)/version.o: $(PREFIXED_SOURCES) \
     			    $(PREFIXED_HEADERS) \
-			    $(SOURCE_PREFIX)version_servald.c \
-			    $(SOURCE_PREFIX)version_string.sh \
+			    $(srcdir)/version_servald.c \
+			    $(srcdir)/version_string.sh \
 			    $(wildcard VERSION.txt) \
-			    $(SOURCE_PREFIX)COPYRIGHT.txt
+			    $(srcdir)/COPYRIGHT.txt
 	@echo CC version_servald.c
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
-	@V=`$(SOURCE_PREFIX)./version_string.sh --repository=$(SOURCE_PREFIX) --ignore-untracked` \
-	 && C="`sed -e :a -e N -e '$$!ba' -e 's/[\\\\"]/\\\\&/g' -e 's/\\n/\\\\n/g' $(SOURCE_PREFIX)COPYRIGHT.txt`" \
-	 && $(CC) $(CFLAGS) $(DEFS) -c $(SOURCE_PREFIX)version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\"" -DSERVALD_COPYRIGHT="\"$$C\""
+	@V=`$(srcdir)/version_string.sh --repository=$(srcdir) --ignore-untracked` \
+	 && C="`sed -e :a -e N -e '$$!ba' -e 's/[\\\\"]/\\\\&/g' -e 's/\\n/\\\\n/g' $(srcdir)/COPYRIGHT.txt`" \
+	 && $(CC) $(CFLAGS) $(DEFS) -c $(srcdir)/version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\"" -DSERVALD_COPYRIGHT="\"$$C\""
 
 #' <-- fixes vim syntax highlighting
 
@@ -255,28 +250,28 @@ $(OBJSDIR_TOOLS)/version.o: $(PREFIXED_SOURCES) \
 # Instead of fixing warnings case-by-case in the sqlite.c source code, simply
 # suppress the classes of warnings that cause compilation errors with
 # -Werror.
-$(SQLITE3_OBJS): $(OBJSDIR_SERVALD)/%.o: $(SOURCE_PREFIX)$(SQLITE3_AMALGAMATION)/%.c
+$(SQLITE3_OBJS): $(OBJSDIR_SERVALD)/%.o: $(srcdir)/$(SQLITE3_AMALGAMATION)/%.c
 	@echo SERVALD CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@$(CC) $(CFLAGS) $(CFLAGS_SQLITE) $(DEFS) -c $< -o $@
 
 # No object files in source directory!
-%.o: $(SOURCE_PREFIX)%.c
+%.o: $(srcdir)/%.c
 
-$(OBJSDIR_TOOLS)/%.o: $(SOURCE_PREFIX)%.c
+$(OBJSDIR_TOOLS)/%.o: $(srcdir)/%.c
 	@echo CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
-$(OBJSDIR_SERVALD)/%.o: $(SOURCE_PREFIX)%.c
+$(OBJSDIR_SERVALD)/%.o: $(srcdir)/%.c
 	@echo SERVALD CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
-$(OBJSDIR_LIB)/%.o: $(SOURCE_PREFIX)%.c
+$(OBJSDIR_LIB)/%.o: $(srcdir)/%.c
 	@echo LIB CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
@@ -289,7 +284,7 @@ $(OBJSDIR_LIB)/%.o: $(SOURCE_PREFIX)%.c
 $(SERVAL_DAEMON_OBJS): 			Makefile $(CONFIG_H) $(PREFIXED_HEADERS) $(LIBSODIUM_HEADERS)
 $(SERVALD_OBJS):       			Makefile                                 $(LIBSODIUM_HEADERS)
 $(LIB_SERVAL_OBJS): 			Makefile $(CONFIG_H) $(PREFIXED_HEADERS) $(LIBSODIUM_HEADERS)
-$(OBJSDIR_TOOLS)/tfw_createfile.o:	Makefile str.h
+$(OBJSDIR_TOOLS)/tfw_createfile.o:	Makefile $(srcdir)/str.h
 $(OBJSDIR_TOOLS)/directory_service.o:	Makefile $(CONFIG_H) $(PREFIXED_HEADERS) $(LIBSODIUM_HEADERS)
 $(MONITOR_CLIENT_OBJS):			Makefile $(CONFIG_H) $(PREFIXED_HEADERS) $(LIBSODIUM_HEADERS)
 $(SIMULATOR_OBJS):			Makefile $(CONFIG_H) $(PREFIXED_HEADERS) $(LIBSODIUM_HEADERS)
@@ -370,7 +365,7 @@ libmonitorclient.so: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o $(LIBSODI
 # The tags will always index all the Serval DNA headers and source files.  If
 # serval-tools is installed, then it will also index all the libsodium, JNI
 # and Android NDK header files.
-$(SOURCE_PREFIX)tags:	Makefile $(PREFIXED_HEADERS) $(PREFIXED_SOURCES)
+$(srcdir)/tags:	Makefile $(PREFIXED_HEADERS) $(PREFIXED_SOURCES)
 	{ for file in $(PREFIXED_HEADERS) $(PREFIXED_SOURCES); do echo "$$file"; done; \
 	  find $(LIBSODIUM_DEV)/include -type f ; \
 	  sp-find-gcc-headers $(CFLAGS) 2>/dev/null; \
