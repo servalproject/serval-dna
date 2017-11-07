@@ -68,7 +68,8 @@ typedef struct overlay_interface {
   struct sched_ent alarm;
   
   char name[256];
-  
+
+  short detected_type;
   off_t recv_offset; /* file offset */
   
   int recv_count;
@@ -115,7 +116,8 @@ struct config_network_interface;
 int overlay_interface_configure(struct overlay_interface *interface, const struct config_network_interface *ifconfig);
 
 int
-overlay_interface_init(const char *name, 
+overlay_interface_init(const char *name,
+		       short detected_type,
 		       const struct socket_address *addr, 
 		       const struct socket_address *netmask,
 		       const struct socket_address *broadcast,

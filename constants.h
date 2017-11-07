@@ -28,10 +28,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define CRYPT_SIGNED 2
 #define CRYPT_PUBLIC 4
 
-#define OVERLAY_INTERFACE_UNKNOWN 0
+// Interface types for matching or default config
+// Note that the numeric value is also used to choose the best link
 #define OVERLAY_INTERFACE_ETHERNET 1
 #define OVERLAY_INTERFACE_WIFI 2
-#define OVERLAY_INTERFACE_PACKETRADIO 3
+#define OVERLAY_INTERFACE_OTHER 3
+#define OVERLAY_INTERFACE_UNKNOWN 4
+#define OVERLAY_INTERFACE_ANY 5
+#define OVERLAY_INTERFACE_PACKETRADIO 6
 
 #define RADIO_TYPE_RFD900 0
 #define RADIO_TYPE_RFM69 1

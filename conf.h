@@ -682,6 +682,7 @@ int cf_fmt_sid(const char **, const sid_t *sidp);
 int cf_opt_rhizome_bk(rhizome_bk_t *bkp, const char *text);
 int cf_fmt_rhizome_bk(const char **, const rhizome_bk_t *bkp);
 
+const char * interface_type_name(short type);
 int cf_opt_interface_type(short *typep, const char *text);
 int cf_fmt_interface_type(const char **, const short *typep);
 

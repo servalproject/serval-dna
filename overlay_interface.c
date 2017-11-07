@@ -334,30 +334,15 @@ overlay_interface * overlay_interface_find_name_type(const char *name, int socke
   return NULL;
 }
 
-static int interface_type_priority(int type)
-{
-  switch(type){
-    case OVERLAY_INTERFACE_ETHERNET:
-      return 1;
-    case OVERLAY_INTERFACE_WIFI:
-      return 2;
-    case OVERLAY_INTERFACE_PACKETRADIO:
-      return 4;
-  }
-  return 3;
-}
-
 // Which interface is better for routing packets?
 // returns -1 to indicate the first is better, 0 for equal, 1 for the second
 int overlay_interface_compare(overlay_interface *one, overlay_interface *two)
 {
   if (one==two)
     return 0;
-  int p1 = interface_type_priority(one->ifconfig.type);
-  int p2 = interface_type_priority(two->ifconfig.type);
-  if (p1<p2)
+  if (one->ifconfig.type<two->ifconfig.type)
     return -1;
-  if (p2<p1)
+  if (two->ifconfig.type<one->ifconfig.type)
     return 1;
   return 0;
 }
@@ -493,12 +478,9 @@ int overlay_destination_configure(struct network_destination *dest, const struct
       packet_interval = 100;
       break;
     case OVERLAY_INTERFACE_WIFI:
+    case OVERLAY_INTERFACE_OTHER:
       tick_ms = 500;
       packet_interval = 800;
-      break;
-    case OVERLAY_INTERFACE_UNKNOWN:
-      tick_ms = 500;
-      packet_interval = 100;
       break;
   }
   
@@ -555,7 +537,8 @@ int overlay_interface_configure(struct overlay_interface *interface, const struc
  * Returns -1 in case of error (misconfiguration or system error).
  */
 int
-overlay_interface_init(const char *name, 
+overlay_interface_init(const char *name,
+		       short detected_type,
 		       const struct socket_address *addr, 
 		       const struct socket_address *netmask,
 		       const struct socket_address *broadcast,
@@ -580,7 +563,8 @@ overlay_interface_init(const char *name,
   interface->state=INTERFACE_STATE_DOWN;
   
   buf_strncpy_nul(interface->name, name);
-  
+
+  interface->detected_type = detected_type;
   interface->destination = new_destination(interface);
   
   interface->alarm.poll.fd=-1;
@@ -648,7 +632,10 @@ overlay_interface_init(const char *name,
     return -1;
   
   interface->state=INTERFACE_STATE_UP;
-  INFOF("Interface %s addr %s, is up",interface->name, alloca_socket_address(addr));
+  INFOF("Interface %s type %s addr %s, is up",
+	interface->name,
+	interface_type_name(interface->detected_type),
+	alloca_socket_address(addr));
   INFOF("Allowing a maximum of %d packets every %"PRId64"ms",
         interface->destination->transfer_limit.burst_size,
         interface->destination->transfer_limit.burst_length);
@@ -1085,13 +1072,17 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
   }
 }
 
-static const struct config_network_interface *find_interface_config(const char *name, int socket_type)
+static const struct config_network_interface *find_interface_config(const char *name, short detected_type, int socket_type)
 {
   // Find a matching non-dummy interface rule.
   unsigned i;
   for (i = 0; i < config.interfaces.ac; ++i) {
     const struct config_network_interface *ifconfig = &config.interfaces.av[i].value;
-    if (ifconfig->socket_type==socket_type) {
+    if (ifconfig->socket_type==socket_type && (
+         detected_type == ifconfig->match_type
+      || detected_type == OVERLAY_INTERFACE_UNKNOWN
+      || ifconfig->match_type == OVERLAY_INTERFACE_ANY
+    )) {
       unsigned j;
       for (j = 0; j < ifconfig->match.patc; ++j){
 	if (fnmatch(ifconfig->match.patv[j], name, 0) == 0)
@@ -1109,8 +1100,31 @@ overlay_interface_register(const char *name,
 			   const struct socket_address *netmask,
 			   struct socket_address *broadcast)
 {
+  short detected_type = OVERLAY_INTERFACE_UNKNOWN;
+#ifdef linux
+  detected_type = OVERLAY_INTERFACE_OTHER;
+  // Try to determine the interface type from /sys/class/net/<name>/
+  char path[256];
+  struct stat file_stat;
+  strbuf sb = strbuf_local_buf(path);
+  strbuf_sprintf(sb, "/sys/class/net/%s/phy80211", name);
+  if (stat(path, &file_stat)==0){
+    // This interface has a symlink to a physical wifi device
+    detected_type = OVERLAY_INTERFACE_WIFI;
+  }else{
+    strbuf_reset(sb);
+    strbuf_sprintf(sb, "/sys/class/net/%s/speed", name);
+    int fd = open(path, O_RDONLY);
+    if (fd >= 0){
+      // this interface implements the ethtool get_settings method
+      // we *could* read this file to set config based on link speed
+      detected_type = OVERLAY_INTERFACE_ETHERNET;
+      close(fd);
+    }
+  }
+#endif
   // Find the matching non-dummy interface rule.
-  const struct config_network_interface *ifconfig = find_interface_config(name, SOCK_DGRAM);
+  const struct config_network_interface *ifconfig = find_interface_config(name, detected_type, SOCK_DGRAM);
   if (!ifconfig) {
     DEBUGF(overlayinterfaces, "Interface %s does not match any rule", name);
     return 0;
@@ -1131,7 +1145,7 @@ overlay_interface_register(const char *name,
     return 0;
     
   /* New interface, so register it */
-  if (overlay_interface_init(name, addr, netmask, broadcast, ifconfig))
+  if (overlay_interface_init(name, detected_type, addr, netmask, broadcast, ifconfig))
     return WHYF("Could not initialise newly seen interface %s", name);
 
   overlay_interface_init_any(ifconfig->port);
@@ -1147,7 +1161,7 @@ static int interface_unregister(const char *name,
 )
 {
   // Find the matching non-dummy interface rule.
-  const struct config_network_interface *ifconfig = find_interface_config(name, SOCK_DGRAM);
+  const struct config_network_interface *ifconfig = find_interface_config(name, OVERLAY_INTERFACE_UNKNOWN, SOCK_DGRAM);
   if (!ifconfig)
     return 0;
     
@@ -1268,7 +1282,7 @@ void netlink_poll(struct sched_ent *alarm)
 	  }
 	  
 	  if (nlh->nlmsg_type==RTM_NEWADDR){
-	    DEBUGF(overlayinterfaces, "New addr %s, %s, %s, %s", 
+	    DEBUGF(overlayinterfaces, "New addr %s, %s, %s, %s",
 	      name,
 	      alloca_socket_address(&addr),
 	      alloca_socket_address(&broadcast),
@@ -1428,7 +1442,7 @@ static void file_interface_init(const struct config_network_interface *ifconfig)
     return;
   }
   
-  overlay_interface_init(ifconfig->file, &addr, &netmask, &broadcast, ifconfig);
+  overlay_interface_init(ifconfig->file, OVERLAY_INTERFACE_UNKNOWN, &addr, &netmask, &broadcast, ifconfig);
 }
 
 static void rescan_soon(time_ms_t run_at){
@@ -1461,7 +1475,8 @@ void overlay_interface_config_change()
       continue;
 	
     const struct config_network_interface *ifconfig = find_interface_config(
-      overlay_interfaces[i].name, 
+      overlay_interfaces[i].name,
+      OVERLAY_INTERFACE_UNKNOWN,
       overlay_interfaces[i].ifconfig.socket_type
     );
     

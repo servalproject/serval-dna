@@ -255,6 +255,38 @@ test_InterfacesModernDummy() {
    executeOk_servald config set interfaces.0.file dummyname
 }
 
+doc_InterfacesMatchType="Config options 'interfaces.N.[type|match_type]'"
+test_InterfacesMatchType() {
+   executeOk_servald config set interfaces.0.match '*'
+   execute --stderr --core-backtrace --executable=$servald \
+      config set interfaces.0.type 'any'
+   assertExitStatus '==' 2
+   assert_stderr_log \
+      --warn-pattern='"interfaces".*invalid' \
+      --error-pattern='config file.*loaded despite defects.*invalid'
+   execute --stderr --core-backtrace --executable=$servald \
+      config set interfaces.0.type 'unknown'
+   assertExitStatus '==' 2
+   assert_stderr_log \
+      --warn-pattern='"interfaces".*invalid' \
+      --error-pattern='config file.*loaded despite defects.*invalid'
+   execute --stderr --core-backtrace --executable=$servald \
+      config del interfaces.0.type
+   executeOk_servald config set interfaces.0.type wifi
+   executeOk_servald config set interfaces.0.type ethernet
+   execute --stderr --core-backtrace --executable=$servald \
+      config set interfaces.0.match_type 'unknown'
+   assertExitStatus '==' 2
+   assert_stderr_log \
+      --warn-pattern='"interfaces".*invalid' \
+      --error-pattern='config file.*loaded despite defects.*invalid'
+   execute --stderr --core-backtrace --executable=$servald \
+      config del interfaces.0.match_type
+   executeOk_servald config set interfaces.0.match_type wifi
+   executeOk_servald config set interfaces.0.match_type ethernet
+   executeOk_servald config set interfaces.0.match_type any
+}
+
 doc_InterfacesModernIncompatible="Config options 'interfaces.match' and 'interfaces.file' are incompatible"
 test_InterfacesModernIncompatible() {
    executeOk_servald config set interfaces.0.match eth

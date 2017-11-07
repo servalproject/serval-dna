@@ -688,22 +688,36 @@ int cf_opt_interface_type(short *typep, const char *text)
     *typep = OVERLAY_INTERFACE_PACKETRADIO;
     return CFOK;
   }
+  if (strcasecmp(text, "any") == 0) {
+    *typep = OVERLAY_INTERFACE_ANY;
+    return CFOK;
+  }
   if (strcasecmp(text, "other") == 0) {
+    *typep = OVERLAY_INTERFACE_OTHER;
+    return CFOK;
+  }
+  if (strcasecmp(text, "unknown") == 0) {
     *typep = OVERLAY_INTERFACE_UNKNOWN;
     return CFOK;
   }
   return CFINVALID;
 }
 
+const char * interface_type_name(short type){
+  switch (type) {
+    case OVERLAY_INTERFACE_ETHERNET:	return "ethernet";
+    case OVERLAY_INTERFACE_WIFI:	return "wifi";
+    case OVERLAY_INTERFACE_PACKETRADIO: return "catear";
+    case OVERLAY_INTERFACE_ANY:		return "any";
+    case OVERLAY_INTERFACE_OTHER:	return "other";
+    case OVERLAY_INTERFACE_UNKNOWN:	return "unknown";
+  }
+  return NULL;
+}
+
 int cf_fmt_interface_type(const char **textp, const short *typep)
 {
-  const char *t = NULL;
-  switch (*typep) {
-    case OVERLAY_INTERFACE_ETHERNET:	t = "ethernet"; break;
-    case OVERLAY_INTERFACE_WIFI:	t = "wifi"; break;
-    case OVERLAY_INTERFACE_PACKETRADIO: t = "catear"; break;
-    case OVERLAY_INTERFACE_UNKNOWN:	t = "other"; break;
-  }
+  const char *t = interface_type_name(*typep);
   if (!t)
     return CFINVALID;
   *textp = str_edup(t);
@@ -1004,6 +1018,19 @@ int cf_cmp_network_interface(const struct config_network_interface *a, const str
 
 int vld_network_interface(const struct cf_om_node *parent, struct config_network_interface *nifp, int result)
 {
+  if (nifp->match_type == OVERLAY_INTERFACE_UNKNOWN){
+    int nodei_match_type = cf_om_get_child(parent, "match_type", NULL);
+    assert(nodei_match_type != -1);
+    cf_warn_node_value(parent->nodv[nodei_match_type], CFINVALID);
+    return result | CFSUB(CFINVALID);
+  }
+  if (nifp->type == OVERLAY_INTERFACE_ANY
+  || nifp->type == OVERLAY_INTERFACE_UNKNOWN){
+    int nodei_type = cf_om_get_child(parent, "type", NULL);
+    assert(nodei_type != -1);
+    cf_warn_node_value(parent->nodv[nodei_type], CFINVALID);
+    return result | CFSUB(CFINVALID);
+  }
   if (nifp->match.patc != 0 && nifp->file[0]) {
     int nodei_match = cf_om_get_child(parent, "match", NULL);
     int nodei_file = cf_om_get_child(parent, "file", NULL);
