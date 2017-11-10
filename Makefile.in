@@ -224,7 +224,7 @@ Makefile: $(srcdir)/Makefile.in config.status
 	$(warning Makefile may be out of date, please run ./config.status)
 
 config.status: $(srcdir)/configure
-	$(warning config.status may be out of date, please run $(srcdir)/configure
+	$(warning config.status may be out of date, please run $(srcdir)/configure)
 
 $(srcdir)/configure: $(srcdir)/configure.ac
 	$(warning $(srcdir)configure may be out of date, please run $(if $(srcdir:.=),cd $(srcdir) && ,)autoreconf -f -i -I m4)
