@@ -1,6 +1,7 @@
-Portions Copyright (C) 2016 Flinders University
+Portions Copyright (C) 2016-2017 Flinders University
 Portions Copyright (C) 2010-2015 Serval Project Inc.
 Portions Copyright (C) 2010-2013 Paul Gardner-Stephen
 Portions Copyright (C) 2013 Petter Reinholdtsen
 Portions Copyright (C) 2010-2012 Serval Project Pty Limited
 Portions Copyright (C) 2012 Andrew Tridgell, All Rights Reserved
+Portions Copyright (C) 2002-2004 Phil Karn, KA9Q

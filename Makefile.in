@@ -474,7 +474,12 @@ COPYRIGHT_TOOL := $(call findPATH,sp-copyright-tool)
 copyright:
 	@if [ -x "$(COPYRIGHT_TOOL)" ]; then \
 	    echo GENERATE COPYRIGHT.txt; \
-	    $(COPYRIGHT_TOOL) -o COPYRIGHT.txt condense *.c *.h; \
+		$(COPYRIGHT_TOOL) -o COPYRIGHT.txt condense \
+			$(PREFIXED_HEADERS) \
+			$(PREFIXED_SOURCES) \
+			$(find $(srcdir)/java-api -type f -name '*.java') \
+			$(find $(srcdir)/swift-api -type f -name '*.swift') \
+		    ; \
 	else \
 	    echo 'sp-copyright-tool is not in $$PATH; COPYRIGHT.txt not updated'; \
 	fi
