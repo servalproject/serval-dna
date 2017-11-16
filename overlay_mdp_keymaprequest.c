@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_buffer.h"
 #include "crypto.h"
 #include "mem.h"
+#include "route_link.h"
 
 static int keyring_respond_id(struct internal_mdp_header *header)
 {
@@ -78,15 +79,20 @@ static int keyring_store_id(struct internal_mdp_header *header, struct overlay_b
   if (crypto_sign_verify_detached(compactsignature, header->source->sid.binary, SID_SIZE, id_public->binary))
     return WHY("SID:SAS mapping verification signature does not verify");
 
-  // test if the signing key can be used to derive the sid
-  if (crypto_ismatching_sign_sid(id_public, &header->source->sid))
-    header->source->id_combined=1;
-
   /* now store it */
   bcopy(id_public, &header->source->id_public, IDENTITY_SIZE);
   header->source->id_valid=1;
   header->source->id_last_request=-1;
   
+  // test if the signing key can be used to derive the sid
+  uint8_t was_combined = header->source->id_combined;
+  if (crypto_ismatching_sign_sid(id_public, &header->source->sid))
+    header->source->id_combined = 1;
+
+  if (was_combined != header->source->id_combined && header->source->reachable){
+    CALL_TRIGGER(link_change, header->source, header->source->reachable);
+  }
+
   DEBUGF(keyring, "Stored SID:SAS mapping, SID=%s to SAS=%s",
 	 alloca_tohex_sid_t(header->source->sid),
 	 alloca_tohex_identity_t(&header->source->id_public)
