@@ -1121,6 +1121,7 @@ overlay_interface_register(const char *name,
     // This interface has a symlink to a physical wifi device
     detected_type = OVERLAY_INTERFACE_WIFI;
   }else{
+    WARNF_perror("stat(%s)", path);
     strbuf_reset(sb);
     strbuf_sprintf(sb, "/sys/class/net/%s/speed", name);
     int fd = open(path, O_RDONLY);
@@ -1129,6 +1130,8 @@ overlay_interface_register(const char *name,
       // we *could* read this file to set config based on link speed
       detected_type = OVERLAY_INTERFACE_ETHERNET;
       close(fd);
+    }else{
+      WARNF_perror("open(%s)", path);
     }
   }
 #endif
