@@ -540,11 +540,10 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 }
 
 // fill a packet from our outgoing queues and send it
-static int
+static void
 overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now, strbuf debug) {
   IN();
   int i;
-  int ret=0;
     
   // while we're looking at queues, work out when to schedule another packet
   unschedule(&next_packet);
@@ -562,13 +561,11 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now, strbuf d
       strbuf_sprintf(debug, "]");
       _DEBUGF("%s", strbuf_str(debug));
     }
-      
+
     overlay_broadcast_ensemble(packet->destination, packet->buffer);
-    ret=1;
   }
   if (packet->destination)
     release_destination_ref(packet->destination);
-  RETURN(ret);
   OUT();
 }
 

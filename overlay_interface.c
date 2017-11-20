@@ -432,6 +432,8 @@ static int overlay_interface_init_any(int port)
 static void calc_next_tick(struct overlay_interface *interface)
 {
   int interval;
+  if (interface->state!=INTERFACE_STATE_UP)
+    return;
   if (link_interface_has_neighbours(interface))
     interval = interface->destination->ifconfig.tick_ms;
   else
@@ -828,6 +830,9 @@ static void overlay_interface_poll(struct sched_ent *alarm)
 	    && now >= interface->destination->last_tx+interface->destination->ifconfig.tick_ms)
 	  overlay_send_tick_packet(interface->destination);
       
+      }else{
+	// If we can't bind the interface now, make sure we don't keep trying to send a tick packet.
+	interface->destination->last_tx = now;
       }
       calc_next_tick(interface);
     }
@@ -964,10 +969,9 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 		alloca_tohex(bytes, len>64?64:len)
 	       );
       
-  interface->tx_count++;
-  
   switch(interface->ifconfig.socket_type){
     case SOCK_STREAM:
+      interface->tx_count++;
       return radio_link_queue_packet(interface, buffer);
       
     case SOCK_FILE:
@@ -1016,19 +1020,23 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 	return WHY_perror("write");
       if (nwrite != sizeof(packet))
 	return WHYF("only wrote %d of %d bytes", (int)nwrite, (int)sizeof(packet));
+      interface->tx_count++;
       return 0;
     }
     case SOCK_EXT:
     {
       mdp_send_external_packet(interface, &destination->address, bytes, (size_t)len);
       ob_free(buffer);
+      interface->tx_count++;
       return 0;
     }
     case SOCK_DGRAM:
     {
       // check that we have bound the interface
-      if (overlay_bind_interface(interface)==-1)
+      if (overlay_bind_interface(interface)==-1){
+	ob_free(buffer);
 	return -1;
+      }
       
       set_nonblock(interface->alarm.poll.fd);
       if (destination->address.addr.sa_family == AF_UNIX
@@ -1048,7 +1056,7 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 		alloca_socket_address(&destination->address),
 		interface->name
 	      );
-	    
+	
 	    // if we had any error while sending broadcast packets,
 	    // it could be because the interface is coming down
 	    // or there might be some socket error that we can't fix.
@@ -1063,6 +1071,7 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 	}
       }
       ob_free(buffer);
+      interface->tx_count++;
       return 0;
     }
       
