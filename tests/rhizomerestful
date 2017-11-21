@@ -1344,6 +1344,7 @@ test_RhizomeImport() {
    # store.
    execute curl \
             --silent --show-error --write-out '%{http_code}' \
+            --header 'Expect: 100-continue' \
             --header 'Transfer-Encoding: chunked' \
             --output http.body \
             --trace-ascii curl1.trace \
@@ -1366,6 +1367,7 @@ test_RhizomeImport() {
    # the bundle is already in the store.
    execute curl \
             --silent --show-error --write-out '%{http_code}' \
+            --header 'Expect: 100-continue' \
             --header 'Transfer-Encoding: chunked' \
             --output http.body \
             --trace-ascii curl2.trace \
@@ -1391,6 +1393,7 @@ test_RhizomeImport() {
    # request body.
    execute curl \
             --silent --show-error --write-out '%{http_code}' \
+            --header 'Expect: 100-continue' \
             --header 'Transfer-Encoding: chunked' \
             --output http.body \
             --trace-ascii curl3.trace \
@@ -1425,6 +1428,7 @@ setup_RhizomeImportLarge() {
 test_RhizomeImportLarge() {
    execute curl \
             --silent --show-error --write-out '%{http_code}' \
+            --header 'Expect: 100-continue' \
             --header 'Transfer-Encoding: chunked' \
             --output http.body \
             --trace-ascii curl.trace \
@@ -1457,6 +1461,7 @@ test_RhizomeImportParamsBad() {
    # The 'id' query parameter must match the manifest's ID.
    execute curl \
             --silent --show-error --write-out '%{http_code}' \
+            --header 'Expect: 100-continue' \
             --header 'Transfer-Encoding: chunked' \
             --output http.body \
             --trace-ascii curl1.trace \
@@ -1475,6 +1480,7 @@ test_RhizomeImportParamsBad() {
    wrongversion=$((version + 1))
    execute curl \
             --silent --show-error --write-out '%{http_code}' \
+            --header 'Expect: 100-continue' \
             --header 'Transfer-Encoding: chunked' \
             --output http.body \
             --trace-ascii curl2.trace \
