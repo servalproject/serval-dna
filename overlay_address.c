@@ -412,7 +412,10 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
       return 0;
 
     case OA_CODE_SIGNKEY:
-      return decode_sid_from_signkey(b, subscriber);
+      if (decode_sid_from_signkey(b, subscriber) == -1)
+	return -1;
+      context->previous = *subscriber;
+      return 0;
   }
   
   return find_subscr_buffer(context, b, len, subscriber);
