@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_interface.h"
 #include "overlay_packet.h"
 #include "route_link.h"
+#include "debug.h"
 
 struct sockaddr_in loopback;
 

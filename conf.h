@@ -230,9 +230,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "constants.h"
 #include "serval_types.h"
-#include "rhizome_types.h"
+#include "rhizome.h"
 #include "strbuf.h"
-#include "httpd.h"
+#include "http_server.h"
 #include "trigger.h"
 
 #define CONFIG_FILE_MAX_SIZE        (32 * 1024)

@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mem.h"
 #include "str.h"
 #include "overlay_buffer.h"
+#include "debug.h"
 
 /*
  When writing to a buffer, sizeLimit may place an upper bound on the amount of space to use

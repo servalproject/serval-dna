@@ -9,6 +9,7 @@
 #include "strbuf_helpers.h"
 #include "keyring.h"
 #include "meshmb.h"
+#include "debug.h"
 
 DEFINE_FEATURE(http_rest_meshmb);
 

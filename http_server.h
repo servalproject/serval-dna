@@ -20,14 +20,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__HTTP_SERVER_H
 #define __SERVAL_DNA__HTTP_SERVER_H
 
+#include <stdint.h> // for uint16_t, uint8_t
 #include <limits.h>
-#include "serval_types.h"
-#include "debug.h"
-#include "net.h"
+#include "lang.h" // for bool_t
+#include "os.h" // for time_ms_t
+#include "idebug.h" // for struct idebug
 #include "strbuf.h"
-#include "strbuf_helpers.h"
-#include "fdqueue.h"
-#include "socket.h"
+#include "strbuf_helpers.h" // for struct json_atom
+#include "fdqueue.h" // for struct sched_ent
+#include "socket.h" // for struct socket_address
 
 /* Generic HTTP request handling.
  *

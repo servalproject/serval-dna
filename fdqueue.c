@@ -53,6 +53,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
+#include "debug.h"
 
 #define MAX_WATCHED_FDS 128
 __thread struct pollfd fds[MAX_WATCHED_FDS];

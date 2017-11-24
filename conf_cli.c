@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "instance.h"
 #include "mdp_client.h"
 #include "server.h"
+#include "debug.h"
 
 DEFINE_FEATURE(cli_config);
 

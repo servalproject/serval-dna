@@ -67,6 +67,7 @@
 #include "overlay_buffer.h"
 #include "overlay_address.h"
 #include "route_link.h"
+#include "debug.h"
 
 #define PACKET_FORMAT_NUMBER 123
 

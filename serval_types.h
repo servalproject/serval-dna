@@ -21,9 +21,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __SERVAL_DNA__SERVAL_TYPES_H
 
 #include <sys/types.h>
+#include <inttypes.h> // for PRIx32
 #include <stdint.h>
-#include <inttypes.h>
-#include <sodium.h>
+#include "sodium.h"
 
 // all of the response codes we might want to return
 // with well defined semantics

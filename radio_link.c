@@ -50,6 +50,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_interface.h"
 #include "golay.h"
 #include "radio_link.h"
+#include "debug.h"
 
 #define MAVLINK_MSG_ID_RADIO 166
 #define MAVLINK_MSG_ID_DATASTREAM 67

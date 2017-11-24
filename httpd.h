@@ -28,9 +28,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int is_httpd_server_running();
 
-#define HTTPD_PORT_DEFAULT 4110
-#define HTTPD_PORT_RANGE 100
-
 extern uint16_t httpd_server_port;
 extern unsigned int current_httpd_request_count;
 

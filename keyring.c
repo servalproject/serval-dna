@@ -33,6 +33,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rotbuf.h"
 #include "route_link.h"
 #include "commandline.h"
+#include "debug.h"
 
 static keyring_file *keyring_open_or_create(const char *path, int writeable);
 static int keyring_initialise(keyring_file *k);

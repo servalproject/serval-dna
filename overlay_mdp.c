@@ -65,6 +65,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "socket.h"
 #include "server.h"
 #include "route_link.h"
+#include "debug.h"
 
 uint16_t mdp_loopback_port;
 

@@ -45,8 +45,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "debug.h"
 #include "str.h"
 #include "strbuf_helpers.h"
+#include "net.h"
 #include "socket.h"
 #include "monitor-client.h"
+#include "debug.h"
 
 #define STATE_INIT 0
 #define STATE_DATA 1

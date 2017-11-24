@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "server.h"
 #include "mdp_client.h"
 #include "route_link.h"
+#include "debug.h"
 
 /*
 Link state routing;

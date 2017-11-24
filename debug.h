@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2015 Serval Project Inc.
+Copyright (C) 2017 Flinders University
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -19,8 +20,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__DEBUG_H
 #define __SERVAL_DNA__DEBUG_H
 
-#include "serval_types.h" // for bool_t
-#include "log.h"
+/* This header file must not be included by other header files (.h), only by
+ * source files (.c), because it defines macros (DEBUG being the primary
+ * offender) that can interfere with other projects that include Serval DNA
+ * header files, such as the iOS ServalDNA.framework.
+ */
+
+#include "log.h" // for _DEBUGF_TAG
+#include "idebug.h" // for struct idebug
 
 /* These DEBUG macros use the IF_DEBUG(FLAG) macro as the conditional.
  *
@@ -52,11 +59,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * An "indirect debug flag" is a struct that contains a pointer to a flag and a
  * string constant with the name of the flag.
  */
-
-struct idebug {
-    bool_t *flagp;
-    const char *flagname;
-};
 
 #define INDIRECT_CONFIG_DEBUG(FLAG) ((struct idebug){.flagp=&(config.debug.FLAG), .flagname=#FLAG})
 

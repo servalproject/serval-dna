@@ -16,8 +16,11 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
+
 #ifndef __SERVAL_DNA___DATA_FORMATS_H
 #define __SERVAL_DNA___DATA_FORMATS_H
+
+#include <stdint.h>
 
 int str_is_subscriber_id(const char *sid);
 int strn_is_subscriber_id(const char *sid, size_t *lenp);

@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__LIMIT_H
 #define __SERVAL_DNA__LIMIT_H
 
+#include "os.h" // for uint32_t and time_ms_t
+
 struct limit_state{
   uint32_t rate_micro_seconds;
   // length of time for a burst

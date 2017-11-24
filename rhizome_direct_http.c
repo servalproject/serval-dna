@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "socket.h"
+#include "debug.h"
 
 DEFINE_FEATURE(http_rhizome_direct);
 

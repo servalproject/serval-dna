@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_interface.h"
 #include "overlay_buffer.h"
 #include "fdqueue.h"
+#include "debug.h"
 
 /* Collection of unicast echo responses to detect working links */
 DEFINE_BINDING(MDP_PORT_PROBE, overlay_mdp_service_probe);

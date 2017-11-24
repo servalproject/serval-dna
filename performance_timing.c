@@ -49,6 +49,7 @@
 #include <inttypes.h> // for PRIu64 on Android
 #include "fdqueue.h"
 #include "conf.h"
+#include "debug.h"
 
 __thread struct profile_total *stats_head=NULL;
 __thread struct call_stats *current_call=NULL;

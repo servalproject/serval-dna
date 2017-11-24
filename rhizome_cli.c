@@ -24,6 +24,7 @@
 #include "commandline.h"
 #include "rhizome.h"
 #include "instance.h"
+#include "debug.h"
 
 DEFINE_FEATURE(cli_rhizome);
 

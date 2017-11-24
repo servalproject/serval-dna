@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "crypto.h"
 #include "keyring.h"
 #include "dataformats.h"
+#include "debug.h"
 
 int rhizome_manifest_createid(rhizome_manifest *m)
 {

@@ -23,8 +23,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 #include <stdint.h>
 #include <limits.h>
-#include <sodium.h>
-#include "str.h"        // for alloca_tohex(), is_all_matching(), etc.
+#include "serval_types.h" // for "sodium.h", sign_binary
+#include "str.h"          // for alloca_tohex(), is_all_matching(), etc.
 
 #define RHIZOME_BUNDLE_ID_BYTES         crypto_sign_PUBLICKEYBYTES
 #define RHIZOME_BUNDLE_ID_STRLEN        (RHIZOME_BUNDLE_ID_BYTES * 2)

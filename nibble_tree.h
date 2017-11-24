@@ -21,6 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__NIBBLE_TREE_H
 #define __SERVAL_DNA__NIBBLE_TREE_H
 
+#include <stdint.h> // for uint8_t, size_t
+
 struct tree_record{
   // number of bits of the binary value, to uniquely identify this record within the tree's current contents
   size_t tree_depth;

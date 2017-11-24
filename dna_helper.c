@@ -61,6 +61,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "dataformats.h"
 #include "overlay_address.h"
 #include "server.h"
+#include "debug.h"
 
 static void dna_helper_shutdown();
 

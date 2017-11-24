@@ -20,6 +20,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__ROUTE_LINK_H
 #define __SERVAL_DNA__ROUTE_LINK_H
 
+#include <stdint.h> // for uint8_t
+
 struct strbuf;
 struct overlay_interface;
 struct network_destination;

@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "route_link.h"
 #include "overlay_interface.h"
 #include "overlay_buffer.h"
+#include "debug.h"
 
 DEFINE_BINDING(MDP_PORT_STUN, overlay_mdp_service_stun);
 static int overlay_mdp_service_stun(struct internal_mdp_header *header, struct overlay_buffer *payload)

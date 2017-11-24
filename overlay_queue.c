@@ -28,6 +28,7 @@
 #include "strbuf.h"
 #include "route_link.h"
 #include "server.h"
+#include "debug.h"
 
 typedef struct overlay_txqueue {
   struct overlay_frame *first;

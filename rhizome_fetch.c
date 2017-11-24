@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_buffer.h"
 #include "socket.h"
 #include "dataformats.h"
+#include "debug.h"
 
 /* Represents a queued fetch of a bundle payload, for which the manifest is already known.
  */

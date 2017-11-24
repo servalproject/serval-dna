@@ -1,6 +1,7 @@
 #ifndef __SERVAL_DNA__MSP_COMMON_H
 #define __SERVAL_DNA__MSP_COMMON_H
 
+#include "debug.h"
 
 #define FLAG_SHUTDOWN (1<<0)
 #define FLAG_ACK (1<<1)

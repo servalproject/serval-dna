@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "base64.h"
 #include "strbuf_helpers.h"
 #include "numeric_str.h"
+#include "debug.h"
 
 DEFINE_FEATURE(http_rest_rhizome);
 

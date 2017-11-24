@@ -63,6 +63,7 @@
 
 #include "conf.h"
 #include "overlay_interface.h"
+#include "debug.h"
 
 /* On platforms that have variable length 
    ifreq use the old fixed length interface instead */

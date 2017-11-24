@@ -34,6 +34,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "net.h"
 #include "limit.h"
+#include "debug.h"
 
 #define MTU 1600
 struct peer;

@@ -33,6 +33,7 @@
 #include "commandline.h"
 #include "mem.h"
 #include "str.h"
+#include "debug.h"
 
 DEFINE_FEATURE(cli_tests);
 

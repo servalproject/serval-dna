@@ -36,6 +36,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "str.h"
 #include "numeric_str.h"
+#include "debug.h"
 
 #define RHIZOME_BUFFER_MAXIMUM_SIZE (1024*1024)
 

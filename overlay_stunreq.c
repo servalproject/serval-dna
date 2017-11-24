@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "route_link.h"
 #include "overlay_interface.h"
 #include "overlay_buffer.h"
+#include "debug.h"
 
 // append the address of a unicast link into a packet buffer
 static void overlay_append_unicast_address(struct subscriber *subscriber, struct overlay_buffer *buff)

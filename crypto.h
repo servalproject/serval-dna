@@ -20,8 +20,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__CRYPTO_H
 #define __SERVAL_DNA__CRYPTO_H
 
-#include <sodium.h>
+#include "serval_types.h"
+
 #define SIGNATURE_BYTES crypto_sign_BYTES
+
+struct subscriber;
 
 int crypto_isvalid_keypair(const sign_private_t *private_key, const sign_public_t *public_key);
 int crypto_verify_message(struct subscriber *subscriber, unsigned char *message, size_t *message_len);

@@ -2,6 +2,7 @@
 #include "serval_types.h"
 #include "dataformats.h"
 #include "cli.h"
+#include "keyring.h"
 #include "meshms.h"
 #include "log.h"
 #include "debug.h"

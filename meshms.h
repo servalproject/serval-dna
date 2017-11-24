@@ -20,6 +20,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__MESHMS_H
 #define __SERVAL_DNA__MESHMS_H
 
+#include <stdint.h>
+
 #ifndef __MESHMS_INLINE
 # if __GNUC__ && !__GNUC_STDC_INLINE__
 #  define __MESHMS_INLINE extern inline

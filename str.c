@@ -21,7 +21,7 @@
 #define __SERVAL_DNA__STR_INLINE
 #include "str.h"
 #include "strbuf_helpers.h"
-#include <sodium.h>
+#include "sodium.h"
 
 #include <stdio.h>   // for NULL
 #include <string.h>  // for strlen(), strncmp() etc.

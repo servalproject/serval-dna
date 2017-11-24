@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "str.h"
 #include "server.h"
+#include "debug.h"
 
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
 

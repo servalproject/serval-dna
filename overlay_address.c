@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <arpa/inet.h>
 #include "serval.h"
 #include "conf.h"
+#include "keyring.h"
 #include "crypto.h"
 #include "str.h"
 #include "overlay_address.h"
@@ -39,6 +40,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "server.h"
 #include "route_link.h"
 #include "commandline.h"
+#include "debug.h"
 
 #define MAX_BPIS 1024
 #define BPI_MASK 0x3ff

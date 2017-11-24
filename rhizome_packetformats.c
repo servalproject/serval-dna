@@ -17,17 +17,20 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "serval.h"
-#include "conf.h"
-#include "rhizome.h"
 #include <assert.h>
-#include "overlay_buffer.h"
-#include "overlay_address.h"
-#include "overlay_packet.h"
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+
+#include "overlay_buffer.h"
+#include "overlay_address.h"
+#include "overlay_packet.h"
+#include "serval.h"
+#include "conf.h"
+#include "rhizome.h"
+#include "httpd.h"
+#include "debug.h"
 
 /* Android doesn't have log2(), and we don't really need to do floating point
    math to work out how big a file is.

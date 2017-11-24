@@ -44,7 +44,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "radio_link.h"
 #include "server.h"
 #include "route_link.h"
-
+#include "debug.h"
 
 
 // The size of the receive buffer.  This effectively sets the MRU for packet radio interfaces where

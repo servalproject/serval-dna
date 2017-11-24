@@ -1,6 +1,7 @@
-#ifndef __SYNC_H
-#define __SYNC_H
+#ifndef __SERVAL_DNA__SYNC_H
+#define __SERVAL_DNA__SYNC_H
 
+#include <stdint.h> // for uint8_t
 #include "str.h" // for alloca_tohex()
 
 /*
@@ -44,4 +45,4 @@ int sync_recv_message(struct sync_state *state, void *peer_context, const uint8_
 void sync_enum_differences(struct sync_state *state, 
   void (*callback)(void *context, void *peer_context, const sync_key_t *key, uint8_t theirs));
 
-#endif
+#endif // __SERVAL_DNA__SYNC_H

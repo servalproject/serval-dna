@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "overlay_interface.h"
 #include "server.h"
+#include "debug.h"
 
 int overlay_packetradio_setup_port(overlay_interface *interface)
 {

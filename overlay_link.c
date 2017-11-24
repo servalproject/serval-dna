@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "route_link.h"
 #include "socket.h"
+#include "debug.h"
 
 int set_reachable(struct subscriber *subscriber, 
   struct network_destination *destination, struct subscriber *next_hop,

@@ -56,9 +56,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifdef HAVE_POLL_H
 #include <poll.h>
 #endif
-#include "os.h"
-#include "log.h"
-#include "debug.h"
+
+#include "os.h" // for time_ms_t
+#include "whence.h"
 
 struct profile_total {
   struct profile_total *_next;

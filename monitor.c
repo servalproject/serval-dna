@@ -71,6 +71,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "dataformats.h"
 #include "server.h"
 #include "route_link.h"
+#include "debug.h"
 
 #ifdef HAVE_UCRED_H
 #include <ucred.h>

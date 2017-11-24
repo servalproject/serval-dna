@@ -29,6 +29,7 @@
 #include "str.h"
 #include "numeric_str.h"
 #include "server.h"
+#include "debug.h"
 
 //#define DEBUG_MDP_FILTER_PARSING 1
 

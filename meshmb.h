@@ -1,6 +1,11 @@
 #ifndef __SERVAL_DNA__MESHMB_H
 #define __SERVAL_DNA__MESHMB_H
 
+#include <stdint.h> // for uint64_t
+#include "lang.h" // for bool_t
+#include "os.h" // for time_s_t
+#include "message_ply.h"
+
 struct meshmb_feeds;
 
 enum meshmb_send_status{

@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__OVERLAY_INTERFACE_H
 #define __SERVAL_DNA__OVERLAY_INTERFACE_H
 
+#include "os.h" // for time_ms_t
 #include "socket.h"
 #include "limit.h"
 

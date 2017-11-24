@@ -19,8 +19,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__CONSTANTS_H
 #define __SERVAL_DNA__CONSTANTS_H
 
-// UDP Port numbers for various Serval services.
+// UDP port numbers for various Serval services
 #define PORT_DNA 4110
+
+// TCP port numbers for various Serval services
+#define HTTPD_PORT_DEFAULT 4110
+#define HTTPD_PORT_RANGE 100
 
 #define OVERLAY_MAX_INTERFACES 16
 

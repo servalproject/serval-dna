@@ -226,6 +226,33 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 
+// If a macro is missing then this file has no effect but emits a warning, so
+// that the iOS framework module can declare it as a public header, so that
+// conf.h can be a public header.
+#if defined(STRUCT) && \
+    defined(NODE) && \
+    defined(ATOM) && \
+    defined(STRING) && \
+    defined(SUB_STRUCT) && \
+    defined(NODE_STRUCT) && \
+    defined(END_STRUCT) && \
+    defined(STRUCT_ASSIGN) && \
+    defined(END_STRUCT_ASSIGN) && \
+    defined(STRUCT_DEFAULT) && \
+    defined(ATOM_DEFAULT) && \
+    defined(STRING_DEFAULT) && \
+    defined(SUB_STRUCT_DEFAULT) && \
+    defined(END_STRUCT_DEFAULT) && \
+    defined(ARRAY) && \
+    defined(KEY_ATOM) && \
+    defined(KEY_STRING) && \
+    defined(VALUE_ATOM) && \
+    defined(VALUE_STRING) && \
+    defined(VALUE_NODE) && \
+    defined(VALUE_SUB_STRUCT) && \
+    defined(VALUE_NODE_STRUCT) && \
+    defined(END_ARRAY)
+
 STRUCT(debug)
 ATOM(bool_t, verbose,                   0, boolean,, "")
 ATOM(bool_t, ack,                       0, boolean,, "")
@@ -513,3 +540,7 @@ SUB_STRUCT(olsr,            olsr,)
 SUB_STRUCT(host_list,       hosts,)
 SUB_STRUCT(api,             api,)
 END_STRUCT
+
+#else
+#warning "included stand-alone has no effect"
+#endif

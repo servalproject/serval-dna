@@ -1,6 +1,7 @@
 
 #include "serval.h"
 #include "dataformats.h"
+#include "keyring.h"
 #include "rhizome.h"
 #include "message_ply.h"
 #include "log.h"
