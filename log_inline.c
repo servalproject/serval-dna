@@ -1,5 +1,5 @@
 /*
-Serval DNA logging
+Serval DNA logging inline functions
 Copyright 2013-2014 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
@@ -17,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-// This compilation unit simply provides a statically linkable logMessage() function for those other
-// units that did not inline it.
+// This compilation unit simply provides statically linkable functions, eg, serval_logf(), for those
+// other units that did not inline it.
 
 #define __SERVAL_LOG_INLINE
 #include "log.h"

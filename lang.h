@@ -24,9 +24,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "config.h"
 #endif
 
+/* Conveniences to assist readability.
+ */
+
+typedef char bool_t;
+
+
 /* Useful macros not specific to Serval DNA that assist with using the C
  * language.
  */
+
+// Concatenate two preprocessor symbols, eg, _APPEND(__FUNC__, __LINE__).
+#define __APPEND_(X,Y) X ## Y
+#define _APPEND(X,Y) __APPEND_(X,Y)
 
 // Number of elements in an array (Warning: does not work if A is a pointer!).
 #define NELS(A) (sizeof (A) / sizeof *(A))

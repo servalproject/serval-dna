@@ -217,7 +217,7 @@ dna_helper_start()
   switch (dna_helper_pid = fork()) {
   case 0:
     /* Child, should exec() to become helper after installing file descriptors. */
-    close_log_file();
+    serval_log_close();
     setenv("MYSID", mysid, 1);
     signal(SIGTERM, SIG_DFL);
     close(stdin_fds[1]);

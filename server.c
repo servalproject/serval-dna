@@ -229,7 +229,7 @@ int server_bind()
   serverMode = SERVER_RUNNING;
 
   // Warn, not merely Info, if there is no configured log file.
-  logLevel_NoLogFileConfigured = LOG_LEVEL_WARN;
+  serval_log_level_NoLogFileConfigured = LOG_LEVEL_WARN;
 
   /* Catch SIGHUP etc so that we can respond to requests to do things, eg, shut down. */
   struct sigaction sig;
@@ -551,7 +551,7 @@ void server_watchdog(struct sched_ent *alarm)
       switch (watchdog_pid = fork()) {
       case 0:
 	/* Grandchild, should exec() watchdog. */
-	close_log_file();
+	serval_log_close();
 	signal(SIGTERM, SIG_DFL);
 	close(0);
 	close(1);
@@ -882,7 +882,7 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
 	       on an Android device, then we don't receive a SIGHUP when the adb shell process ends.
 	     */
 	    DEBUG(verbose, "Grand-Child Process, reopening log");
-	    close_log_file();
+	    serval_log_close();
 	    int fd;
 	    if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
 	      exit(WHY_perror("open(\"/dev/null\")"));
@@ -894,11 +894,15 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
 	      exit(WHYF_perror("dup2(%d,stdin)", fd));
 	    if (dup2(fd, STDOUT_FILENO) == -1)
 	      exit(WHYF_perror("dup2(%d,stdout)", fd));
-	    if (dup2(fd, STDERR_FILENO) == -1)
+	    /* Redirect standard error to the current log file, so that any diagnostic messages
+	     * printed directly to stderr by libraries or child processes will end up being captured
+	     * in a log file.  If standard error is not redirected, then simply direct it to
+	     * /dev/null.
+	     */
+	    if (!serval_log_capture_fd(STDERR_FILENO) && dup2(fd, STDERR_FILENO) == -1)
 	      exit(WHYF_perror("dup2(%d,stderr)", fd));
-	    if (fd > 2)
+	    if (fd > STDERR_FILENO)
 	      (void)close(fd);
-	    redirect_stderr_to_log();
 	    /* The execpath option is provided so that a JNI call to "start" can be made which
 	       creates a new server daemon process with the correct argv[0].  Otherwise, the servald
 	       process appears as a process with argv[0] = "org.servalproject". */

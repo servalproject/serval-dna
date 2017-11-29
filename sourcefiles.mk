@@ -16,7 +16,8 @@ SERVAL_CLIENT_SOURCES = \
 	fdqueue.c \
         instance.c \
 	limit.c \
-	logMessage.c \
+	log.c \
+	log_inline.c \
 	log_cli.c \
 	log_context.c \
 	log_util.c \
@@ -59,7 +60,8 @@ SERVAL_DAEMON_SOURCES = \
 	keyring.c \
 	keyring_cli.c \
 	keyring_restful.c \
-	log.c \
+	log_output_console.c \
+	log_output_file.c \
 	lsif.c \
 	radio_link.c \
 	meshms.c \
@@ -146,7 +148,8 @@ CLIENT_ONLY_SOURCES = \
 	log_stderr.c
 
 ANDROID_SOURCES = \
-	android.c
+	android.c \
+	log_output_android.c
 
 ALL_SOURCES = \
 	$(SERVAL_CLIENT_SOURCES) \

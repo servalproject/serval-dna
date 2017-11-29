@@ -35,6 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "cli.h"
 #include "monitor-client.h"
 #include "commandline.h"
+#include "xprintf.h"
 
 DEFINE_FEATURE(cli_monitor);
 
@@ -47,7 +48,7 @@ static int remote_print(char *cmd, int argc, char **argv, unsigned char *data, i
   }
   printf("\n");
   if (dataLen){
-    dump(NULL,data,dataLen);
+    xhexdump(XPRINTF_STDIO(stdout), data, dataLen, "");
   }
   return 1;
 }

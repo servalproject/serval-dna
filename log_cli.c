@@ -37,6 +37,6 @@ static int app_log(const struct cli_parsed *parsed, struct cli_context *UNUSED(c
   int level = string_to_log_level(lvl);
   if (level == LOG_LEVEL_INVALID)
     return WHYF("invalid log level: %s", lvl);
-  logMessage(level, __NOWHERE__, "%s", msg);
+  NOWHENCE(LOGF(level, "%s", msg));
   return 0;
 }

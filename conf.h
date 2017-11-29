@@ -722,8 +722,8 @@ int cf_load_permissive(void);
 int cf_reload(void);
 int cf_reload_strict(void);
 int cf_reload_permissive(void);
+void cf_dump_to_log(const char *heading);
 
-DECLARE_TRIGGER(conf_log);
 DECLARE_TRIGGER(conf_change);
 
 #endif //__SERVAL_DNA__CONF_H

@@ -239,8 +239,7 @@ void _ob_append_bytes(struct __sourceloc __whence, struct overlay_buffer *b, con
   } else {
     DEBUGF(overlaybuffer, "ob_append_bytes(b=%p, bytes=%p, count=%zu) OVERRUN position=%zu return NULL", b, bytes, count, b->position + count);
   }
-  if (IF_DEBUG(overlaybuffer))
-    dump("{overlaybuffer} ob_append_bytes", bytes, count);
+  DEBUG_dump(overlaybuffer, "ob_append_bytes", bytes, count);
   b->position += count;
 }
 
@@ -655,9 +654,9 @@ int ob_dump(struct overlay_buffer *b, char *desc)
   if (b->bytes) {
     if (b->sizeLimit != SIZE_MAX && b->sizeLimit > 0) {
       assert(b->position <= b->sizeLimit);
-      dump(desc, b->bytes, b->sizeLimit);
+      _DEBUG_dump(desc, b->bytes, b->sizeLimit);
     } else if (b->position > 0)
-      dump(desc, b->bytes, b->position);
+      _DEBUG_dump(desc, b->bytes, b->position);
   }
   return 0;
 }

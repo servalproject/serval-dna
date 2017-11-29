@@ -878,8 +878,8 @@ int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *h
     return -1;
   }
   DEBUGF(mdprequests, "Send frame %zu bytes", ob_position(plaintext));
-  if (IF_DEBUG(mdprequests) && IF_DEBUG(verbose))
-    dump("Frame plaintext", ob_ptr(plaintext), ob_position(plaintext));
+  if (IF_DEBUG(verbose))
+    DEBUG_dump(mdprequests, "Frame plaintext", ob_ptr(plaintext), ob_position(plaintext));
   
   /* Work out the disposition of the frame->  For now we are only worried
      about the crypto matters, and not compression that may be applied

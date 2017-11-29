@@ -29,31 +29,25 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "net.h"
 
-int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len)
+int serval_log_hexdump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len)
 {
   if (level != LOG_LEVEL_SILENT) {
-    char buf[100];
-    size_t i;
     if (name)
-      logMessage(level, whence, "Dump of %s", name);
-    for(i = 0; i < len; i += 16) {
+      serval_logf(level, whence, "Dump of %s", name);
+    size_t off = 0;
+    while (off < len) {
+      char buf[100];
       strbuf b = strbuf_local_buf(buf);
-      strbuf_sprintf(b, "  %04zx :", i);
-      int j;
-      for (j = 0; j < 16 && i + j < len; j++)
-	strbuf_sprintf(b, " %02x", addr[i + j]);
-      for (; j < 16; j++)
-	strbuf_puts(b, "   ");
-      strbuf_puts(b, "    ");
-      for (j = 0; j < 16 && i + j < len; j++)
-	strbuf_sprintf(b, "%c", addr[i+j] >= ' ' && addr[i+j] < 0x7f ? addr[i+j] : '.');
-      logMessage(level, whence, "%s", strbuf_str(b));
+      size_t skip = xhexdump_line(XPRINTF_STRBUF(b), addr, len, off);
+      addr += skip;
+      off += skip;
+      serval_logf(level, whence, "  %s", strbuf_str(b));
     }
   }
   return 0;
 }
 
-void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv)
+void serval_log_argv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv)
 {
   if (level != LOG_LEVEL_SILENT) {
     struct strbuf b;
@@ -63,25 +57,25 @@ void logArgv(int level, struct __sourceloc whence, const char *label, int argc, 
     strbuf_init(&b, alloca(len + 1), len + 1);
     strbuf_append_argv(&b, argc, argv);
     if (label)
-      logMessage(level, whence, "%s %s", label, strbuf_str(&b));
+      serval_logf(level, whence, "%s %s", label, strbuf_str(&b));
     else
-      logMessage(level, whence, "%s", strbuf_str(&b));
+      serval_logf(level, whence, "%s", strbuf_str(&b));
   }
 }
 
-void logString(int level, struct __sourceloc whence, const char *str)
+void serval_log_multiline(int level, struct __sourceloc whence, const char *str)
 {
   if (level != LOG_LEVEL_SILENT) {
     const char *s = str;
     const char *p;
     for (p = str; *p; ++p) {
       if (*p == '\n') {
-	logMessage(level, whence, "%.*s", (int)(p - s), s);
+	serval_logf(level, whence, "%.*s", (int)(p - s), s);
 	s = p + 1;
       }
     }
     if (p > s)
-      logMessage(level, whence, "%.*s", (int)(p - s), s);
+      serval_logf(level, whence, "%.*s", (int)(p - s), s);
   }
 }
 
@@ -113,7 +107,7 @@ int string_to_log_level(const char *text)
   return LOG_LEVEL_INVALID;
 }
 
-int logBacktrace(int level, struct __sourceloc whence)
+int serval_log_backtrace(int level, struct __sourceloc whence)
 {
 #ifndef NO_BACKTRACE
   char execpath[MAXPATHLEN];
@@ -167,7 +161,7 @@ int logBacktrace(int level, struct __sourceloc whence)
   }
   // parent
   close(stdout_fds[1]);
-  logMessage(level, whence, "GDB BACKTRACE");
+  serval_logf(level, whence, "GDB BACKTRACE");
   char buf[1024];
   char *const bufe = buf + sizeof buf;
   char *linep = buf;
@@ -179,14 +173,14 @@ int logBacktrace(int level, struct __sourceloc whence)
     for (; p < readp; ++p)
       if (*p == '\n' || *p == '\0') {
 	*p = '\0';
-	logMessage(level, __NOWHERE__, "GDB %s", linep);
+	serval_logf(level, __NOWHERE__, "GDB %s", linep);
 	linep = p + 1;
       }
     if (readp >= bufe && linep == buf) {
       // Line does not fit into buffer.
       char t = bufe[-1];
       bufe[-1] = '\0';
-      logMessage(level, __NOWHERE__, "GDB %s", buf);
+      serval_logf(level, __NOWHERE__, "GDB %s", buf);
       buf[0] = t;
       readp = buf + 1;
     } else if (readp + 120 >= bufe && linep != buf) {
@@ -202,7 +196,7 @@ int logBacktrace(int level, struct __sourceloc whence)
     WHY_perror("read");
   if (readp > linep) {
     *readp = '\0';
-    logMessage(level, __NOWHERE__, "GDB %s", linep);
+    serval_logf(level, __NOWHERE__, "GDB %s", linep);
   }
   close(stdout_fds[0]);
   int status = 0;
@@ -210,7 +204,7 @@ int logBacktrace(int level, struct __sourceloc whence)
     WHY_perror("waitpid");
   strbuf b = strbuf_local_buf(buf);
   strbuf_append_exit_status(b, status);
-  logMessage(level, __NOWHERE__, "gdb %s", buf);
+  serval_logf(level, __NOWHERE__, "gdb %s", buf);
   unlink(tempfile);
 #endif
   return 0;

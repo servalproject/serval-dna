@@ -73,6 +73,7 @@ typedef struct _xprintf {
     void *context;
 } XPRINTF;
 
+#define XPRINTF_IS_NULL(X)  ((X).func == NULL)
 #define _XPRINTF(F,C)       ((XPRINTF){(F),(C)})
 
 void xprintf(XPRINTF xpf, const char *fmt, ...) __attribute__ ((__ATTRIBUTE_format(printf,2,3)));
@@ -80,7 +81,12 @@ void vxprintf(XPRINTF xpf, const char *fmt, va_list);
 void xputs(const char *str, XPRINTF xpf);
 void xputc(char c, XPRINTF xpf);
 
+size_t xhexdump_line(XPRINTF xpf, const unsigned char *addr, const size_t len, const size_t off);
+void xhexdump(XPRINTF xpf, const unsigned char *addr, size_t len, const char *line_prefix);
+
 #define XPRINTF_GEN(F,C)    _XPRINTF((F),(void *)(C))
+
+#define XPRINTF_NULL        _XPRINTF(NULL, NULL)
 
 /* Standard i/o adapter.  An XPRINTF constructed with XPRINTF_STDIO(stream)
  * will write all its output to stream using fprintf(stream,...).

@@ -22,6 +22,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "xprintf.h"
 
+/* Primitives.
+ */
+
 void xprintf(XPRINTF xfp, const char *fmt, ...)
 {
   va_list ap;
@@ -44,6 +47,37 @@ void xputc(char c, XPRINTF xpf)
 {
   xprintf(xpf, "%c", c);
 }
+
+size_t xhexdump_line(XPRINTF xpf, const unsigned char *addr, const size_t len, const size_t off)
+{
+  xprintf(xpf, "%04zx :", off);
+  size_t i;
+  for (i = 0; i < 16 && off + i < len; i++)
+    xprintf(xpf, " %02x", addr[off + i]);
+  for (; i < 16; i++)
+    xputs("   ", xpf);
+  xputs("    ", xpf);
+  for (i = 0; i < 16 && off + i < len; ++i) {
+    unsigned char c = addr[off + i];
+    xprintf(xpf, "%c", c >= ' ' && c < 0x7f ? c : '.');
+  }
+  return i;
+}
+
+void xhexdump(XPRINTF xpf, const unsigned char *addr, const size_t len, const char *line_prefix)
+{
+  size_t off = 0;
+  while (off < len) {
+    xputs(line_prefix, xpf);
+    size_t skip = xhexdump_line(xpf, addr, len, off);
+    off += skip;
+    addr += skip;
+    xputc('\n', xpf);
+  }
+}
+
+/* Implementations for various destinations.
+ */
 
 void _cx_vprintf_stdio(void *context, const char *fmt, va_list ap)
 {

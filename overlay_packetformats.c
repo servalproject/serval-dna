@@ -420,11 +420,9 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	payload_len = ob_get_ui16(b);
 	if (payload_len > ob_remaining(b)){
 	  unsigned char *current = ob_ptr(b)+ob_position(b);
-	  if (IF_DEBUG(overlayframes))
-	    dump("Payload Header", header_start, current - header_start);
-	  ret = WHYF("Payload length %zd suggests frame should be %zd bytes, but was only %zd", 
+	  DEBUG_dump(overlayframes, "Payload Header", header_start, current - header_start);
+	  ret = WHYF("Payload length %zd suggests frame should be %zd bytes, but was only %zd",
 	             payload_len, ob_position(b)+payload_len, len);
-	  
 	  // TODO signal reduced MTU?
 	  goto end;
 	}

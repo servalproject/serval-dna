@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __SERVAL_DNA__COMMANDLINE_H
 
 #include <stdio.h> // for FILE
+#include "lang.h" // for _APPEND() macro
 #include "section.h"
 #include "trigger.h"
 #include "cli.h"
@@ -29,10 +30,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define KEYRING_PIN_OPTION	  ,"[--keyring-pin=<pin>]"
 #define KEYRING_ENTRY_PIN_OPTION  ,"[--entry-pin=<pin>]"
 #define KEYRING_PIN_OPTIONS	  KEYRING_PIN_OPTION KEYRING_ENTRY_PIN_OPTION "..."
-
-// macros are weird sometimes ....
-#define __APPEND_(X,Y) X ## Y
-#define _APPEND(X,Y) __APPEND_(X,Y)
 
 #define DEFINE_CMD(FUNC, FLAGS, HELP, WORD1, ...) \
   static int FUNC(const struct cli_parsed *parsed, struct cli_context *context); \

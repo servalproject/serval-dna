@@ -138,8 +138,8 @@ static int app_crypt_test(const struct cli_parsed *parsed, struct cli_context *c
 
     if (memcmp(&sign1_sk[32], sign1_pk, crypto_sign_PUBLICKEYBYTES)) {
       WHY("Could not calculate public key from private key.\n");
-      dump("calculated",&pk,sizeof(pk));
-      dump("original",&sign1_pk,sizeof(sign1_pk));
+      WHY_dump("calculated",&pk,sizeof(pk));
+      WHY_dump("original",&sign1_pk,sizeof(sign1_pk));
     } else
       cli_printf(context, "Public key is contained in private key.\n");
 
@@ -162,12 +162,12 @@ static int app_crypt_test(const struct cli_parsed *parsed, struct cli_context *c
     bzero(plainText,1024);
     snprintf((char *)&plainText[0],sizeof plainText,"%s","No casaba melons allowed in the lab.");
     int plainLenIn=64;
-    dump("plaintext", plainText, 64);
+    WHY_dump("plaintext", plainText, 64);
 
     if (crypto_sign_detached(sig, NULL, plainText, plainLenIn, key))
       return WHY("crypto_sign_detached() failed.\n");
   
-    dump("signature", sig, sizeof sig);
+    WHY_dump("signature", sig, sizeof sig);
    
     unsigned char casabamelons[crypto_sign_BYTES]={
       0xa4,0xea,0xd0,0x7f,0x11,0x65,0x28,0x3f,
@@ -182,7 +182,7 @@ static int app_crypt_test(const struct cli_parsed *parsed, struct cli_context *c
     
     if (memcmp(casabamelons, sig, 64)) {
       WHY("Computed signature for stored key+message does not match expected value.\n");
-      dump("expected signature",casabamelons,sizeof(casabamelons));
+      WHY_dump("expected signature",casabamelons,sizeof(casabamelons));
     }
 
     if (crypto_sign_verify_detached(sig, plainText, plainLenIn, &key[32]))

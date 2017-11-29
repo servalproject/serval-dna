@@ -302,17 +302,26 @@ libservaldaemon.a: _servald.a $(LIBSODIUM_A)
 
 libservaldaemon.so: \
 		$(OBJSDIR_SERVALD)/servald_features.o \
+		$(OBJSDIR_SERVALD)/log_output_console.o \
+		$(OBJSDIR_SERVALD)/log_output_file.o \
 		$(SERVAL_DAEMON_JNI_OBJS) \
 		_servald.a \
 		$(LIBSODIUM_A)
 	@echo LINK $@
 	@$(CC) -Wall -shared -o $@ $(LDFLAGS) $(filter %.o, $^) $(filter %.a, $^)
 
-servald: $(OBJSDIR_SERVALD)/servald_features.o libservaldaemon.a
+# The daemon executable.  There is no main.o mentioned in this link line, so
+# the link brings it in from libservaldaemon.a in order to resolve the 'main'
+# symbol.  The servald_features.o object causes all the other .o object files
+# to be pulled into the link.
+servald:	$(OBJSDIR_SERVALD)/servald_features.o \
+		$(OBJSDIR_SERVALD)/log_output_console.o \
+		$(OBJSDIR_SERVALD)/log_output_file.o \
+		libservaldaemon.a
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
-servaldwrap: $(OBJSDIR_SERVALD)/servalwrap.o $(OBJSDIR_TOOLS)/version.o
+servaldwrap: $(OBJSDIR_SERVALD)/servalwrap.o
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 

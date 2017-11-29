@@ -38,26 +38,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <mach-o/dyld.h>
 #endif
 
-void log_info_mkdir(struct __sourceloc __whence, const char *path, mode_t mode)
+void log_info_mkdir(struct __sourceloc __whence, const char *path, mode_t mode, void *UNUSED(context))
 {
   INFOF("mkdir %s (mode %04o)", alloca_str_toprint(path), mode);
 }
 
-int _mkdirs(struct __sourceloc __whence, const char *path, mode_t mode, MKDIR_LOG_FUNC *logger)
+int _mkdirs(struct __sourceloc __whence, const char *path, mode_t mode, MKDIR_LOG_FUNC *logger, void *log_context)
 {
-  return _mkdirsn(__whence, path, strlen(path), mode, logger);
+  return _mkdirsn(__whence, path, strlen(path), mode, logger, log_context);
 }
 
-int _emkdirs(struct __sourceloc __whence, const char *path, mode_t mode, MKDIR_LOG_FUNC *logger)
+int _emkdirs(struct __sourceloc __whence, const char *path, mode_t mode, MKDIR_LOG_FUNC *logger, void *log_context)
 {
-  if (_mkdirs(__whence, path, mode, logger) == -1)
+  if (_mkdirs(__whence, path, mode, logger, log_context) == -1)
     return WHYF_perror("mkdirs(%s,%o)", alloca_str_toprint(path), mode);
   return 0;
 }
 
-int _emkdirsn(struct __sourceloc __whence, const char *path, size_t len, mode_t mode, MKDIR_LOG_FUNC *logger)
+int _emkdirsn(struct __sourceloc __whence, const char *path, size_t len, mode_t mode, MKDIR_LOG_FUNC *logger, void *log_context)
 {
-  if (_mkdirsn(__whence, path, len, mode, logger) == -1)
+  if (_mkdirsn(__whence, path, len, mode, logger, log_context) == -1)
     return WHYF_perror("mkdirsn(%s,%lu,%o)", alloca_toprint(-1, path, len), (unsigned long)len, mode);
   return 0;
 }
@@ -72,7 +72,7 @@ int _emkdirsn(struct __sourceloc __whence, const char *path, size_t len, mode_t 
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int _mkdirsn(struct __sourceloc whence, const char *path, size_t len, mode_t mode, MKDIR_LOG_FUNC *logger)
+int _mkdirsn(struct __sourceloc whence, const char *path, size_t len, mode_t mode, MKDIR_LOG_FUNC *logger, void *log_context)
 {
   if (len == 0)
     errno = EINVAL;
@@ -81,7 +81,7 @@ int _mkdirsn(struct __sourceloc whence, const char *path, size_t len, mode_t mod
     strncpy(pathfrag, path, len)[len] = '\0';
     if (mkdir(pathfrag, mode) != -1) {
       if (logger)
-	logger(whence, pathfrag, mode);
+	logger(whence, pathfrag, mode, log_context);
       return 0;
     }
     if (errno == EEXIST) {
@@ -98,17 +98,15 @@ int _mkdirsn(struct __sourceloc whence, const char *path, size_t len, mode_t mod
       while (lastsep != path && *--lastsep == '/')
 	;
       if (lastsep != path) {
-	if (_mkdirsn(whence, path, lastsep - path + 1, mode, logger) == -1)
+	if (_mkdirsn(whence, path, lastsep - path + 1, mode, logger, log_context) == -1)
 	  return -1;
-	
 	if (mkdir(pathfrag, mode) == -1) {
-	  if (errno==EEXIST)
+	  if (errno == EEXIST)
 	    return 0;
 	  return -1;
 	}
-	
 	if (logger)
-	  logger(whence, pathfrag, mode);
+	  logger(whence, pathfrag, mode, log_context);
 	return 0;
       }
     }

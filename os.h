@@ -108,27 +108,27 @@ __SERVAL_DNA__OS_INLINE off64_t lseek64(int fd, off64_t offset, int whence) {
 
 /* The "e" variants log the error before returning -1.
  */
-typedef void MKDIR_LOG_FUNC(struct __sourceloc, const char *, mode_t);
+typedef void MKDIR_LOG_FUNC(struct __sourceloc, const char *, mode_t, void *);
 MKDIR_LOG_FUNC log_info_mkdir;
-int _mkdirs(struct __sourceloc, const char *path, mode_t mode, MKDIR_LOG_FUNC *);
-int _mkdirsn(struct __sourceloc, const char *path, size_t len, mode_t mode, MKDIR_LOG_FUNC *);
-int _emkdirs(struct __sourceloc, const char *path, mode_t mode, MKDIR_LOG_FUNC *);
-int _emkdirsn(struct __sourceloc, const char *path, size_t len, mode_t mode, MKDIR_LOG_FUNC *);
+int _mkdirs(struct __sourceloc, const char *path, mode_t mode, MKDIR_LOG_FUNC *, void *);
+int _mkdirsn(struct __sourceloc, const char *path, size_t len, mode_t mode, MKDIR_LOG_FUNC *, void *);
+int _emkdirs(struct __sourceloc, const char *path, mode_t mode, MKDIR_LOG_FUNC *, void *);
+int _emkdirsn(struct __sourceloc, const char *path, size_t len, mode_t mode, MKDIR_LOG_FUNC *, void *);
 
-#define mkdirs_log(path, mode, func)        _mkdirs(__WHENCE__, (path), (mode), (func))
-#define mkdirsn_log(path, len, mode, func)  _mkdirsn(__WHENCE__, (path), (len), (mode), (func))
-#define emkdirs_log(path, mode, func)       _emkdirs(__WHENCE__, (path), (mode), (func))
-#define emkdirsn_log(path, len, mode, func) _emkdirsn(__WHENCE__, (path), (len), (mode), (func))
+#define mkdirs_log(path, mode, func, ctx)        _mkdirs(__WHENCE__, (path), (mode), (func), (ctx))
+#define mkdirsn_log(path, len, mode, func, ctx)  _mkdirsn(__WHENCE__, (path), (len), (mode), (func), (ctx))
+#define emkdirs_log(path, mode, func, ctx)       _emkdirs(__WHENCE__, (path), (mode), (func), (ctx))
+#define emkdirsn_log(path, len, mode, func, ctx) _emkdirsn(__WHENCE__, (path), (len), (mode), (func), (ctx))
 
-#define mkdirs(path, mode)              mkdirs_log((path), (mode), NULL)
-#define mkdirsn(path, len, mode)        mkdirsn_log((path), (len), (mode), NULL)
-#define emkdirs(path, mode)             emkdirs_log((path), (mode), NULL)
-#define emkdirsn(path, len, mode)       emkdirsn_log((path), (len), (mode), NULL)
+#define mkdirs(path, mode)              mkdirs_log((path), (mode), NULL, NULL)
+#define mkdirsn(path, len, mode)        mkdirsn_log((path), (len), (mode), NULL, NULL)
+#define emkdirs(path, mode)             emkdirs_log((path), (mode), NULL, NULL)
+#define emkdirsn(path, len, mode)       emkdirsn_log((path), (len), (mode), NULL, NULL)
 
-#define mkdirs_info(path, mode)         mkdirs_log((path), (mode), log_info_mkdir)
-#define mkdirsn_info(path, len, mode)   mkdirsn_log((path), (len), (mode), log_info_mkdir)
-#define emkdirs_info(path, mode)        emkdirs_log((path), (mode), log_info_mkdir)
-#define emkdirsn_info(path, len, mode)  emkdirsn_log((path), (len), (mode), log_info_mkdir)
+#define mkdirs_info(path, mode)         mkdirs_log((path), (mode), log_info_mkdir, NULL)
+#define mkdirsn_info(path, len, mode)   mkdirsn_log((path), (len), (mode), log_info_mkdir, NULL)
+#define emkdirs_info(path, mode)        emkdirs_log((path), (mode), log_info_mkdir, NULL)
+#define emkdirsn_info(path, len, mode)  emkdirsn_log((path), (len), (mode), log_info_mkdir, NULL)
 
 /* Read the symbolic link into the supplied buffer and add a terminating nul.
  * Logs an ERROR and returns -1 if the buffer is too short to hold the link

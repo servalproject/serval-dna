@@ -69,6 +69,7 @@
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "commandline.h"
+#include "xprintf.h"
 
 static int console_dial(const struct cli_parsed *parsed, struct cli_context *context);
 static int console_answer(const struct cli_parsed *parsed, struct cli_context *context);
@@ -256,7 +257,7 @@ static int remote_print(char *cmd, int argc, char **argv, unsigned char *data, i
   }
   printf("\n");
   if (dataLen){
-    dump(NULL,data,dataLen);
+    xhexdump(XPRINTF_STDIO(stdout), data, dataLen, "");
   }
   fflush(stdout);
   return 1;

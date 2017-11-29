@@ -469,8 +469,7 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
     return 0;
   DEBUGF(rhizome_rx, "manifest len=%zu has %u signatories. Associated filesize=%"PRIu64" bytes", 
 	 m->manifest_all_bytes, m->sig_count, m->filesize);
-  if (IF_DEBUG(rhizome_rx))
-    dump("manifest", m->manifestdata, m->manifest_all_bytes);
+  DEBUG_dump(rhizome_rx, "manifest", m->manifestdata, m->manifest_all_bytes);
   enum rhizome_bundle_status status = rhizome_add_manifest_to_store(m, NULL);
   switch (status) {
     case RHIZOME_BUNDLE_STATUS_NEW:

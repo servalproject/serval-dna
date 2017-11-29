@@ -1531,7 +1531,7 @@ void logServalPacket(int level, struct __sourceloc __whence, const char *message
   else if (mb.buffer == NULL)
     WHYF("serval_packetvisualise() output buffer missing, message=%s packet=%p len=%lu", alloca_toprint(-1, message, strlen(message)), packet, (long unsigned int)len);
   else
-    logString(level, __whence, mb.buffer);
+    serval_log_multiline(level, __whence, mb.buffer);
   if (mb.buffer)
     free(mb.buffer);
 }

@@ -278,8 +278,7 @@ END_STRUCT
 #define LOG_FORMAT_OPTIONS \
 ATOM(bool_t,                show_pid,    1, boolean,, "If true, all log lines contain PID of logging process") \
 ATOM(bool_t,                show_time,   1, boolean,, "If true, all log lines contain time stamp") \
-ATOM(int,                   level,       LOG_LEVEL_DEBUG, log_level,, "Only log messages at and above this level of severity") \
-ATOM(bool_t,                dump_config, 1, boolean,, "If true, current configuration is dumped into start of log")
+ATOM(int,                   level,       LOG_LEVEL_DEBUG, log_level,, "Only log messages at and above this level of severity")
 
 STRUCT(log_format)
 LOG_FORMAT_OPTIONS
@@ -307,7 +306,6 @@ STRUCT_DEFAULT(log_format, console)
 ATOM_DEFAULT(show_pid,    0)
 ATOM_DEFAULT(show_time,   0)
 ATOM_DEFAULT(level,       LOG_LEVEL_HINT)
-ATOM_DEFAULT(dump_config, 0)
 END_STRUCT_DEFAULT
 
 STRUCT_DEFAULT(log_format, android)

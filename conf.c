@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "instance.h"
 #include "log.h"
+#include "log_prolog.h"
 #include "debug.h"
 #include "str.h"
 #include "mem.h"
@@ -233,27 +234,28 @@ static int reload_and_parse(int permissive, int strict)
 	WARNF("config file %s loaded despite defects -- %s", conffile_path(), strbuf_str(b));
     }
   }
+  // Dump the log file before setting cf_limbo=0, so that:
+  // - if we are currently in limbo this will print no dump, then as soon as limbo goes off the
+  //   very next log message will emit the prolog at the top of the log, which includes a dump of
+  //   the newly loaded configuration;
+  // - if not currently in limbo, then will print a dump, which may differ from the dump that
+  //   already appears in the log's prolog.
+  cf_dump_to_log("Configuration reloaded");
   cf_limbo = 0; // let log messages out
-  logFlush();
+  serval_log_flush();
   if (changed) {
-    CALL_TRIGGER(conf_log);
     CALL_TRIGGER(conf_change);
   }
   return ret;
 }
 
-// Put a dummy no-op trigger callback into the "config_change" and "config_log" trigger sections,
-// otherwise if no other object provides one, the link will fail with errors like:
+// Put a dummy no-op trigger callback into the "config_change" trigger section, otherwise if no
+// other object provides one, the link will fail with errors like:
 // undefined reference to `__start_tr_config_change'
 // undefined reference to `__stop_tr_config_change'
 
-static void __dummy_on_config_log();
-DEFINE_TRIGGER(conf_log, __dummy_on_config_log);
-static void __dummy_on_config_log() {}
-
-static void __dummy_on_config_change();
-DEFINE_TRIGGER(conf_change, __dummy_on_config_change);
 static void __dummy_on_config_change() {}
+DEFINE_TRIGGER(conf_change, __dummy_on_config_change);
 
 // The configuration API entry points.
 
@@ -289,3 +291,36 @@ int cf_reload_permissive()
 {
   return reload_and_parse(1, 0);
 }
+
+void cf_dump_to_log(const char *heading)
+{
+  if (cf_limbo)
+    return;
+  struct cf_om_node *root = NULL;
+  int ret = cf_fmt_config_main(&root, &config);
+  if (ret == CFERROR) {
+    WHY("cannot dump current configuration: cf_fmt_config_main() returned CFERROR");
+  } else {
+    NOWHENCE(INFOF("%s:", heading));
+    struct cf_om_iterator oit;
+    int empty = 1;
+    for (cf_om_iter_start(&oit, root); oit.node; cf_om_iter_next(&oit)) {
+      if (oit.node->text && oit.node->line_number) {
+	empty = 0;
+	NOWHENCE(INFOF("   %s=%s", oit.node->fullkey, oit.node->text));
+      }
+    }
+    if (empty)
+      NOWHENCE(INFO("   (empty)"));
+  }
+  cf_om_free_node(&root);
+}
+
+
+/* Dump the configuration in the prolog of every log file.
+ */
+
+static void log_prolog_dump_config() {
+  cf_dump_to_log("Current configuration");
+}
+DEFINE_TRIGGER(log_prolog, log_prolog_dump_config);

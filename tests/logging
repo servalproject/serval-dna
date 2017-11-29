@@ -131,31 +131,37 @@ test_LogFileStderrFile() {
 }
 
 doc_LogFileRotation="Log file rotation and deletion"
+setup_LogFileRotation() {
+   setup
+   executeOk_servald config set log.console.level debug \
+                            set log.console.show_pid true \
+                            set log.file.level warn
+}
 test_LogFileRotation() {
    executeOk_servald config \
       set log.file.directory_path "$PWD" \
       set log.file.rotate 3 \
       set log.file.duration 2s
-   assert --message="no log files yet" [ $(ls *.log | wc -l) -eq 0 ]
-   executeOk_servald log info one
-   assert --message="one log file" [ $(ls *.log | wc -l) -eq 1 ]
-   log1=*.log
+   assert --stderr --message="no log files yet" [ $(ls *.log 2>/dev/null | wc -l) -eq 0 ]
+   executeOk_servald log warn one
+   assert --stderr --message="one log file" [ $(ls *.log | wc -l) -eq 1 ]
+   log1=$(ls *.log | tail -n 1)
    sleep 2.1
-   executeOk_servald log info two
-   assert --message="two log files" [ $(ls *.log | wc -l) -eq 2 ]
+   executeOk_servald log warn two
+   assert --stderr --message="two log files" [ $(ls *.log | wc -l) -eq 2 ]
    log2=$(ls *.log | tail -n 1)
-   assert --message="ascending log file name" [ "$log2" != "$log1" ]
+   assert --stderr --message="ascending log file name" [ "$log2" != "$log1" ]
    sleep 2.1
-   executeOk_servald log info three
-   assert --message="three log files" [ $(ls *.log | wc -l) -eq 3 ]
+   executeOk_servald log warn three
+   assert --stderr --message="three log files" [ $(ls *.log | wc -l) -eq 3 ]
    log3=$(ls *.log | tail -n 1)
-   assert --message="ascending log file name" [ "$log3" != "$log1" -a "$log3" != "$log2" ]
+   assert --stderr --message="ascending log file name" [ "$log3" != "$log1" -a "$log3" != "$log2" ]
    sleep 2.1
-   executeOk_servald log info four
-   assert --message="three log files" [ $(ls *.log | wc -l) -eq 3 ]
-   assert --message="first log file gone" ! [ -e $log1 ]
+   executeOk_servald log warn four
+   assert --stderr --message="three log files" [ $(ls *.log | wc -l) -eq 3 ]
+   assert --stderr --message="first log file gone" ! [ -e $log1 ]
    log4=$(ls *.log | tail -n 1)
-   assert --message="ascending log file name" [ "$log4" != "$log2" -a "$log4" != "$log3" -a "$log4" != "$log1" ]
+   assert --stderr --message="ascending log file name" [ "$log4" != "$log2" -a "$log4" != "$log3" -a "$log4" != "$log1" ]
 }
 
 doc_LogFileDirectoryAbsolute="Absolute log file directory path"

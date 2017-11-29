@@ -35,6 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/time.h>
 #include <unistd.h>
 #include "os.h"
+#include "xprintf.h"
 
 #define PACKET_SIZE 255
 int chars_per_ms=1;
@@ -143,7 +144,7 @@ int read_bytes(struct radio_state *s)
     return bytes;
   log_time();
   fprintf(stderr, "Read from %s\n", s->name);
-  dump(NULL,buff,bytes);
+  xhexdump(XPRINTF_STDIO(stderr), buff, bytes, "");
   s->last_char_ms = gettime_ms();
   
   // process incoming bytes
@@ -190,7 +191,7 @@ void write_bytes(struct radio_state *s)
   if (wrote != -1){
     log_time();
     fprintf(stderr, "Wrote to %s\n", s->name);
-    dump(NULL, s->rxbuffer, (size_t)wrote);
+    xhexdump(XPRINTF_STDIO(stderr), s->rxbuffer, (size_t)wrote, "");
     if ((size_t)wrote < s->rxb_len)
       bcopy(&s->rxbuffer[(size_t)wrote], s->rxbuffer, s->rxb_len - (size_t)wrote);
     s->rxb_len -= (size_t)wrote;
@@ -318,7 +319,7 @@ void transfer_bytes(struct radio_state *radios)
       if (bytes < PACKET_SIZE && t->wait_count++ <5){
 	log_time();
 	fprintf(stderr,"Waiting for more bytes for %s\n", t->name);
-	dump(NULL, t->txbuffer, bytes);
+	xhexdump(XPRINTF_STDIO(stderr), t->txbuffer, bytes, "");
       }else
 	send = bytes;
     }

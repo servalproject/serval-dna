@@ -514,8 +514,8 @@ int radio_link_decode(struct overlay_interface *interface, uint8_t c)
       // Since we know we've synced with the remote party, 
       // and there's nothing we can do about any earlier data
       // throw away everything before the end of this packet
-      if (state->payload_start && IF_DEBUG(radio_link))
-	dump("{radio_link} Skipped", state->payload, state->payload_start);
+      if (state->payload_start)
+	DEBUG_dump(radio_link, "Skipped", state->payload, state->payload_start);
       
       // If the packet is truncated by less than 16 bytes, RS protection should be enough to recover the packet, 
       // but we may need to examine the last few bytes to find the start of the next packet.

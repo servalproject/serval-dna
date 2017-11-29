@@ -99,7 +99,7 @@ static int sqlite_trace_callback(unsigned UNUSED(mask), void *UNUSED(context), v
       break;
     }
     if (rendered_sql) {
-      logMessage(LOG_LEVEL_DEBUG, sqlite_trace_whence ? *sqlite_trace_whence : __HERE__, "%s", rendered_sql);
+      serval_logf(LOG_LEVEL_DEBUG, sqlite_trace_whence ? *sqlite_trace_whence : __HERE__, "%s", rendered_sql);
       ++sqlite_trace_done;
     }
     if (expanded_sql)

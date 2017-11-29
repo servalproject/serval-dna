@@ -268,7 +268,7 @@ test_KeyringNoAutoCreate() {
     wait_until has_sent_mdp_tick_to "dummy1/$instance_name"
     executeOk_servald keyring list
     assert_keyring_list 0
-    executeOk_servald id self
+    executeOk_servald --stderr id self
     assertStdoutLineCount == 3
 }
 finally_KeyringNoAutoCreate() {

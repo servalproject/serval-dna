@@ -67,13 +67,6 @@ enum status_codes{
   //CODE_CRYPTO_ERROR = 12,
 };
 
-
-
-/* Conveniences to assist readability
- */
-
-typedef char bool_t;
-
 /* Serval ID (aka Subscriber ID)
  */
 
