@@ -99,7 +99,7 @@ extract_stdout_keyvalue_optional() {
 # commands that return "key:value\n" pairs.
 extract_stdout_keyvalue() {
    local _label="$2"
-   assert --message="stdout of ($executed) contains valid '$_label:' line" --stdout extract_stdout_keyvalue_optional "$@"
+   assert --message="stdout of ($TFWEXECUTED) contains valid '$_label:' line" --stdout extract_stdout_keyvalue_optional "$@"
 }
 
 # Parse the standard result set output produced by the immediately preceding command
@@ -189,7 +189,7 @@ execute_servald() {
 #  - asserts that standard error contains no error messages
 executeOk_servald() {
    executeOk --core-backtrace --executable=$servald "$@"
-   assertStderrGrep --matches=0 --message="stderr of ($executed) contains no error messages" '^ERROR:'
+   assertStderrGrep --matches=0 --message="stderr of ($TFWEXECUTED) contains no error messages" '^ERROR:'
 }
 
 # Utility function:
