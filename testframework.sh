@@ -1608,7 +1608,7 @@ end_fixture() {
 assert() {
    _tfw_getopts assert "$@"
    shift $_tfw_getopts_shift
-   [ -z "$_tfw_message" ] && _tfw_message=$(shellarg "$@")
+   _tfw_message="${_tfw_message:+$_tfw_message }("$@")"
    _tfw_assert "$@" || _tfw_failexit || return $?
    $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
    return 0
