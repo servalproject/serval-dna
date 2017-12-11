@@ -300,14 +300,19 @@ typedef const struct strbuf *const_strbuf;
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 #if defined(__GNUC__) && defined(HAVE_FUNC_ATTRIBUTE_ALLOC_SIZE)
-#   define strbuf_local_buf(buf) strbuf_local((char*)(buf), (sizeof(buf) == __builtin_object_size(buf, 1)) ? sizeof(buf) : __buffer_arg_is_not_array())
-    // If the following error occurs at compile time or this function is not
-    // resolved at link time, it means that the argument to strbuf_local_buf()
-    // was not an array whose size is known at compile time.  The most common
-    // cause of this is passing a pointer as the argument.  The solution is to
-    // use strbuf_local(b, len) instead of strbuf_local_buf(b), and supply the
-    // length of the buffer explicitly.
-    size_t __buffer_arg_is_not_array() __attribute__ ((__ATTRIBUTE_error("argument to strbuf_local_buf() must be an array not a pointer")));
+
+#   define strbuf_local_buf(buf) strbuf_local((char*)(buf), (__buffer_size_chk(sizeof(buf), __builtin_object_size(buf, 1))))
+
+// If the following assertion fails, it means that the argument to
+// strbuf_local_buf() was not an array whose size is known at compile time.
+// The most common cause of this is passing a pointer as the argument.  The
+// solution is to use strbuf_local(b, len) instead of strbuf_local_buf(b),
+// and supply the length of the buffer explicitly.
+__STRBUF_INLINE size_t __buffer_size_chk(size_t size, size_t chk) {
+    assert(chk == (size_t)-1 || size == chk);
+    return size;
+}
+
 #else
 #   define strbuf_local_buf(buf) strbuf_local((char*)(buf), sizeof(buf))
 #endif
