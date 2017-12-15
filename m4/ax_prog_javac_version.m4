@@ -43,7 +43,6 @@
 AU_ALIAS([AC_PROG_JAVAC_VERSION], [AX_PROG_JAVAC_VERSION])
 AC_DEFUN([AX_PROG_JAVAC_VERSION],[
     AC_REQUIRE([AC_PROG_SED])
-    AC_PROG_SED
     AC_CACHE_CHECK([Java compiler version],
                    ax_cv_prog_javac_version,
                    [ dnl
