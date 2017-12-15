@@ -268,7 +268,8 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_rawComman
   return (jint) status;
 }
 
-/* Output primitives for JNI.
+/* An instance of struct cli_vtable that passes all output fields to an IJniResults
+ * interface callback.
  */
 
 static struct jni_context *jni_context(struct cli_context *cli_context)

@@ -259,6 +259,11 @@ present][Swift development]:
   Swift language's run-time support and resultant library dependencies, so is
   not suitable for deployment.
 
+* **ServalDNA.swiftmodule**  
+  **ServalDNA.swiftdoc**  
+  **libServalDNA.a**  
+  are the [Swift Daemon API module][].
+
 * **swift-client-api/build/debug/ServalClient.swiftmodule**  
   **swift-client-api/build/debug/ServalClient.swiftdoc**  
   **swift-client-api/build/debug/libServalClient.a**  
@@ -330,6 +335,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [gcc 6]: http://gcc.gnu.org/gcc-6/
 [Notes for Developers]: ./doc/Development.md
 [Swift development]: ./doc/Development.md#swift
+[Swift Daemon API module]: ./doc/Development.md#swift-daemon-api
 [Swift Client API module]: ./doc/Development.md#swift-client-api
 [OpenWRT]: ./doc/OpenWRT.md
 [Serval Infrastructure]: ./doc/Serval-Infrastructure.md

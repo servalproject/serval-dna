@@ -241,10 +241,10 @@ Serval DNA supports [Swift][], the language that Apple recommend for developing
 iOS apps for their mobile devices such as phones and tablets.  The
 `./configure` script [generated from configure.ac](#autotools) detects whether
 a [Swift 4][] compiler is present, or failing that, a [Swift 3][] compiler, and
-if so, then produces a Makefile that will compile
-[servaldswift.swift](../servaldswift.swift) into the *servaldswift* executable,
-to prove that the Swift [module map](../module.modulemap) allows Swift source
-code to invoke internal Serval DNA functions.
+if so, then produces a Makefile that will compile [servaldswift.swift][] into
+the *servaldswift* executable, to prove that the Swift [module
+map](../module.modulemap) allows Swift source code to invoke internal Serval
+DNA functions.
 
 The `./configure` script can be passed the following variables, either as
 environment variables or using the `VARNAME=value` syntax on its command line:
@@ -255,12 +255,45 @@ environment variables or using the `VARNAME=value` syntax on its command line:
 * `SWIFTCFLAGS` extra command-line arguments to pass to the Swift compiler;
   analogous to `CFLAGS` for the C compiler
 
+Swift Daemon API
+----------------
+
+Serval DNA provides a *Swift Daemon API* as a [Swift module][] called
+**ServalDNA**, which provides access to some of the internal APIs of the Serval
+DNA daemon by wrapping direct function invocations in Swift classes.
+
+The Swift daemon API is written as a set of [Swift][] "wrappers" around
+internal functions and constants that are declared in C header files.  Those
+internals are exposed to Swift by the Swift [module map](../module.modulemap),
+which defines a [Swift module][] called **servald** that has the following
+submodules:
+
+* **servald.log** the Serval DNA logging API, including the log output API
+
+* **servald.cli** the Serval DNA [CLI API][] and the daemon's command-line
+  entry point
+
+The [CliContext][] Swift class provides an object-oriented interface to the
+[CLI API][].  To capture the output from any CLI command, a Swift program can
+simply subclass [CliContext][] and override its `write()` method and any other
+methods as needed, then pass an instance of that subclass to the
+[serval\_commandline\_main][] function.  An example of how to do this is in
+[servaldswift.swift][], which uses an instance of the [CliContextFile][]
+subclass to print its output on standard output via a buffer.
+
+[servaldswift.swift][] shows how to capture Serval DNA log output in Swift
+code, by providing an implementation of the delegate log output `print()`
+function.  This works because [Makefile.in][] includes `log_output_delegate.o`
+in the link for the *servaldswift* executable, and omits the other log outputs.
+
 Swift Client API
 ----------------
 
 Serval DNA provides a *Swift Client API* as a [Swift module][] called
 **ServalClient**, which provides access to the services of the Serval DNA
-daemon through its [REST API][].
+daemon through its [REST API][].  Once an iOS app has started a thread that is
+running the daemon (invoked via the [Swift Daemon API](#swift-daemon-api)), the
+client API can be used to communicate with the running daemon thread.
 
 The Swift client API is written entirely in [Swift][] using the [URLSession][]
 Foundation class and related classes as the HTTP client.  The API is covered
@@ -307,10 +340,16 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [CC BY 4.0]: ../LICENSE-DOCUMENTATION.md
 [Serval DNA]: ../README.md
 [build]: ../INSTALL.md
+[CLI API]: ./CLI-API.md
 [REST API]: ./REST-API.md
 [Keyring REST API]: ./REST-API-Keyring.md
 [test scripts]: ./Testing.md
 [configure.ac]: ../configure.ac
+[Makefile.in]: ../Makefile.in
+[servaldswift.swift]: ../servaldswift.swift
+[CliContext]: ../swift-daemon-api/Sources/CliContext.swift
+[CliContextFile]: ../swift-daemon-api/Sources/CliContextFile.swift
+[serval\_commandline\_main]: ../swift-daemon-api/Sources/commandline.swift
 [autoconf]: http://www.gnu.org/software/autoconf/autoconf.html
 [autoconf macro archive]: http://www.gnu.org/software/autoconf-archive/
 [GNU M4]: http://www.gnu.org/software/m4/m4.html

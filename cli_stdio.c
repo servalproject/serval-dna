@@ -28,6 +28,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "log.h"
 #include "str.h"
 
+/* An instance of struct cli_vtable that prints all fields to a stdio stream.  This is used by the
+ * 'servald' daemon to print its output on stdout.
+ */
+
 static FILE *stdio_fp(struct cli_context *context)
 {
   return ((struct cli_context_stdio *)(context->context))->fp;

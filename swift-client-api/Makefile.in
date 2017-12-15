@@ -23,16 +23,18 @@ SWIFT_BUILD_FLAGS= 	$(addprefix -Xswiftc , $(SWIFTCFLAGS))
 DEFS=			@DEFS@
 SWIFTDEFS=		$(addprefix -Xcc , $(DEFS))
 
-.PHONY: all check check_swiftc check_swift_build swiftmodule clean
+.PHONY: all
+all:	check package swift-client-util
 
-all:	check swiftmodule swift-client-util
+.PHONY: check
+check:	check_swiftc check_swift_build
 
-check: check_swiftc check_swift_build
-
+.PHONY: check_swiftc
 check_swiftc:
 	@if [ -z "$(SWIFTC)" ]; then echo "No swift compiler configured" >&2; exit 1; fi
 	@if ! $(SWIFTC) -version >/dev/null; then echo "Swift compiler not executable" >&2; exit 1; fi
 
+.PHONY: check_swift_build
 check_swift_build:
 	@if [ -z "$(SWIFT_BUILD)" ]; then echo "No swift package manager configured" >&2; exit 1; fi
 	@if ! $(SWIFT_BUILD) -h >/dev/null; then echo "Swift package manager not executable" >&2; exit 1; fi
@@ -40,17 +42,19 @@ check_swift_build:
 # The Swift 3 package manager --chdir option was replaced with --package-path
 # in Swift 4, so to support both, avoid the options altogether and use "cd
 # package-dir && swift build" instead.
-swiftmodule:
+.PHONY: package
+package:
 	mkdir -p $(SWIFT_BUILD_DIR) && \
 		cd $(SWIFT_PACKAGE_DIR) && \
 		$(SWIFT_BUILD) --build-path $(SWIFT_BUILD_DIR) $(SWIFT_BUILD_FLAGS) $(SWIFTDEFS)
 
-$(SWIFT_BUILD_DIR)/debug/libServalClient.a: swiftmodule
+$(SWIFT_BUILD_DIR)/debug/libServalClient.a: package
 
 swift-client-util: $(srcdir)/client_util.swift $(SWIFT_BUILD_DIR)/debug/libServalClient.a
 	@echo SWIFT $@
 	@$(SWIFTC) -emit-executable $(SWIFTCFLAGS) $(SWIFTDEFS) -I $(SWIFT_BUILD_DIR)/debug -o $@ $^
 
+.PHONY: clean
 clean:
 	$(RM) -r $(SWIFT_BUILD_DIR)
 	$(RM) swift-client-util

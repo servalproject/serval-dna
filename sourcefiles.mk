@@ -62,6 +62,7 @@ SERVAL_DAEMON_SOURCES = \
 	keyring_restful.c \
 	log_output_console.c \
 	log_output_file.c \
+	log_output_delegate.c \
 	lsif.c \
 	radio_link.c \
 	meshms.c \
@@ -130,6 +131,12 @@ SERVAL_DAEMON_JNI_SOURCES = \
 	jni_commandline.c \
 	jni_instance.c \
 	jni_server.c
+
+SERVAL_DAEMON_SWIFT_SOURCES = \
+	swift_main.swift \
+	swift_cli.swift \
+	swift_cli_stdio.swift \
+	swift_log.swift
 
 MDP_CLIENT_SOURCES = \
 	mdp_client.c

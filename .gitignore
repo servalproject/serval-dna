@@ -11,6 +11,8 @@
 *.a
 *.suo
 .*.sw?
+*.swiftdoc
+*.swiftmodule
 /VERSION.txt
 /configure
 /autom4te.cache
@@ -37,6 +39,7 @@ test.*.log
 /java-api/Makefile
 /java-api/classes/
 /java-api/testclasses/
+/swift-daemon-api/build/
 /swift-client-api/Makefile
 /swift-client-api/build/
 /swift-client-api/swift-client-util

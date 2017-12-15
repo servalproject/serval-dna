@@ -1,4 +1,5 @@
 # Makefile.in for Serval DNA daemon and libraries
+# nnnn
 # vim: noet ts=8 sts=0 sw=8
 prefix=@prefix@
 exec_prefix=@exec_prefix@
@@ -7,16 +8,24 @@ sbindir=@sbindir@
 sysconfdir=@sysconfdir@
 localstatedir=@localstatedir@
 srcdir=@srcdir@
+abs_srcdir=@abs_srcdir@
+abs_builddir=@abs_builddir@
 
 CC = 			@CC@
 AR =			@AR@
 RANLIB =		@RANLIB@
 JAVAC= 			@JAVAC@
-SWIFTC= 		@SWIFTC@
 
-SWIFTCFLAGS= 		@SWIFTCFLAGS@ -I. -I $(srcdir)
+SWIFTC= 		@SWIFTC@
+SWIFTCFLAGS= 		@SWIFTCFLAGS@ -I$(abs_builddir) -I$(abs_srcdir)
 SWIFTLIBS=		@LIBS@
+
+SWIFT_BUILD= 		@SWIFT_BUILD@
+SWIFT_BUILD_FLAGS= 	$(addprefix -Xswiftc , $(SWIFTCFLAGS)) 
+
 SWIFT_MODULE_NAME=	ServalDNA
+SWIFT_PACKAGE_DIR=	$(srcdir)/swift-daemon-api
+SWIFT_BUILD_DIR=	$(abs_builddir)/swift-daemon-api/build
 
 INSTALL=        	install
 INSTALL_PROGRAM=	$(INSTALL)
@@ -166,13 +175,26 @@ endif # $(JAVAC)
 
 ifneq ($(SWIFTC),) # Only provide Swift targets if the Swift compiler is available.
 
-all:	swift-client-api
+all:	swift-daemon-api swift-client-api
 
 test:	servaldswift
 
-clean:	swift-client-api-clean
+clean:	swift-daemon-api-clean swift-client-api-clean
 
-.PHONY: swift-client-api swift-client-api-clean
+.PHONY: swift-daemon-api swift-daemon-api-clean swift-client-api swift-client-api-clean
+
+libServalDNA.a $(SWIFT_MODULE_NAME).swiftmodule $(SWIFT_MODULE_NAME).swiftdoc: swift-daemon-api
+	cp $(SWIFT_BUILD_DIR)/debug/$(notdir $@) $@
+
+swift-daemon-api:
+	mkdir -p $(SWIFT_BUILD_DIR) && \
+		cd $(SWIFT_PACKAGE_DIR) && \
+		$(SWIFT_BUILD) --build-path $(SWIFT_BUILD_DIR) $(SWIFT_BUILD_FLAGS) $(SWIFTDEFS)
+
+swift-daemon-api-clean:
+	$(RM) -r $(SWIFT_BUILD_DIR) \
+		 $(SWIFT_MODULE_NAME).swiftmodule \
+		 $(SWIFT_MODULE_NAME).swiftdoc
 
 swift-client-api:
 	@mkdir -p swift-client-api
@@ -369,12 +391,15 @@ ifneq ($(SWIFTC),) # Only provide Swift targets if the Swift compiler is availab
 # package.
 servaldswift: $(srcdir)/servaldswift.swift \
 	      $(OBJSDIR_SERVALD)/servald_features.o \
-	      $(OBJSDIR_SERVALD)/log_output_console.o \
 	      $(OBJSDIR_SERVALD)/log_output_file.o \
 	      libservaldaemon.a \
-	      $(srcdir)/module.modulemap
+	      $(SWIFT_MODULE_NAME).swiftmodule \
+	      libServalDNA.a
 	@echo SWIFT $@
-	@$(SWIFTC) -emit-executable $(SWIFTCFLAGS) $(SWIFTDEFS) -o $@ $(filter %.swift, $^) $(filter %.o, $^) $(filter %.a, $^) $(SWIFTLIBS)
+	@$(SWIFTC) -emit-executable -o $@ \
+		$(SWIFTCFLAGS) $(SWIFTDEFS) \
+		$(filter %.swift, $^) $(filter %.o, $^) $(filter %.a, $^) \
+		$(SWIFTLIBS)
 
 endif # $(SWIFTC)
 
@@ -413,7 +438,7 @@ libservalclient.a: _servalclient.a $(LIBSODIUM_A)
 
 libservalclient.so: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o $(LIBSODIUM_A)
 	@echo LINK $@
-	@$(CC) -Wall -shared -o $@ $(LDFLAGS) $(filter %.o, $^) $(filter %.a, $^)
+	@$(CC) -Wall -shared -o $@ $(LDFLAGS) $(filter %.o %.a, $^) $(filter %.a, $^)
 
 .INTERMEDIATE: _monitorclient.a
 _monitorclient.a: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
