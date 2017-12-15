@@ -1,4 +1,5 @@
 dnl Process this file with autoconf to produce a configure script.
+dnl vim:filetype=m4
 AC_INIT(servald, 0.9)
 AC_CONFIG_SRCDIR([serval_types.h])
 AC_CONFIG_MACRO_DIR([m4])
