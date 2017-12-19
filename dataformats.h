@@ -25,6 +25,8 @@ int str_is_identity(const char *sid);
 int strn_is_identity(const char *sid, size_t *lenp);
 int str_is_did(const char *did);
 int strn_is_did(const char *did, size_t *lenp);
+int str_is_identity_name(const char *name);
+int strn_is_identity_name(const char *name, size_t *lenp);
 
 int rhizome_strn_is_manifest_id(const char *text);
 int rhizome_str_is_manifest_id(const char *text);

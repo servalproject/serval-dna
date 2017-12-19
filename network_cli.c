@@ -787,7 +787,7 @@ static int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *c
 	    if (strlen((char *)rx.out.payload)<512) {
 	      char sidhex[SID_STRLEN + 1];
 	      char did[DID_MAXSIZE + 1];
-	      char name[64];
+	      char name[ID_NAME_MAXSIZE + 1];
 	      char uri[512];
 	      if ( !parseDnaReply((char *)rx.out.payload, rx.out.payload_length, sidhex, did, name, uri, NULL)
 		|| !str_is_subscriber_id(sidhex)

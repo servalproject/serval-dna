@@ -268,11 +268,9 @@ static int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_conte
   
   if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1 ||
       cli_arg(parsed, "did", &did, cli_optional_did, "") == -1 ||
-      cli_arg(parsed, "name", &name, NULL, "") == -1)
+      cli_arg(parsed, "name", &name, cli_optional_identity_name, "") == -1)
     return -1;
   int set_pin = cli_arg(parsed, "new_pin", &new_pin, NULL, "") == 0;
-  if (strlen(name)>63)
-    return WHY("Name too long (31 char max)");
 
   sid_t sid;
   if (str_to_sid_t(&sid, sidhex) == -1){
@@ -286,8 +284,8 @@ static int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_conte
   keyring_identity *id = keyring_find_identity_sid(keyring, &sid);
   if (!id)
     return WHY("No matching SID");
-  if (keyring_set_did(id, did, name))
-    return WHY("Could not set DID");
+  if (keyring_set_did_name(id, did, name) == -1)
+    return WHY("Could not set DID/Name");
   if (set_pin && keyring_set_pin(id, new_pin))
     return WHY("Could not set new pin");
   if (keyring_commit(keyring))

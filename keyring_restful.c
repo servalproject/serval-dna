@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "server.h"
 #include "keyring.h"
 #include "strbuf_helpers.h"
+#include "dataformats.h"
 
 DEFINE_FEATURE(http_rest_keyring);
 
@@ -219,15 +220,21 @@ static int restful_keyring_add(httpd_request *r, const char *remainder)
   const char *pin = http_request_get_query_param(&r->http, "pin");
   const char *did = http_request_get_query_param(&r->http, "did");
   const char *name = http_request_get_query_param(&r->http, "name");
+  if (did && did[0] && !str_is_did(did))
+    return http_request_keyring_response(r, 400, "Invalid DID");
+  if (name && name[0] && !str_is_identity_name(name))
+    return http_request_keyring_response(r, 400, "Invalid Name");
   keyring_identity *id = keyring_create_identity(keyring, pin ? pin : "");
   if (id == NULL)
     return http_request_keyring_response(r, 500, "Could not create identity");
-  if (did || name){
-    if (keyring_set_did(id, did ? did : "", name ? name : "") == -1)
-      return http_request_keyring_response(r, 500, "Could not set identity DID/Name");
+  if ((did || name) && keyring_set_did_name(id, did ? did : "", name ? name : "") == -1) {
+    keyring_free_identity(id);
+    return http_request_keyring_response(r, 500, "Could not set identity DID/Name");
   }
-  if (keyring_commit(keyring) == -1)
+  if (keyring_commit(keyring) == -1) {
+    keyring_free_identity(id);
     return http_request_keyring_response(r, 500, "Could not store new identity");
+  }
   return http_request_keyring_response_identity(r, 201, id);
 }
 
@@ -256,12 +263,16 @@ static int restful_keyring_set(httpd_request *r, const char *remainder)
   const char *pin = http_request_get_query_param(&r->http, "pin");
   const char *did = http_request_get_query_param(&r->http, "did");
   const char *name = http_request_get_query_param(&r->http, "name");
+  if (did && did[0] && !str_is_did(did))
+    return http_request_keyring_response(r, 400, "Invalid DID");
+  if (name && name[0] && !str_is_identity_name(name))
+    return http_request_keyring_response(r, 400, "Invalid Name");
   if (pin)
     keyring_enter_pin(keyring, pin);
   keyring_identity *id = keyring_find_identity_sid(keyring, &r->sid1);
   if (!id)
     return http_request_keyring_response(r, 404, "Identity not found");
-  if (keyring_set_did(id, did ? did : "", name ? name : "") == -1)
+  if (keyring_set_did_name(id, did ? did : "", name ? name : "") == -1)
     return http_request_keyring_response(r, 500, "Could not set identity DID/Name");
   if (keyring_commit(keyring) == -1)
     return http_request_keyring_response(r, 500, "Could not store new identity");

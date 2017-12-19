@@ -105,7 +105,7 @@ parseDnaReply(const char *buf, size_t len, char *token, char *did, char *name, c
   *p = '\0';
   if (b == e || *b++ != '|')
     return 0;
-  for (p = name, q = name + 63; b != e && *b != '|' && p != q; ++p, ++b)
+  for (p = name, q = name + ID_NAME_MAXSIZE; b != e && *b != '|' && p != q; ++p, ++b)
     *p = *b;
   *p = '\0';
   if (b == e || *b++ != '|')
@@ -428,7 +428,7 @@ void handle_reply_line(const char *bufp, size_t len)
     } else {
       char sidhex[SID_STRLEN + 1];
       char did[DID_MAXSIZE + 1];
-      char name[64];
+      char name[ID_NAME_MAXSIZE + 1];
       char uri[512];
       const char *replyend = NULL;
       if (!parseDnaReply(bufp, len, sidhex, did, name, uri, &replyend))

@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2016 Flinders University
+Copyright (C) 2016-2017 Flinders University
 Copyright (C) 2013-2015 Serval Project Inc.
 Copyright (C) 2010-2012 Paul Gardner-Stephen
  
@@ -170,8 +170,8 @@ static int keyring_load(keyring_file *k, const char *pin)
 
 void keyring_iterator_start(keyring_file *k, keyring_iterator *it)
 {
-  bzero(it, sizeof(keyring_iterator));
   assert(k);
+  bzero(it, sizeof(keyring_iterator));
   it->file = k;
 }
 
@@ -706,9 +706,12 @@ static int unpack_cryptobox(keypair *kp, struct rotbuf *rb, size_t key_length)
 
 static int pack_did_name(const keypair *kp, struct rotbuf *rb)
 {
+  // Ensure DID is nul terminated.
+  if (strnchr((const char *)kp->private_key, kp->private_key_len, '\0') == NULL)
+    return WHY("DID missing nul terminator");
   // Ensure name is nul terminated.
   if (strnchr((const char *)kp->public_key, kp->public_key_len, '\0') == NULL)
-    return WHY("missing nul terminator");
+    return WHY("Name missing nul terminator");
   return pack_private_public(kp, rb);
 }
 
@@ -716,8 +719,10 @@ static int unpack_did_name(keypair *kp, struct rotbuf *rb, size_t key_length)
 {
   if (unpack_private_public(kp, rb, key_length) == -1)
     return -1;
-  // Fail if name is not nul terminated.
-  return strnchr((const char *)kp->public_key, kp->public_key_len, '\0') == NULL ? -1 : 0;
+  // Fail if DID and Name are not nul terminated.
+  return    strnchr((const char *)kp->private_key, kp->private_key_len, '\0') != NULL
+	 && strnchr((const char *)kp->public_key, kp->public_key_len, '\0') != NULL
+	 ? 0 : -1;
 }
 
 static void dump_did_name(const keypair *kp, XPRINTF xpf, int UNUSED(include_secret))
@@ -816,11 +821,15 @@ const struct keytype keytypes[] = {
       .loader = load_private_only
     },
   [KEYTYPE_DID] = {
-      /* The DID is stored in unpacked form in the private key field, and the name in nul-terminated
-       * ASCII form in the public key field.
+      /* The DID is stored in nul-terminated unpacked form in the private key field, and the name in
+       * nul-terminated ASCII form in the public key field.
        */
-      .private_key_size = 32,
-      .public_key_size = 64,
+      // DO NOT define the following size fields directly using DID_MAXSIZE or ID_NAME_MAXSIZE,
+      // which define the Serval DNA API, but not the keyring file format.  This is to avoid the
+      // risk that changing the API might (unintentionally) alter the keyring format, leading to
+      // non-back-compatible breakage.
+      .private_key_size = 32, // should be >= DID_MAXSIZE + 1
+      .public_key_size = 64, // should be >= ID_NAME_MAXSIZE + 1
       .packed_size = 32 + 64,
       .creator = NULL, // not included in a newly created identity
       .packer = pack_did_name,
@@ -1603,41 +1612,45 @@ int keyring_commit(keyring_file *k)
   return errorCount ? WHYF("%u errors commiting keyring to disk", errorCount) : 0;
 }
 
-int keyring_set_did(keyring_identity *id, const char *did, const char *name)
+int keyring_set_did_name(keyring_identity *id, const char *did, const char *name)
 {
   /* Find where to put it */
   keypair *kp = id->keypairs;
   while(kp){
     if (kp->type==KEYTYPE_DID){
-      DEBUG(keyring, "Identity already contains DID");
+      DEBUG(keyring, "Identity already contains DID/Name");
       break;
     }
     kp=kp->next;
   }
   
-  /* allocate if needed */
+  /* Allocate if not found */
   if (!kp){
     if ((kp = keyring_alloc_keypair(KEYTYPE_DID, 0)) == NULL)
       return -1;
     keyring_identity_add_keypair(id, kp);
-    DEBUG(keyring, "Created DID record for identity");
+    DEBUG(keyring, "Created DID/Name record for identity");
   }
 
-  /* Store DID unpacked for ease of searching */
-  size_t len=strlen(did);
-  if (len>31)
-    len=31;
-  bcopy(did,&kp->private_key[0],len);
-  bzero(&kp->private_key[len],32-len);
-  len=strlen(name);
-  if (len>63)
-    len=63;
-  bcopy(name,&kp->public_key[0],len);
-  bzero(&kp->public_key[len],64-len);
+  /* Store DID as nul-terminated string. */
+  {
+    size_t len = strlen(did);
+    assert(len < kp->private_key_len);
+    bcopy(did, &kp->private_key[0], len);
+    bzero(&kp->private_key[len], kp->private_key_len - len);
+  }
+
+  /* Store Name as nul-terminated string. */
+  {
+    size_t len = strlen(name);
+    assert(len < kp->public_key_len);
+    bcopy(name, &kp->public_key[0], len);
+    bzero(&kp->public_key[len], kp->public_key_len - len);
+  }
 
   if (IF_DEBUG(keyring)) {
-    dump("{keyring} storing did",&kp->private_key[0],32);
-    dump("{keyring} storing name",&kp->public_key[0],64);
+    dump("{keyring} storing DID",&kp->private_key[0],32);
+    dump("{keyring} storing Name",&kp->public_key[0],64);
   }
   return 0;
 }

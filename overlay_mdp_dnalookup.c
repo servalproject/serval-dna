@@ -1,6 +1,6 @@
 /*
 Serval DNA MDP lookup service
-Copyright (C) 2016 Flinders University
+Copyright (C) 2016-2017 Flinders University
 Copyright (C) 2010-2015 Serval Project Inc.
 Copyright (C) 2010-2012 Paul Gardner-Stephen
  
@@ -28,38 +28,36 @@ DEFINE_BINDING(MDP_PORT_DNALOOKUP, overlay_mdp_service_dnalookup);
 static int overlay_mdp_service_dnalookup(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   IN();
-  assert(keyring != NULL);
-  keyring_iterator it;
-  keyring_iterator_start(keyring, &it);
-  char did[64+1];
+  char did[DID_MAXSIZE + 1];
   
-  int pll=ob_remaining(payload);
-  if (pll>64) pll=64;
-  
-  /* get did from the packet */
-  if (pll<1)
+  size_t pll = ob_remaining(payload);
+  if (pll < 1)
     RETURN(WHY("Empty DID in DNA resolution request"));
-  
+  if (pll > sizeof did - 1)
+    pll = sizeof did - 1;
   ob_get_bytes(payload, (unsigned char *)did, pll);
-  did[pll]=0;
+  did[pll] = '\0';
   
-  DEBUG(mdprequests, "MDP_PORT_DNALOOKUP");
+  DEBUGF(mdprequests, "MDP_PORT_DNALOOKUP did=%s", alloca_str_toprint(did));
   
   int results=0;
+  keyring_iterator it;
+  keyring_iterator_start(keyring, &it);
   while(keyring_find_did(&it, did))
     {
+      const char *unpackedDid = (const char *) it.keypair->private_key;
+
       /* package DID and Name into reply (we include the DID because
 	 it could be a wild-card DID search, but the SID is implied 
 	 in the source address of our reply). */
-      if (it.keypair->private_key_len > DID_MAXSIZE) 
+      if (strlen(unpackedDid) > DID_MAXSIZE)
 	/* skip excessively long DID records */
 	continue;
       
-      struct subscriber *subscriber = it.identity->subscriber;
-      const char *unpackedDid = (const char *) it.keypair->private_key;
       const char *name = (const char *)it.keypair->public_key;
-      // URI is sid://SIDHEX/DID
-      strbuf b = strbuf_alloca(SID_STRLEN + DID_MAXSIZE + 10);
+      struct subscriber *subscriber = it.identity->subscriber;
+      // URI is sid://SIDHEX/local/DID
+      strbuf b = strbuf_alloca(SID_STRLEN + DID_MAXSIZE + 20);
       strbuf_puts(b, "sid://");
       strbuf_tohex(b, SID_STRLEN, subscriber->sid.binary);
       strbuf_puts(b, "/local/");

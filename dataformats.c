@@ -273,10 +273,28 @@ int is_didchar(char c)
 
 int strn_is_did(const char *did, size_t *lenp)
 {
-  int i;
+  size_t i;
   for (i = 0; i < DID_MAXSIZE && is_didchar(did[i]); ++i)
     ;
   if (i < DID_MINSIZE)
+    return 0;
+  if (lenp)
+    *lenp = i;
+  return 1;
+}
+
+int str_is_identity_name(const char *name)
+{
+  size_t len = 0;
+  return strn_is_identity_name(name, &len) && name[len] == '\0';
+}
+
+int strn_is_identity_name(const char *name, size_t *lenp)
+{
+  size_t i;
+  for (i = 0; i < ID_NAME_MAXSIZE && name[i]; ++i)
+    ;
+  if (i < ID_NAME_MINSIZE)
     return 0;
   if (lenp)
     *lenp = i;

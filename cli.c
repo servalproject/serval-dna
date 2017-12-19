@@ -490,3 +490,8 @@ int cli_optional_did(const char *text)
 {
   return text[0] == '\0' || str_is_did(text);
 }
+
+int cli_optional_identity_name(const char *text)
+{
+  return text[0] == '\0' || str_is_identity_name(text);
+}

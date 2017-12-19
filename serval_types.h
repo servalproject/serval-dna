@@ -145,10 +145,13 @@ int strn_to_identity_t(identity_t *idp, const char *hex, const char **endp);
 typedef uint32_t mdp_port_t;
 #define PRImdp_port_t "#010" PRIx32
 
-/* DID (phone number)
+/* DID (phone number) and identity name
  */
 
 #define DID_MINSIZE 5
-#define DID_MAXSIZE 32
+#define DID_MAXSIZE 31
+
+#define ID_NAME_MINSIZE 1
+#define ID_NAME_MAXSIZE 63
 
 #endif // __SERVAL_DNA__SERVAL_TYPES_H

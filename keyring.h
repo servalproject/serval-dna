@@ -123,7 +123,7 @@ keyring_file *keyring_create_instance();
 keyring_file *keyring_open_instance(const char *pin);
 keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed);
 int keyring_enter_pin(keyring_file *k, const char *pin);
-int keyring_set_did(keyring_identity *id, const char *did, const char *name);
+int keyring_set_did_name(keyring_identity *id, const char *did, const char *name);
 int keyring_set_pin(keyring_identity *id, const char *pin);
 int keyring_sign_message(struct keyring_identity *identity, unsigned char *content, size_t buffer_len, size_t *content_len);
 int keyring_send_identity_request(struct subscriber *subscriber);

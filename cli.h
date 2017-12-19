@@ -93,6 +93,7 @@ int cli_optional_bundle_crypt_key(const char *arg);
 int cli_interval_ms(const char *arg);
 int cli_uint(const char *arg);
 int cli_optional_did(const char *text);
+int cli_optional_identity_name(const char *text);
 
 /* Output functions.  Every command that is invoked via the CLI must use
  * exclusively the following primitives to send its response.
