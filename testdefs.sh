@@ -35,7 +35,7 @@ else
    exit 1
 fi
 
-source "$servald_build_root/testconfig.sh"
+source "$servald_build_root/testconfig.sh" || exit 1
 
 export PATH="$servald_build_root:$PATH"
 export TFW_LOGDIR="${SERVAL_TEST_LOGDIR:-$servald_build_root/testlog}"

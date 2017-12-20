@@ -41,10 +41,7 @@ includeTests rhizomerestful
 includeTests meshmsrestful
 includeTests meshmbrestful
 if type -p "$JAVAC" >/dev/null; then
-   includeTests jni
-   includeTests keyringjava
-   includeTests rhizomejava
-   includeTests meshmsjava
+   includeTests alljava
 fi
 
 runTests "$@"

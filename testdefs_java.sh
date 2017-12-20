@@ -16,11 +16,9 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-testdefs_java_sh=$(abspath "${BASH_SOURCE[0]}")
-java_source_root="${testdefs_java_sh%/*}"
-java_build_root="$java_source_root"
-java_classdir="$java_build_root/java-api/classes"
-java_testclassdir="$java_build_root/java-api/testclasses"
+java_build_root="${servald_build_root?}/java-api"
+java_classdir="$java_build_root/classes"
+java_testclassdir="$java_build_root/testclasses"
 
 # Utility function for setting up servald JNI fixtures:
 #  - check that libservaldaemon.so is present
