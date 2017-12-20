@@ -58,7 +58,7 @@ setup_RhizomeList() {
    assert [ "$ROWID_MAX" -ge "$NBUNDLES" ]
 }
 test_RhizomeList() {
-   executeJavaOk org.servalproject.test.Rhizome rhizome-list
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-list
    tfw_cat --stdout --stderr
    assertStdoutLineCount == $NBUNDLES
    let lnum=NBUNDLES
@@ -97,7 +97,7 @@ setup_RhizomeListNewSince() {
    # locking storm
    rhizome_use_restful harry potter
    rhizome_add_bundles $SIDA1 0 5
-   executeJavaOk org.servalproject.test.Rhizome rhizome-list
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-list
    assertStdoutLineCount == 6
    unset_vars_with_prefix XX_
    unpack_vars XX_ "$(sed -n -e 1p "$TFWSTDOUT")"
@@ -165,7 +165,7 @@ setup_RhizomeManifest() {
 }
 test_RhizomeManifest() {
    for n in 0 1 2; do
-      executeJavaOk org.servalproject.test.Rhizome rhizome-manifest "${BID[$n]}" bundle$n.rhm
+      executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-manifest "${BID[$n]}" bundle$n.rhm
       tfw_cat --stdout --stderr
       assert_metadata $n
       ls -l file$n.manifest bundle$n.rhm
@@ -179,7 +179,7 @@ setup_RhizomeManifestNonexist() {
    setup
 }
 test_RhizomeManifestNonexist() {
-   executeJavaOk org.servalproject.test.Rhizome rhizome-manifest "$BID_NONEXISTENT" ''
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-manifest "$BID_NONEXISTENT" ''
    tfw_cat --stdout --stderr
    assertStdoutLineCount == 1
    assertStdoutGrep --ignore-case '^not found$'
@@ -193,7 +193,7 @@ setup_RhizomePayloadRaw() {
 }
 test_RhizomePayloadRaw() {
    for n in 0 1 2 3; do
-      executeJavaOk org.servalproject.test.Rhizome rhizome-payload-raw "${BID[$n]}" raw.bin$n
+      executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-payload-raw "${BID[$n]}" raw.bin$n
       tfw_cat --stdout --stderr
       assert_metadata $n
    done
@@ -207,7 +207,7 @@ setup_RhizomePayloadRawNonexistManifest() {
    setup
 }
 test_RhizomePayloadRawNonexistManifest() {
-   executeJavaOk org.servalproject.test.Rhizome rhizome-payload-raw "$BID_NONEXISTENT" ''
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-payload-raw "$BID_NONEXISTENT" ''
    tfw_cat --stdout --stderr
    assertStdoutLineCount == 1
    assertStdoutGrep --ignore-case '^not found$'
@@ -223,7 +223,7 @@ setup_RhizomePayloadRawNonexistPayload() {
    rhizome_delete_payload_blobs "${HASH[0]}"
 }
 test_RhizomePayloadRawNonexistPayload() {
-   executeJavaOk org.servalproject.test.Rhizome rhizome-payload-raw "${BID[0]}" raw.bin
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-payload-raw "${BID[0]}" raw.bin
    tfw_cat --stdout --stderr
    assertStdoutGrep --ignore-case '^no payload$'
    assert_metadata 0
@@ -237,7 +237,7 @@ setup_RhizomePayloadDecrypted() {
 }
 test_RhizomePayloadDecrypted() {
    for n in 0 1 2 3; do
-      executeJavaOk org.servalproject.test.Rhizome rhizome-payload-decrypted "${BID[$n]}" decrypted.bin$n
+      executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-payload-decrypted "${BID[$n]}" decrypted.bin$n
       tfw_cat --stdout --stderr
       assert_metadata $n
    done
@@ -256,7 +256,7 @@ setup_RhizomePayloadDecryptedNonexistManifest() {
    rhizome_delete_payload_blobs "${HASH[0]}"
 }
 test_RhizomePayloadDecryptedNonexistManifest() {
-   executeJavaOk org.servalproject.test.Rhizome rhizome-payload-decrypted "${BID[0]}" ''
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-payload-decrypted "${BID[0]}" ''
    tfw_cat --stdout --stderr
    assertStdoutGrep --ignore-case '^no payload$'
    assert_metadata 0
@@ -274,7 +274,7 @@ setup_RhizomePayloadDecryptedForeign() {
    executeOk_servald rhizome import bundle raw1 file1.manifest
 }
 test_RhizomePayloadDecryptedForeign() {
-   executeJavaOk org.servalproject.test.Rhizome rhizome-payload-decrypted "${BID[1]}" decrypted.bin$n
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-payload-decrypted "${BID[1]}" decrypted.bin$n
    tfw_cat --stdout --stderr
    assertStdoutGrep RhizomeDecryptionException
 }
@@ -303,7 +303,7 @@ setup_RhizomeInsert() {
 }
 test_RhizomeInsert() {
    for n in 1 2 3 4; do
-      executeJavaOk org.servalproject.test.Rhizome rhizome-insert "${author[$n]}" manifest$n file$n file$n.manifest "${payload_filename[$n]}"
+      executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-insert "${author[$n]}" manifest$n file$n file$n.manifest "${payload_filename[$n]}"
       tfw_cat --stdout --stderr -v file$n.manifest
       assertStdoutGrep '^_status=NEW$'
       replayStdout >stdout-insert
@@ -349,7 +349,7 @@ test_RhizomeInsert() {
    for n in 1 2 3 4; do
       $SED -e '/^version=/d;/^date=/d;/^filehash=/d;/^filesize=/d;/^[^a-zA-Z]/,$d' xfile$n.manifest >nmanifest$n
       assert_manifest_fields nmanifest$n id !version !date !filehash !filesize
-      executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' nmanifest$n nfile$n nfile$n.manifest "nfile$n"
+      executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-insert '' nmanifest$n nfile$n nfile$n.manifest "nfile$n"
       tfw_cat --stdout --stderr -v nfile$n.manifest
       if [ -n "${author[$n]}" ]; then
          assertStdoutGrep '^_status=NEW$'
@@ -371,11 +371,11 @@ setup_RhizomeImport() {
    set_instance +A
 }
 test_RhizomeImport() {
-   executeJavaOk org.servalproject.test.Rhizome rhizome-import 'file1.manifest' 'file1'
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-import 'file1.manifest' 'file1'
    tfw_cat --stdout --stderr
    assertStdoutGrep '^_status=NEW$'
    assertStdoutGrep '^_payload_status=NEW$'
-   executeJavaOk org.servalproject.test.Rhizome rhizome-import 'file1.manifest' 'file1'
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-import 'file1.manifest' 'file1'
    tfw_cat --stdout --stderr
    assertStdoutGrep '^_status=SAME$'
 }
@@ -393,7 +393,7 @@ setup_RhizomeInsertAnon() {
    create_file file2 1002
 }
 test_RhizomeInsertAnon() {
-   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file2.manifest file2 ifile2.manifest "file2" "$SECRET"
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-insert '' file2.manifest file2 ifile2.manifest "file2" "$SECRET"
    tfw_cat --stdout --stderr -v ifile2.manifest
    assertStdoutGrep '^_status=NEW$'
    assertStdoutGrep '^_payload_status=NEW$'
@@ -409,7 +409,7 @@ setup_RhizomeInsertEmptyNew() {
    assert [ ! -s empty ]
 }
 test_RhizomeInsertEmptyNew() {
-   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' '' empty empty.manifest "lucky"
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-insert '' '' empty empty.manifest "lucky"
    tfw_cat --stdout --stderr -v empty.manifest
    extract_manifest_id BID empty.manifest
    assertStdoutGrep '^_status=NEW$'
@@ -437,7 +437,7 @@ setup_RhizomeInsertEmptyUpdate() {
    echo "BK=$BK" >>iempty.manifest
 }
 test_RhizomeInsertEmptyUpdate() {
-   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' iempty.manifest empty empty.manifest
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-insert '' iempty.manifest empty empty.manifest
    tfw_cat --stdout --stderr -v empty.manifest
    assertStdoutGrep '^_status=NEW$'
    assertStdoutGrep '^_payload_status=EMPTY$'
@@ -458,7 +458,7 @@ setup_RhizomeInsertJournal() {
    echo 'tail=0' >file1.manifest
 }
 test_RhizomeInsertJournal() {
-   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file1.manifest file1 ifile1.manifest
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-insert '' file1.manifest file1 ifile1.manifest
    tfw_cat --stdout --stderr
    # TODO: need special exception for this case, not RhizomeInvalidManifestException
    assertStdoutGrep RhizomeInvalidManifestException
@@ -476,7 +476,7 @@ setup_RhizomeInsertIncorrectFilesize() {
 }
 test_RhizomeInsertIncorrectFilesize() {
    for n in 1 2; do
-      executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file$n.manifest file$n ifile$n.manifest
+      executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-insert '' file$n.manifest file$n ifile$n.manifest
       tfw_cat --stdout --stderr
       assertStdoutGrep RhizomeInconsistencyException
       assertStdoutGrep --ignore-case 'payload size.*contradicts manifest'
@@ -492,7 +492,7 @@ setup_RhizomeInsertIncorrectFilehash() {
    echo 'filehash=FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' >file1.manifest
 }
 test_RhizomeInsertIncorrectFilehash() {
-   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file1.manifest file1 ifile1.manifest
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-insert '' file1.manifest file1 ifile1.manifest
    tfw_cat --stdout --stderr
    assertStdoutGrep RhizomeInconsistencyException
    assertStdoutGrep --ignore-case 'payload hash.*contradicts manifest'

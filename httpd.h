@@ -36,8 +36,11 @@ extern unsigned int current_httpd_request_count;
 
 // Some non-standard MIME types for the Content-Type header
 extern const struct mime_content_type CONTENT_TYPE_SID_HEX;
-extern const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_ID;
-extern const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_SECRET;
+extern const struct mime_content_type CONTENT_TYPE_IDENTITY_HEX;
+extern const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_ID_HEX;
+extern const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_KEY_HEX;
+extern const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_SECRET_HEX;
+extern const struct mime_content_type CONTENT_TYPE_RHIZOME_FILEHASH_HEX;
 extern const struct mime_content_type CONTENT_TYPE_RHIZOME_MANIFEST;
 
 enum list_phase { LIST_HEADER = 0, LIST_FIRST, LIST_ROWS, LIST_END, LIST_DONE };

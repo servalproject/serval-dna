@@ -44,7 +44,7 @@ public class SigningKey extends AbstractId {
 
     @Override
     public String getMimeType() {
-        return "serval-mesh/id";
+        return "serval/identity";
     }
 
     @Override

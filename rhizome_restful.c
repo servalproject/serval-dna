@@ -641,7 +641,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     if (!h->content_type.type[0])
       ; // missing Content-Type defaults to CONTENT_TYPE_RHIZOME_BUNDLE_SECRET
 	// TODO deprecate this default and insist that Content-Type be supplied
-    else if (!mime_content_types_are_equal(&h->content_type, &CONTENT_TYPE_RHIZOME_BUNDLE_SECRET))
+    else if (!mime_content_types_are_equal(&h->content_type, &CONTENT_TYPE_RHIZOME_BUNDLE_SECRET_HEX))
       return http_response_form_part(r, 415, "Unsupported Content-Type in", PART_SECRET, NULL, 0);
     r->u.insert.current_part = PART_SECRET;
     assert(r->u.insert.secret_text_len == 0);
@@ -655,7 +655,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     if (!h->content_type.type[0])
       ; // missing Content-Type defaults to CONTENT_TYPE_RHIZOME_BUNDLE_ID
 	// TODO deprecate this default and insist that Content-Type be supplied
-    else if (!mime_content_types_are_equal(&h->content_type, &CONTENT_TYPE_RHIZOME_BUNDLE_ID))
+    else if (!mime_content_types_are_equal(&h->content_type, &CONTENT_TYPE_RHIZOME_BUNDLE_ID_HEX))
       return http_response_form_part(r, 415, "Unsupported Content-Type in", PART_BUNDLEID, NULL, 0);
     r->u.insert.current_part = PART_BUNDLEID;
     assert(r->u.insert.bid_text_len == 0);

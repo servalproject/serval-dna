@@ -101,7 +101,7 @@ public class PostHelper {
     }
 
     public void writeField(String name, AbstractId value){
-        writeHeading(name, null, value.getMimeType()+"; format=hex", null);
+        writeHeading(name, null, value.getMimeType() + "; format=hex", null);
         writer.print(value.toHex());
     }
 

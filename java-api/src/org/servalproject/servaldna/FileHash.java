@@ -34,7 +34,7 @@ public class FileHash extends AbstractId {
 
 	@Override
 	public String getMimeType() {
-		return null;
+		return "rhizome/filehash";
 	}
 
 	public FileHash(String hex) throws InvalidHexException {

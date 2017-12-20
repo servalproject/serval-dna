@@ -27,21 +27,40 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
 
+/* These must agree with the values returned by the getMimeType() methods in all the Java
+ * subclasses of org.servalproject.servaldna.AbstractId.
+ */
 const struct mime_content_type CONTENT_TYPE_SID_HEX = {
   .type = "serval",
   .subtype = "sid",
   .format = "hex"
 };
-const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_ID = {
+const struct mime_content_type CONTENT_TYPE_IDENTITY_HEX = {
+  .type = "serval",
+  .subtype = "identity",
+  .format = "hex"
+};
+const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_ID_HEX = {
   .type = "rhizome",
   .subtype = "bid",
   .format = "hex"
 };
-const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_SECRET = {
+const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_KEY_HEX = {
+  .type = "rhizome",
+  .subtype = "bundlekey",
+  .format = "hex"
+};
+const struct mime_content_type CONTENT_TYPE_RHIZOME_BUNDLE_SECRET_HEX = {
   .type = "rhizome",
   .subtype = "bundlesecret",
   .format = "hex"
 };
+const struct mime_content_type CONTENT_TYPE_RHIZOME_FILEHASH_HEX = {
+  .type = "rhizome",
+  .subtype = "filehash",
+  .format = "hex"
+};
+
 const struct mime_content_type CONTENT_TYPE_RHIZOME_MANIFEST = {
   .type = "rhizome",
   .subtype = "manifest",

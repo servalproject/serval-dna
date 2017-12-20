@@ -48,9 +48,22 @@ import java.lang.reflect.Modifier;
 import java.net.HttpURLConnection;
 import java.net.ProtocolException;
 import java.net.URL;
+import java.util.Enumeration;
+import javax.activation.MimeType;
+import javax.activation.MimeTypeParseException;
 
 public class RhizomeCommon
 {
+	public static final MimeType MIME_TYPE_RHIZOME_MANIFEST;
+
+	static {
+		try {
+			MIME_TYPE_RHIZOME_MANIFEST = new MimeType("rhizome/manifest; format=text+binarysig");
+		}
+		catch (MimeTypeParseException ex) {
+			throw new IllegalStateException(ex);
+		}
+	}
 
 	private static class Status {
 		URL url;
@@ -62,6 +75,17 @@ public class RhizomeCommon
 		String bundle_status_message;
 		RhizomePayloadStatus payload_status_code;
 		String payload_status_message;
+	}
+
+	protected static boolean mimeTypeMatches(MimeType required, MimeType candidate) {
+		if (!candidate.match(required))
+			return false;
+		for (Enumeration e = required.getParameters().getNames(); e.hasMoreElements(); ) {
+			String name = (String) e.nextElement();
+			if (!required.getParameter(name).equals(candidate.getParameter(name)))
+				return false;
+		}
+		return true;
 	}
 
 	protected static Status receiveResponse(HttpURLConnection conn, int expected_response_code) throws IOException, ServalDInterfaceException
@@ -231,11 +255,18 @@ public class RhizomeCommon
 			case NEW:
 				return null;
 			case SAME:
-				if (!RhizomeManifest.MIME_TYPE.equals(conn.getContentType()))
-					throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
-				RhizomeManifest manifest = RhizomeManifest.fromTextFormat(status.input_stream);
-				BundleExtra extra = bundleExtraFromHeaders(conn);
-				return new RhizomeManifestBundle(manifest, extra.rowId, extra.insertTime, extra.author, extra.secret);
+				try {
+					MimeType content_type = new MimeType(conn.getContentType());
+					if (mimeTypeMatches(MIME_TYPE_RHIZOME_MANIFEST, content_type)) {
+						RhizomeManifest manifest = RhizomeManifest.fromTextFormat(status.input_stream);
+						BundleExtra extra = bundleExtraFromHeaders(conn);
+						return new RhizomeManifestBundle(manifest, extra.rowId, extra.insertTime, extra.author, extra.secret);
+					}
+					throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + content_type);
+				}
+				catch (MimeTypeParseException ex) {
+					throw new ServalDInterfaceException("invalid HTTP Content-Type: " + conn.getContentType());
+				}
 			case ERROR:
 				throw new ServalDFailureException("received rhizome_bundle_status_code=ERROR(-1) from " + conn.getURL());
 			}
@@ -453,14 +484,19 @@ public class RhizomeCommon
 			decodeHeaderBundleStatus(status, conn);
 			checkBundleStatus(status);
 
-			if (!RhizomeManifest.MIME_TYPE.equals(status.contentType))
-				throw new ServalDInterfaceException("unexpected HTTP Content-Type " + status.contentType + " from " + status.url);
+			MimeType content_type = new MimeType(status.contentType);
+			if (!mimeTypeMatches(MIME_TYPE_RHIZOME_MANIFEST, content_type))
+				throw new ServalDInterfaceException("unexpected HTTP Content-Type " + content_type + " from " + status.url + ", expecting " + MIME_TYPE_RHIZOME_MANIFEST);
+
 			RhizomeManifest returned_manifest = RhizomeManifest.fromTextFormat(status.input_stream);
 			BundleExtra extra = bundleExtraFromHeaders(conn);
 			return new RhizomeInsertBundle(status.bundle_status_code, status.payload_status_code, returned_manifest, extra.rowId, extra.insertTime, extra.author, extra.secret);
 		}
 		catch (RhizomeManifestParseException e) {
 			throw new ServalDInterfaceException("malformed manifest from daemon", e);
+		}
+		catch (MimeTypeParseException ex) {
+			throw new ServalDInterfaceException("invalid HTTP Content-Type: " + status.contentType);
 		}
 		finally {
 			if (status.input_stream != null)

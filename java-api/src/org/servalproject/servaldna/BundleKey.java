@@ -32,7 +32,7 @@ public class BundleKey extends AbstractId {
 
 	@Override
 	public String getMimeType() {
-		return null; //TODO?
+		return "rhizome/bundlekey";
 	}
 
 	public BundleKey(String hex) throws InvalidHexException {
