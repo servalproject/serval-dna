@@ -66,8 +66,6 @@ public class MdpSocket{
 		bind(SubscriberId.ANY, port);
 	}
 	public synchronized void bind(SubscriberId sid, int port) throws IOException {
-		if (loopbackMdpPort==0)
-			throw new IOException("Loopback MDP port has not been set");
 		if (sid==null)
 			throw new NullPointerException();
 		if (sid.equals(this.sid) && this.port == port)
@@ -109,6 +107,8 @@ public class MdpSocket{
 
 	public SelectableChannel getChannel() throws IOException {
 		if (channel == null){
+			if (loopbackMdpPort==0)
+				throw new IOException("Loopback MDP port has not been set");
 			channel = DatagramChannel.open();
 			channel.connect(new InetSocketAddress(loopback, loopbackMdpPort));
 		}
