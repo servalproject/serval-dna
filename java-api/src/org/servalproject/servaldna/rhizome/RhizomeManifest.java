@@ -43,7 +43,7 @@ import org.servalproject.servaldna.BundleKey;
 public class RhizomeManifest {
 
 	public final static int TEXT_FORMAT_MAX_SIZE = 8192;
-	public static final String MIME_TYPE = "rhizome/manifest; format=\"text+binarysig\"";
+	public static final String MIME_TYPE = "rhizome/manifest; format=text+binarysig";
 
 	// Core fields used for routing and expiry (cannot be null)
 	public final BundleId id;

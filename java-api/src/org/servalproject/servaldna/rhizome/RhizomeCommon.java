@@ -231,7 +231,7 @@ public class RhizomeCommon
 			case NEW:
 				return null;
 			case SAME:
-				if (!conn.getContentType().equals("rhizome-manifest/text"))
+				if (!RhizomeManifest.MIME_TYPE.equals(conn.getContentType()))
 					throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
 				RhizomeManifest manifest = RhizomeManifest.fromTextFormat(status.input_stream);
 				BundleExtra extra = bundleExtraFromHeaders(conn);
@@ -453,7 +453,7 @@ public class RhizomeCommon
 			decodeHeaderBundleStatus(status, conn);
 			checkBundleStatus(status);
 
-			if (!status.contentType.equals("rhizome-manifest/text"))
+			if (!RhizomeManifest.MIME_TYPE.equals(status.contentType))
 				throw new ServalDInterfaceException("unexpected HTTP Content-Type " + status.contentType + " from " + status.url);
 			RhizomeManifest returned_manifest = RhizomeManifest.fromTextFormat(status.input_stream);
 			BundleExtra extra = bundleExtraFromHeaders(conn);

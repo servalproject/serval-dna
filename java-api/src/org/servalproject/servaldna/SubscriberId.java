@@ -33,7 +33,7 @@ public class SubscriberId extends AbstractId {
 
 	@Override
 	public String getMimeType() {
-		return "serval-mesh/sid";
+		return "serval/sid";
 	}
 
 	public SubscriberId(String hex) throws InvalidHexException {

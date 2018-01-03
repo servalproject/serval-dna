@@ -39,6 +39,6 @@ public class BundleId extends SigningKey {
 
 	@Override
 	public String getMimeType() {
-		return null;
+		return "rhizome/bid";
 	}
 }

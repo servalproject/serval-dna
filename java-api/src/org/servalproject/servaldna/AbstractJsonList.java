@@ -64,17 +64,19 @@ public abstract class AbstractJsonList<T, E extends Exception> {
         httpConnection = httpConnector.newServalDHttpConnection(url);
         httpConnection.connect();
 
-        if (!httpConnection.getContentType().equals("application/json"))
-            throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + httpConnection.getContentType());
-
-        json = new JSONTokeniser(
-                (httpConnection.getResponseCode() >= 300) ?
-                        httpConnection.getErrorStream() : httpConnection.getInputStream());
+        if ("application/json".equals(httpConnection.getContentType())){
+            json = new JSONTokeniser(
+                    (httpConnection.getResponseCode() >= 300) ?
+                            httpConnection.getErrorStream() : httpConnection.getInputStream());
+        }
 
         if (httpConnection.getResponseCode()!=200){
             handleResponseError();
             return;
         }
+
+        if (json == null)
+            throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + httpConnection.getContentType());
 
         try{
             json.consume(JSONTokeniser.Token.START_OBJECT);

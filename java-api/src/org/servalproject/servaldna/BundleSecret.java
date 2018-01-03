@@ -44,6 +44,6 @@ public class BundleSecret extends AbstractId {
 
 	@Override
 	public String getMimeType() {
-		return "rhizome/bundle-secret";
+		return "rhizome/bundlesecret";
 	}
 }
