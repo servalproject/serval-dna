@@ -22,8 +22,6 @@ java_build_root="$java_source_root"
 java_classdir="$java_build_root/java-api/classes"
 java_testclassdir="$java_build_root/java-api/testclasses"
 
-source "$java_build_root/testconfig.sh"
-
 # Utility function for setting up servald JNI fixtures:
 #  - check that libservaldaemon.so is present
 #  - set LD_LIBRARY_PATH so that libservaldaemon.so can be found
