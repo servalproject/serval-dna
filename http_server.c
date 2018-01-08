@@ -1792,19 +1792,13 @@ static void http_request_receive(struct http_request *r)
 {
   IN();
   if (r->phase != RECEIVE){
-    // just read & throw away any data
+    // We have already decided on the response we are going to send
+    // (Probably because the request was invalid in some way)
+    // The client might be written with simple blocking I/O, send everything then receive everything
+    // Or be using chuncked encoding, but we don't have any way to track state correctly anymore
+    // So just read & throw away any data without caring about correctness *at all*
     char buff[1024];
-    ssize_t len = http_request_read(r, buff, sizeof buff);
-    if (len <0)
-      RETURNVOID;
-    if (r->request_content_remaining!=CONTENT_LENGTH_UNKNOWN){
-      if ((size_t)len > r->request_content_remaining){
-	IDEBUG(r->debug, "Buffer size reached, reporting overflow");
-	http_request_simple_response(r, 431, NULL); // Request Header Fields Too Large
-	RETURNVOID;
-      }
-      r->request_content_remaining -= len;
-    }
+    http_request_read(r, buff, sizeof buff);
     RETURNVOID;
   }
   const char *const bufend = r->buffer + sizeof r->buffer;
