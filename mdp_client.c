@@ -352,6 +352,23 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, mdp_port_t port, in
     return WHYF("Expected packet length of %zu, received only %zd bytes", (size_t) expected_len, (size_t) len);
   
   /* Valid packet received */
+  strbuf b = strbuf_alloca(80);
+  switch (mdp->packetTypeAndFlags & MDP_TYPE_MASK) {
+  case MDP_ROUTING_TABLE: strbuf_puts(b, "MDP_ROUTING_TABLE"); break;
+  case MDP_GOODBYE:       strbuf_puts(b, "MDP_GOODBYE"); break;
+  case MDP_ADDRLIST:      strbuf_puts(b, "MDP_ADDRLIST"); break;
+  case MDP_GETADDRS:      strbuf_puts(b, "MDP_GETADDRS"); break;
+  case MDP_TX:            strbuf_puts(b, "MDP_TX"); break;
+  case MDP_BIND:          strbuf_puts(b, "MDP_BIND"); break;
+  case MDP_SCAN:          strbuf_puts(b, "MDP_SCAN"); break;
+  case MDP_ERROR:         strbuf_puts(b, "MDP_ERROR"); break;
+  default:                strbuf_sprintf(b, "%u", mdp->packetTypeAndFlags & MDP_TYPE_MASK); break;
+  }
+  if (mdp->packetTypeAndFlags & MDP_FORCE)   strbuf_puts(b, "|MDP_FORCE");
+  if (mdp->packetTypeAndFlags & MDP_NOCRYPT) strbuf_puts(b, "|MDP_NOCRYPT");
+  if (mdp->packetTypeAndFlags & MDP_NOSIGN)  strbuf_puts(b, "|MDP_NOSIGN");
+  DEBUGF(mdprequests, "Received %s", strbuf_str(b));
+
   return 0;
 }
 
@@ -408,8 +425,8 @@ int overlay_mdp_getmyaddr(int mdp_sockfd, unsigned index, sid_t *sidp)
 ssize_t overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp) 
 {
   size_t len;
-  switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK)
-  {
+  unsigned type = mdp->packetTypeAndFlags & MDP_TYPE_MASK;
+  switch (type) {
     case MDP_ROUTING_TABLE:
     case MDP_GOODBYE:
       /* no arguments for saying goodbye */
@@ -439,7 +456,7 @@ ssize_t overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
       len=(&mdp->error.message[0]-(char *)mdp) + strlen(mdp->error.message)+1;      
       break;
     default:
-      return WHY("Illegal MDP frame type.");
+      return WHYF("Illegal MDP frame type %u", type);
   }
   return len;
 }
