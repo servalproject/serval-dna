@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__KEYRING_H
 #define __SERVAL_DNA__KEYRING_H
 
+#include "lang.h" // for bool_t
 #include "serval_types.h" // for sid_t
 #include "os.h" // for time_ms_t
 
@@ -46,8 +47,19 @@ struct keyring_challenge{
   unsigned char challenge[24];
 };
 
+/* An unlocked identity is represented by an instance of one of these structs
+ * in the linked list starting in the keyring_file structure.
+ */
 typedef struct keyring_identity {
+  // A nul-terminated string containing the identity's PIN (passphrase); NULL
+  // if no PIN (empty passphrase).  This string must be free()d before the
+  // struct is deallocated.
   char *PKRPin;
+
+  // Whether all other identities in the same keyring file that have the same
+  // PIN are also unlocked:
+  bool_t is_fully_unlocked : 1;
+
   struct subscriber *subscriber;
   unsigned int slot;
   struct keyring_challenge *challenge;
@@ -68,7 +80,8 @@ typedef struct keyring_identity {
 
 typedef struct keyring_bam {
   size_t file_offset;
-  unsigned char bitmap[KEYRING_BAM_BYTES];
+  unsigned char allocmap[KEYRING_BAM_BYTES];
+  unsigned char loadmap[KEYRING_BAM_BYTES];
   struct keyring_bam *next;
 } keyring_bam;
 
@@ -99,7 +112,8 @@ keyring_identity *keyring_find_identity_sid(keyring_file *k, const sid_t *sidp);
 keyring_identity *keyring_find_identity(keyring_file *k, const identity_t *sign);
 
 void keyring_free(keyring_file *k);
-int keyring_release_identities_by_pin(keyring_file *f, const char *pin);
+void keyring_release_identities_by_pin(keyring_file *f, const char *pin);
+void keyring_release_identity(keyring_file *k, keyring_identity *id);
 int keyring_release_subscriber(keyring_file *k, const sid_t *sid);
 
 #define KEYTYPE_CRYPTOBOX 0x01 // must be lowest
@@ -122,7 +136,7 @@ extern __thread keyring_file *keyring;
 keyring_file *keyring_create_instance();
 keyring_file *keyring_open_instance(const char *pin);
 keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed);
-int keyring_enter_pin(keyring_file *k, const char *pin);
+unsigned keyring_enter_pin(keyring_file *k, const char *pin);
 int keyring_set_did_name(keyring_identity *id, const char *did, const char *name);
 int keyring_set_pin(keyring_identity *id, const char *pin);
 int keyring_sign_message(struct keyring_identity *identity, unsigned char *content, size_t buffer_len, size_t *content_len);

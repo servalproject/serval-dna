@@ -376,6 +376,12 @@ test_ServerLockUnlock() {
    assertStdoutGrep --matches=1 --fixed-strings "$SIDA"
    assertStdoutGrep --matches=1 --fixed-strings "$TWOA"
    assertStdoutLineCount == 4
+   executeOk_servald id enter pin 'two'
+   executeOk_servald id list
+   assertStdoutGrep --matches=1 --fixed-strings "$SIDA"
+   assertStdoutGrep --matches=1 --fixed-strings "$TWOA"
+   assertStdoutGrep --matches=1 --fixed-strings "$TWOB"
+   assertStdoutLineCount == 5
 }
 teardown_ServerLockUnlock() {
    teardown_servald

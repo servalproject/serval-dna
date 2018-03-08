@@ -1282,8 +1282,6 @@ static int mdp_search_identities(struct socket_address *client, struct mdp_heade
   struct overlay_buffer *payload)
 {
   assert(keyring != NULL);
-  keyring_iterator it;
-  keyring_iterator_start(keyring, &it);
   
   const char *tag=NULL;
   const unsigned char *value=NULL;
@@ -1297,6 +1295,8 @@ static int mdp_search_identities(struct socket_address *client, struct mdp_heade
     }
   }
   
+  keyring_iterator it;
+  keyring_iterator_start(keyring, &it);
   while(1){
     if (value_len){
       if (!keyring_find_public_tag_value(&it, tag, value, value_len))

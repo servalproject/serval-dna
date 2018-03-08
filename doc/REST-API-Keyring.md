@@ -158,7 +158,8 @@ Keyring REST API operations
 Returns a list of all currently unlocked identities, one identity per row in
 [JSON table][] format.  The following parameters are recognised:
 
-*   **pin**: see [identity unlocking](#identity-unlocking)
+*   **pin** (optional) = a passphrase to unlock identities prior to listing;
+    see [identity unlocking](#identity-unlocking)
 
 The table columns are:
 
@@ -169,46 +170,67 @@ The table columns are:
 | `did`      | the optional [DID](#did) (telephone number); `null` if none is assigned   |
 | `name`     | the optional string [Name](#name); `null` if none is assigned             |
 
-### GET /restful/keyring/add
+### POST /restful/keyring/add
 
-Creates a new identity with a random [SID](#serval-id).  The following
-parameters are recognised:
+Creates a new identity with a random [SID](#serval-id).  This request does not
+accept parameters in the request body (eg, using a [Content-Type][] of
+[multipart/form-data][]), but does accept the following [query parameters][] in
+the *path*:
 
-*   **pin**: if present, then the new identity is protected by the given
-    passphrase; see [identity unlocking](#identity-unlocking) -- note that the
-    newly created identity is already unlocked when this request returns,
-    because the passphrase has been added to the PIN cache
-*   **did**: the DID (phone number); empty or absent to indicate no DID,
-    otherwise must conform to the rules for [DID](#did)
-*   **name**: the name; empty or absent to specify no name, otherwise must
-    conform to the rules for [Name](#name)
+*   **pin** (optional) = the passphrase for the new identity; if present, then
+    the new identity is protected by the given passphrase; see [identity
+    unlocking](#identity-unlocking) -- note that the newly created identity is
+    already unlocked when this request returns, because the passphrase has been
+    added to the PIN cache
+
+*   **did** (optional) = the [DID](#did) of the new identity; empty or absent
+    to indicate no DID, otherwise must be valid
+
+*   **name** (optional) = the [Name](#name) of the new identity; empty or
+    absent to specify no name, otherwise must be valid
 
 If any parameter contains an invalid value then the request returns [400 Bad
 Request][400].  Returns [201 Created][201] if an identity is created; the [JSON
 result](#keyring-json-result) describes the identity that was created.
 
-### GET /restful/keyring/SID/remove
+### GET /restful/keyring/SID
 
-Removes an existing identity with a given [SID](#serval-id).  The following
-parameters are recognised:
+Return the details of an existing unlocked identity with a given
+[SID](#serval-id).  The following [query parameters][] are recognised:
 
-*   **pin**: see [identity unlocking](#identity-unlocking)
+*   **pin** (optional) = a passphrase to unlock the identity prior to querying
+    it; see [identity unlocking](#identity-unlocking)
+
+If there is no unlocked identity with the given SID, this request returns [404
+Not Found][404].  Otherwise it returns [200 OK][200] and the [JSON
+result](#keyring-json-result) describes the identity.
+
+### DELETE /restful/keyring/SID
+
+Removes an existing unlocked identity with a given [SID](#serval-id).  The
+following [query parameters][] are recognised:
+
+*   **pin** (optional) = a passphrase to unlock the identity prior to deleting
+    it; see [identity unlocking](#identity-unlocking)
 
 If there is no unlocked identity with the given SID, this request returns [404
 Not Found][404].  Otherwise it returns [200 OK][200] and the [JSON
 result](#keyring-json-result) describes the identity that was removed.
 
-### GET /restful/keyring/SID/set
+### PATCH /restful/keyring/SID
 
 Sets and/or clears the [DID](#did) and/or [Name](#name) of the unlocked
-identity that has the given [SID](#serval-id).  The following parameters are
-recognised:
+identity that has the given [SID](#serval-id).  The following [query
+parameters][] are recognised:
 
-*   **pin**: see [identity unlocking](#identity-unlocking)
-*   **did**: the DID (phone number); empty to clear the DID, otherwise must
-    conform to the rules for [DID](#did)
-*   **name**: the name; empty to clear the name, otherwise must conform to the
-    rules for [Name](#name)
+*   **pin** (optional) = a passphrase to unlock the identity prior to deleting
+    it; see [identity unlocking](#identity-unlocking)
+
+*   **did** (optional) = the [DID](#did) to assign to the identity; empty to
+    clear the DID, otherwise must be valid
+
+*   **name** (optional) = the [Name](#name) to assign to the identity; empty to
+    clear the name, otherwise must be valid
 
 If a parameter is missing, then the corresponding field of the identity is left
 unchanged.  If a parameter is set to an empty string, then the corresponding
@@ -218,7 +240,7 @@ If any parameter contains an invalid value then the request returns [400 Bad
 Request][400].  If there is no unlocked identity with the given SID, this
 request returns [404 Not Found][404].
 
-### GET /restful/keyring/SID/lock
+### PUT /restful/keyring/SID/lock
 
 Locks an existing identity with a given [SID](#serval-id).
 
@@ -229,7 +251,7 @@ result](#keyring-json-result) describes the identity that was locked.
 
 -----
 **Copyright 2015 Serval Project Inc.**  
-**Copyright 2016-2017 Flinders University**  
+**Copyright 2016-2018 Flinders University**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 Available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 

@@ -1,5 +1,6 @@
 /*
-Serval DNA HTTP RESTful interface
+Serval DNA Keyring HTTP RESTful interface
+Copyright (C) 2018 Flinders University
 Copyright (C) 2013-2015 Serval Project Inc.
  
 This program is free software; you can redistribute it and/or
@@ -17,7 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "lang.h" // for FALLTHROUGH
+#include "lang.h" // for bool_t, FALLTHROUGH
 #include "serval.h"
 #include "conf.h"
 #include "httpd.h"
@@ -28,15 +29,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 DEFINE_FEATURE(http_rest_keyring);
 
-#define keyring_TOKEN_STRLEN (BASE64_ENCODED_LEN(sizeof(rhizome_bid_t) + sizeof(uint64_t)))
-#define alloca_keyring_token(bid, offset) keyring_    token_to_str(alloca(keyring_TOKEN_STRLEN + 1), (bid), (offset))
-
 DECLARE_HANDLER("/restful/keyring/", restful_keyring_);
 
 static HTTP_HANDLER restful_keyring_identitylist_json;
 static HTTP_HANDLER restful_keyring_add;
-static HTTP_HANDLER restful_keyring_remove;
+static HTTP_HANDLER restful_keyring_get;
 static HTTP_HANDLER restful_keyring_set;
+static HTTP_HANDLER restful_keyring_remove;
+static HTTP_HANDLER restful_keyring_lock;
 
 static int restful_keyring_(httpd_request *r, const char *remainder)
 {
@@ -44,35 +44,40 @@ static int restful_keyring_(httpd_request *r, const char *remainder)
   int ret = authorize_restful(&r->http);
   if (ret)
     return ret;
-  const char *verb = HTTP_VERB_GET;
-  HTTP_HANDLER *handler = NULL;
   const char *end;
-  if (strcmp(remainder, "identities.json") == 0) {
-    handler = restful_keyring_identitylist_json;
-    verb = HTTP_VERB_GET;
-    remainder = "";
-  }
-  else if (strcmp(remainder, "add") == 0) {
-    handler = restful_keyring_add;
-    verb = HTTP_VERB_GET;
-    remainder = "";
-  }
-  else if (parse_sid_t(&r->sid1, remainder, -1, &end) != -1) {
-    remainder = end;
-    if (strcmp(remainder, "/remove") == 0) {
-      handler = restful_keyring_remove;
-      remainder = "";
+  if (r->http.verb == HTTP_VERB_GET && strcmp(remainder, "identities.json") == 0)
+    return restful_keyring_identitylist_json(r, "");
+  if (r->http.verb == HTTP_VERB_POST && strcmp(remainder, "add") == 0)
+    return restful_keyring_add(r, "");
+  if (parse_sid_t(&r->sid1, remainder, -1, &end) != -1) {
+    if (strcmp(end, "") == 0) {
+      if (r->http.verb == HTTP_VERB_GET)
+	return restful_keyring_get(r, "");
+      if (r->http.verb == HTTP_VERB_PATCH)
+	return restful_keyring_set(r, "");
+      if (r->http.verb == HTTP_VERB_DELETE)
+	return restful_keyring_remove(r, "");
     }
-    else if (strcmp(remainder, "/set") == 0) {
-      handler = restful_keyring_set;
-      remainder = "";
+    else if (r->http.verb == HTTP_VERB_PUT && strcmp(end, "/lock") == 0)
+      return restful_keyring_lock(r, "");
+  }
+  // Legacy API requests that use GET but should use another verb instead (see above).  Eventually
+  // this support should be removed and some text in the response should refer the client to the
+  // correct request.
+  if (r->http.verb == HTTP_VERB_GET) {
+    if (strcmp(remainder, "add") == 0) {
+      return restful_keyring_add(r, "");
+    }
+    else if (parse_sid_t(&r->sid1, remainder, -1, &end) != -1) {
+      if (strcmp(end, "/remove") == 0)
+	return restful_keyring_remove(r, "");
+      else if (strcmp(end, "/set") == 0)
+	return restful_keyring_set(r, "");
+      else if (strcmp(end, "/lock") == 0)
+	return restful_keyring_lock(r, "");
     }
   }
-  if (handler == NULL)
-    return 404;
-  if (r->http.verb != verb)
-    return 405;
-  return handler(r, remainder);
+  return 404;
 }
 
 static int http_request_keyring_response(struct httpd_request *r, uint16_t result, const char *message)
@@ -99,12 +104,10 @@ static int http_request_keyring_response_identity(struct httpd_request *r, uint1
   json_id_kv[0].value = &json_sid;
   json_sid.type = JSON_STRING_NULTERM;
   json_sid.u.string.content = alloca_tohex_sid_t(*id->box_pk);
-
   json_id_kv[1].key = "identity";
   json_id_kv[1].value = &json_sas;
   json_sas.type = JSON_STRING_NULTERM;
   json_sas.u.string.content = alloca_tohex_identity_t(&id->sign_keypair->public_key);
-
   if (did) {
     json_id_kv[json_id.u.object.itemc].key = "did";
     json_id_kv[json_id.u.object.itemc].value = &json_did;
@@ -238,6 +241,21 @@ static int restful_keyring_add(httpd_request *r, const char *remainder)
   return http_request_keyring_response_identity(r, 201, id);
 }
 
+static int restful_keyring_get(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  const char *pin = http_request_get_query_param(&r->http, "pin");
+  if (pin)
+    keyring_enter_pin(keyring, pin);
+  keyring_identity *id = keyring_find_identity_sid(keyring, &r->sid1);
+  if (!id)
+    return http_request_keyring_response(r, 404, "Identity not found");
+  int ret = http_request_keyring_response_identity(r, 200, id);
+  keyring_free_identity(id);
+  return ret;
+}
+
 static int restful_keyring_remove(httpd_request *r, const char *remainder)
 {
   if (*remainder)
@@ -277,4 +295,16 @@ static int restful_keyring_set(httpd_request *r, const char *remainder)
   if (keyring_commit(keyring) == -1)
     return http_request_keyring_response(r, 500, "Could not store new identity");
   return http_request_keyring_response_identity(r, 200, id);
+}
+
+static int restful_keyring_lock(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  keyring_identity *id = keyring_find_identity_sid(keyring, &r->sid1);
+  if (!id)
+    return http_request_keyring_response(r, 404, "Identity not found");
+  keyring_release_identity(keyring, id);
+  keyring_free_identity(id);
+  return http_request_keyring_response(r, 200, "Identity locked");
 }
