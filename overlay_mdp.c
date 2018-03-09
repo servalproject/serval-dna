@@ -1235,20 +1235,16 @@ static int mdp_process_identity_request(struct socket_address *client, struct md
       switch (request.type){
 	case TYPE_PIN:
 	  {
-	    while(1){
-	      const char *pin = ob_get_str_ptr(payload);
-	      if (!pin)
-		break;
+	    const char *pin;
+	    while ((pin = ob_get_str_ptr(payload)))
 	      keyring_release_identities_by_pin(keyring, pin);
-	    }
 	  }
 	  break;
 	case TYPE_SID:
-	  while(1){
-	    const sid_t *sid=(const sid_t*)ob_get_bytes_ptr(payload,SID_SIZE);
-	    if (sid==NULL)
-	      break;
-	    keyring_release_subscriber(keyring, sid);
+	  {
+	    const sid_t *sid;
+	    while ((sid = (const sid_t *)ob_get_bytes_ptr(payload, SID_SIZE)))
+	      keyring_release_subscriber(keyring, sid);
 	  }
 	  break;
 	default:
@@ -1257,20 +1253,20 @@ static int mdp_process_identity_request(struct socket_address *client, struct md
       }
       break;
     case ACTION_UNLOCK:
-      {
-	if (request.type!=TYPE_PIN){
+      switch (request.type){
+	case TYPE_PIN:
+	  {
+	    unsigned unlock_count=0;
+	    const char *pin;
+	    while ((pin = ob_get_str_ptr(payload)))
+	      unlock_count += keyring_enter_pin(keyring, pin);
+	    if (unlock_count && directory_service)
+	      directory_registration();
+	  }
+	  break;
+	default:
 	  mdp_reply_error(client, header);
 	  return WHY("Unknown request type");
-	}
-	unsigned unlock_count=0;
-	while(1){
-	  const char *pin = ob_get_str_ptr(payload);
-	  if (!pin)
-	    break;
-	  unlock_count += keyring_enter_pin(keyring, pin);
-	}
-	if (unlock_count && directory_service)
-	  directory_registration();
       }
       break;
     default:
@@ -1303,17 +1299,17 @@ static int mdp_search_identities(struct socket_address *client, struct mdp_heade
   
   while(1){
     if (value_len){
-      DEBUGF(mdprequests, "Looking for next %s tag & value", tag);
       if (!keyring_find_public_tag_value(&it, tag, value, value_len))
 	break;
+      DEBUGF(mdprequests, "found tag=%s value=%s", tag, value);
     }else if(tag){
-      DEBUGF(mdprequests, "Looking for next %s tag", tag);
       if (!keyring_find_public_tag(&it, tag, NULL, NULL))
 	break;
+      DEBUGF(mdprequests, "found tag=%s", tag);
     }else{
-      DEBUGF(mdprequests, "Looking for next identity");
       if (!keyring_next_identity(&it))
 	break;
+      DEBUGF(mdprequests, "found identity slot=%u SID=%s", it.identity->slot, alloca_tohex_sid_t(it.identity->subscriber->sid));
     }
     unsigned char reply_payload[1200];
     size_t ofs=0;
@@ -1578,6 +1574,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	break;
       case MDP_IDENTITY:
 	DEBUGF(mdprequests, "Processing MDP_IDENTITY from %s", alloca_socket_address(client));
+	DEBUG_dump(mdprequests, "payload", payload->bytes, payload->sizeLimit);
 	mdp_process_identity_request(client, header, payload);
 	break;
       // seach unlocked identities

@@ -413,17 +413,15 @@ void _ob_append_packed_ui64(struct __sourceloc __whence, struct overlay_buffer *
 // make sure a range of bytes is valid for reading
 static int test_offset(struct overlay_buffer *b, size_t length)
 {
-  if (b->position + length > b->sizeLimit)
-    return -1;
-  if (b->position + length > b->allocSize)
-    return -1;
-  return 0;
+  assert(length != 0);
+  size_t off = b->position + length;
+  return off <= b->sizeLimit && off <= b->allocSize;
 }
 
 // next byte without advancing
 int ob_peek(struct overlay_buffer *b)
 {
-  if (test_offset(b, 1))
+  if (!test_offset(b, 1))
     return -1;
   return b->bytes[b->position];
 }
@@ -437,8 +435,8 @@ void ob_skip(struct overlay_buffer *b, unsigned n)
 const char *ob_get_str_ptr(struct overlay_buffer *b)
 {
   const char *ret = (const char*)(b->bytes + b->position);
-  off_t ofs=0;
-  while (test_offset(b, ofs)==0){
+  off_t ofs = 0;
+  while (test_offset(b, ofs + 1)) {
     if (ret[ofs]=='\0'){
       b->position+=ofs+1;
       return ret;
@@ -450,7 +448,7 @@ const char *ob_get_str_ptr(struct overlay_buffer *b)
 
 int ob_get_bytes(struct overlay_buffer *b, unsigned char *buff, size_t len)
 {
-  if (test_offset(b, len))
+  if (!test_offset(b, len))
     return -1;
   bcopy(b->bytes + b->position, buff, len);
   b->position+=len;
@@ -459,7 +457,7 @@ int ob_get_bytes(struct overlay_buffer *b, unsigned char *buff, size_t len)
 
 unsigned char * ob_get_bytes_ptr(struct overlay_buffer *b, size_t len)
 {
-  if (test_offset(b, len))
+  if (!test_offset(b, len))
     return NULL;
   unsigned char *ret = b->bytes + b->position;
   b->position+=len;
@@ -468,7 +466,7 @@ unsigned char * ob_get_bytes_ptr(struct overlay_buffer *b, size_t len)
 
 uint32_t ob_get_ui32(struct overlay_buffer *b)
 {
-  if (test_offset(b, 4))
+  if (!test_offset(b, 4))
     return 0xFFFFFFFF; // ... unsigned
   uint32_t ret = (unsigned)b->bytes[b->position] << 24
 	| b->bytes[b->position +1] << 16
@@ -480,7 +478,7 @@ uint32_t ob_get_ui32(struct overlay_buffer *b)
 
 uint32_t ob_get_ui32_rv(struct overlay_buffer *b)
 {
-  if (test_offset(b, 4))
+  if (!test_offset(b, 4))
     return 0xFFFFFFFF; // ... unsigned
   uint32_t ret = b->bytes[b->position]
 	| b->bytes[b->position +1] << 8
@@ -492,7 +490,7 @@ uint32_t ob_get_ui32_rv(struct overlay_buffer *b)
 
 uint64_t ob_get_ui64(struct overlay_buffer *b)
 {
-  if (test_offset(b, 8))
+  if (!test_offset(b, 8))
     return 0xFFFFFFFF; // ... unsigned
   uint64_t ret = (uint64_t)b->bytes[b->position] << 56
 	| (uint64_t)b->bytes[b->position +1] << 48
@@ -508,7 +506,7 @@ uint64_t ob_get_ui64(struct overlay_buffer *b)
 
 uint64_t ob_get_ui64_rv(struct overlay_buffer *b)
 {
-  if (test_offset(b, 8))
+  if (!test_offset(b, 8))
     return 0xFFFFFFFF; // ... unsigned
   uint64_t ret = (uint64_t)b->bytes[b->position]
 	| (uint64_t)b->bytes[b->position +1] << 8
@@ -524,7 +522,7 @@ uint64_t ob_get_ui64_rv(struct overlay_buffer *b)
 
 uint16_t ob_get_ui16(struct overlay_buffer *b)
 {
-  if (test_offset(b, 2))
+  if (!test_offset(b, 2))
     return 0xFFFF; // ... unsigned
   uint16_t ret = b->bytes[b->position] << 8
 	| b->bytes[b->position +1];
@@ -534,7 +532,7 @@ uint16_t ob_get_ui16(struct overlay_buffer *b)
 
 uint16_t ob_get_ui16_rv(struct overlay_buffer *b)
 {
-  if (test_offset(b, 2))
+  if (!test_offset(b, 2))
     return 0xFFFF; // ... unsigned
   uint16_t ret = b->bytes[b->position]
 	| b->bytes[b->position +1] << 8;
@@ -574,7 +572,7 @@ uint64_t ob_get_packed_ui64(struct overlay_buffer *b)
 
 int ob_get(struct overlay_buffer *b)
 {
-  if (test_offset(b, 1))
+  if (!test_offset(b, 1))
     return -1;
   return b->bytes[b->position++];
 }
