@@ -39,7 +39,6 @@ int serval_log_hexdump(int level, struct __sourceloc whence, char *name, const u
       char buf[100];
       strbuf b = strbuf_local_buf(buf);
       size_t skip = xhexdump_line(XPRINTF_STRBUF(b), addr, len, off);
-      addr += skip;
       off += skip;
       serval_logf(level, whence, "  %s", strbuf_str(b));
     }
