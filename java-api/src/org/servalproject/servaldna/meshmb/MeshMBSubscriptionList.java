@@ -47,9 +47,10 @@ public class MeshMBSubscriptionList extends AbstractJsonList<MeshMBSubscription,
 		);
 		this.identity = identity;
 	}
+
 	@Override
-	protected String getUrl() {
-		return "/restful/meshmb/" + identity.signingKey.toHex() + "/feedlist.json";
+	protected Request getRequest() {
+		return new Request("GET", "/restful/meshmb/" + identity.signingKey.toHex() + "/feedlist.json");
 	}
 
 	@Override

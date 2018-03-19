@@ -189,7 +189,7 @@ public class KeyringCommon
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("name", name));
 		if (pin != null)
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("pin", pin));
-		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/keyring/" + sid.toHex() + "/set", query_params);
+		HttpURLConnection conn = connector.newServalDHttpConnection("PATCH", "/restful/keyring/" + sid.toHex(), query_params);
 		conn.connect();
 		Status status = receiveRestfulResponse(conn, HttpURLConnection.HTTP_OK);
 		try {
@@ -215,9 +215,30 @@ public class KeyringCommon
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("name", name));
 		if (pin != null)
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("pin", pin));
-		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/keyring/add", query_params);
+		HttpURLConnection conn = connector.newServalDHttpConnection("POST", "/restful/keyring/add", query_params);
 		conn.connect();
 		Status status = receiveRestfulResponse(conn, HttpURLConnection.HTTP_CREATED);
+		try {
+			decodeRestfulStatus(status);
+			if (status.identity == null)
+				throw new ServalDInterfaceException("invalid JSON response; missing identity");
+			return status.identity;
+		}
+		finally {
+			if (status.input_stream != null)
+				status.input_stream.close();
+		}
+	}
+
+	public static KeyringIdentity getIdentity(ServalDHttpConnectionFactory connector, SubscriberId sid, String pin)
+		throws IOException, ServalDInterfaceException
+	{
+		Vector<ServalDHttpConnectionFactory.QueryParam> query_params = new Vector<ServalDHttpConnectionFactory.QueryParam>();
+		if (pin != null)
+			query_params.add(new ServalDHttpConnectionFactory.QueryParam("pin", pin));
+		HttpURLConnection conn = connector.newServalDHttpConnection("GET", "/restful/keyring/" + sid.toHex(), query_params);
+		conn.connect();
+		Status status = receiveRestfulResponse(conn, HttpURLConnection.HTTP_OK);
 		try {
 			decodeRestfulStatus(status);
 			if (status.identity == null)
@@ -236,7 +257,7 @@ public class KeyringCommon
 		Vector<ServalDHttpConnectionFactory.QueryParam> query_params = new Vector<ServalDHttpConnectionFactory.QueryParam>();
 		if (pin != null)
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("pin", pin));
-		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/keyring/" + sid.toHex() + "/remove", query_params);
+		HttpURLConnection conn = connector.newServalDHttpConnection("DELETE", "/restful/keyring/" + sid.toHex(), query_params);
 		conn.connect();
 		Status status = receiveRestfulResponse(conn, HttpURLConnection.HTTP_OK);
 		try {

@@ -246,7 +246,7 @@ public class RhizomeCommon
 	public static RhizomeManifestBundle rhizomeManifest(ServalDHttpConnectionFactory connector, BundleId bid)
 		throws IOException, ServalDInterfaceException
 	{
-		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/rhizome/" + bid.toHex() + ".rhm");
+		HttpURLConnection conn = connector.newServalDHttpConnection("GET", "/restful/rhizome/" + bid.toHex() + ".rhm");
 		conn.connect();
 		Status status = RhizomeCommon.receiveResponse(conn, HttpURLConnection.HTTP_OK);
 		try {
@@ -284,7 +284,7 @@ public class RhizomeCommon
 	public static RhizomePayloadRawBundle rhizomePayloadRaw(ServalDHttpConnectionFactory connector, BundleId bid)
 		throws IOException, ServalDInterfaceException
 	{
-		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/rhizome/" + bid.toHex() + "/raw.bin");
+		HttpURLConnection conn = connector.newServalDHttpConnection("GET", "/restful/rhizome/" + bid.toHex() + "/raw.bin");
 		conn.connect();
 		Status status = RhizomeCommon.receiveResponse(conn, HttpURLConnection.HTTP_OK);
 		try {
@@ -358,7 +358,7 @@ public class RhizomeCommon
 	public static RhizomePayloadBundle rhizomePayload(ServalDHttpConnectionFactory connector, BundleId bid)
 		throws IOException, ServalDInterfaceException, RhizomeDecryptionException
 	{
-		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/rhizome/" + bid.toHex() + "/decrypted.bin");
+		HttpURLConnection conn = connector.newServalDHttpConnection("GET", "/restful/rhizome/" + bid.toHex() + "/decrypted.bin");
 		conn.connect();
 		Status status = RhizomeCommon.receiveResponse(conn, HttpURLConnection.HTTP_OK);
 		try {
@@ -463,7 +463,7 @@ public class RhizomeCommon
 				RhizomeReadOnlyException,
 				RhizomeEncryptionException
 	{
-		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/rhizome/insert");
+		HttpURLConnection conn = connector.newServalDHttpConnection("GET", "/restful/rhizome/insert");
 		PostHelper helper = new PostHelper(conn);
 		helper.connect();
 		if (author != null)
@@ -509,6 +509,7 @@ public class RhizomeCommon
 		RhizomeManifest manifest = RhizomeManifest.fromZipComment(file);
 
 		HttpURLConnection conn = connector.newServalDHttpConnection(
+				"GET",
 				"/restful/rhizome/import?id="+manifest.id.toHex()+"&version="+manifest.version);
 		PostHelper helper = new PostHelper(conn);
 		try {
@@ -558,6 +559,7 @@ public class RhizomeCommon
 
 	public static RhizomeImportStatus rhizomeImport(ServalDHttpConnectionFactory connector, RhizomeManifest manifest, InputStream payloadStream) throws ServalDInterfaceException, IOException, RhizomeException, RhizomeManifestSizeException {
 		HttpURLConnection conn = connector.newServalDHttpConnection(
+				"GET",
 				"/restful/rhizome/import?id="+manifest.id.toHex()+"&version="+manifest.version);
 		PostHelper helper = new PostHelper(conn);
 		try {

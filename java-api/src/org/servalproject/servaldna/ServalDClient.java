@@ -60,6 +60,11 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Vector;
+import java.util.Set;
+import java.util.LinkedHashSet;
+import java.util.Arrays;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 
 public class ServalDClient implements ServalDHttpConnectionFactory {
 	private final int httpPort;
@@ -82,6 +87,11 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 		KeyringIdentityList list = new KeyringIdentityList(this);
 		list.connect(pin);
 		return list;
+	}
+
+	public KeyringIdentity keyringGet(SubscriberId sid, String pin) throws ServalDInterfaceException, IOException
+	{
+		return KeyringCommon.getIdentity(this, sid, pin);
 	}
 
 	public KeyringIdentity keyringSetDidName(Subscriber subscriber, String did, String name, String pin) throws ServalDInterfaceException, IOException
@@ -241,13 +251,13 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 	}
 
 	// interface ServalDHttpConnectionFactory
-	public HttpURLConnection newServalDHttpConnection(String path) throws ServalDInterfaceException, IOException
+	public HttpURLConnection newServalDHttpConnection(String verb, String path) throws ServalDInterfaceException, IOException
 	{
-		return newServalDHttpConnection(path, new Vector<QueryParam>());
+		return newServalDHttpConnection(verb, path, new Vector<QueryParam>());
 	}
 
 	// interface ServalDHttpConnectionFactory
-	public HttpURLConnection newServalDHttpConnection(String path, Iterable<QueryParam> query_params) throws ServalDInterfaceException, IOException
+	public HttpURLConnection newServalDHttpConnection(String verb, String path, Iterable<QueryParam> query_params) throws ServalDInterfaceException, IOException
 	{
 		StringBuilder str = new StringBuilder();
 		char sep = '?';
@@ -266,6 +276,7 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 			throw new ServalDInterfaceException("URL.openConnection() returned a " + uconn.getClass().getName() + ", expecting a HttpURLConnection", e);
 		}
 		conn.setAllowUserInteraction(false);
+		conn.setRequestMethod(verb);
 		try {
 			conn.addRequestProperty("Authorization", "Basic " + Base64.encode((restfulUsername + ":" + restfulPassword).getBytes("UTF-8")));
 		}
@@ -275,4 +286,28 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 		return conn;
 	}
 
+	/* A hack to force java.net.HttpURLConnection to accept the non-standard "PATCH" request method.
+	 * Taken from https://stackoverflow.com/a/46323891
+	 */
+
+	private static class HttpURLConnectionHack {
+		public HttpURLConnectionHack() {
+			try {
+				Field methodsField = HttpURLConnection.class.getDeclaredField("methods");
+				Field modifiersField = Field.class.getDeclaredField("modifiers");
+				modifiersField.setAccessible(true);
+				modifiersField.setInt(methodsField, methodsField.getModifiers() & ~Modifier.FINAL);
+				methodsField.setAccessible(true);
+				String[] oldMethods = (String[]) methodsField.get(null);
+				Set<String> methodsSet = new LinkedHashSet<>(Arrays.asList(oldMethods));
+				methodsSet.add("PATCH");
+				String[] newMethods = methodsSet.toArray(new String[0]);
+				methodsField.set(null, newMethods);
+			} catch (NoSuchFieldException | IllegalAccessException e) {
+				throw new IllegalStateException(e);
+			}
+		}
+	}
+
+	private static final HttpURLConnectionHack dummy = new HttpURLConnectionHack();
 }

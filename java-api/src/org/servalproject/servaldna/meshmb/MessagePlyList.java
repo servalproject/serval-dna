@@ -67,13 +67,13 @@ public class MessagePlyList extends AbstractJsonList<PlyMessage, IOException> {
     }
 
     @Override
-    protected String getUrl() {
+    protected Request getRequest() {
         if (this.sinceToken == null)
-            return "/restful/meshmb/" + bundleId.toHex() + "/messagelist.json";
+            return new Request("GET", "/restful/meshmb/" + bundleId.toHex() + "/messagelist.json");
         else if(this.sinceToken.equals(""))
-            return "/restful/meshmb/" + bundleId.toHex() + "/newsince/messagelist.json";
+            return new Request("GET", "/restful/meshmb/" + bundleId.toHex() + "/newsince/messagelist.json");
         else
-            return "/restful/meshmb/" + bundleId.toHex() + "/newsince/" + sinceToken + "/messagelist.json";
+            return new Request("GET", "/restful/meshmb/" + bundleId.toHex() + "/newsince/" + sinceToken + "/messagelist.json");
     }
 
     @Override

@@ -3,6 +3,7 @@
 # Tests for Keyring Java API.
 #
 # Copyright 2015 Serval Project Inc.
+# Copyright 2018 Flinders Univerity
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -102,6 +103,14 @@ test_keyringListPin() {
    assertStdoutGrep --matches=1 "sid=$SIDA3"
 }
 
+doc_keyringGet="Java API query single keyring identity"
+test_keyringGet() {
+   executeJavaOk org.servalproject.test.Keyring get "$SIDA1"
+   tfw_cat --stdout --stderr
+   assertStdoutLineCount == 1
+   assertStdoutGrep --matches=1 "^sid=$SIDA1, did=$DIDA1, name=$NAMEA1$"
+}
+
 doc_keyringAddDidName="Java API add new identity"
 setup_keyringAddDidName() {
    IDENTITY_COUNT=1
@@ -141,7 +150,7 @@ setup_keyringSetDidName() {
    setup
 }
 test_keyringSetDidName() {
-   executeJavaOk org.servalproject.test.Keyring set "$SIDA1" 987654321 'Joe Bloggs'
+   executeJavaOk --stdout --stderr org.servalproject.test.Keyring set "$SIDA1" 987654321 'Joe Bloggs'
    tfw_cat --stdout --stderr
    assertStdoutGrep --matches=1 "sid=$SIDA1, did=987654321, name=Joe Bloggs$"
    executeOk_servald keyring list

@@ -39,12 +39,22 @@ public abstract class AbstractJsonList<T, E extends Exception> {
     protected boolean closed = false;
     protected long rowCount = 0;
 
+	protected class Request {
+		String verb;
+		String url;
+
+		public Request(String verb, String url) {
+			this.verb = verb;
+			this.url = url;
+		}
+	}
+
     protected AbstractJsonList(ServalDHttpConnectionFactory httpConnector, JSONTableScanner table){
         this.httpConnector = httpConnector;
         this.table = table;
     }
 
-    protected abstract String getUrl();
+    protected abstract Request getRequest();
 
     public boolean isConnected(){
         return this.json != null;
@@ -60,8 +70,8 @@ public abstract class AbstractJsonList<T, E extends Exception> {
     }
 
     public void connect() throws IOException, ServalDInterfaceException, E {
-        String url = getUrl();
-        httpConnection = httpConnector.newServalDHttpConnection(url);
+		Request request = getRequest();
+        httpConnection = httpConnector.newServalDHttpConnection(request.verb, request.url);
         httpConnection.connect();
 
         if ("application/json".equals(httpConnection.getContentType())){

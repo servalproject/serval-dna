@@ -51,12 +51,12 @@ public class MeshMBActivityList extends AbstractJsonList<MeshMBActivityMessage, 
 	}
 
 	@Override
-	protected String getUrl() {
+	protected Request getRequest() {
 		if (token == null)
-			return "/restful/meshmb/" + identity.signingKey.toHex() + "/activity.json";
+			return new Request("GET", "/restful/meshmb/" + identity.signingKey.toHex() + "/activity.json");
 		if (token.equals(""))
-			return "/restful/meshmb/" + identity.signingKey.toHex() + "/activity/activity.json";
-		return "/restful/meshmb/" + identity.signingKey.toHex() + "/activity/"+token+"/activity.json";
+			return new Request("GET", "/restful/meshmb/" + identity.signingKey.toHex() + "/activity/activity.json");
+		return new Request("GET", "/restful/meshmb/" + identity.signingKey.toHex() + "/activity/"+token+"/activity.json");
 	}
 
 	@Override

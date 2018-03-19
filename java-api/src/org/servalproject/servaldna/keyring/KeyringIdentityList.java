@@ -68,7 +68,7 @@ public class KeyringIdentityList {
 			if (pin != null) {
 				query_params.add(new ServalDHttpConnectionFactory.QueryParam("pin", pin));
 			}
-			httpConnection = httpConnector.newServalDHttpConnection("/restful/keyring/identities.json", query_params);
+			httpConnection = httpConnector.newServalDHttpConnection("GET", "/restful/keyring/identities.json", query_params);
 			httpConnection.connect();
 			KeyringCommon.Status status = KeyringCommon.receiveRestfulResponse(httpConnection, HttpURLConnection.HTTP_OK);
 			json = status.json;

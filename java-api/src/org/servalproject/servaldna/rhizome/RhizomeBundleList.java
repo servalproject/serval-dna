@@ -80,7 +80,7 @@ public class RhizomeBundleList extends AbstractJsonList<RhizomeListBundle, IOExc
 	}
 
 	@Override
-	protected String getUrl() {
+	protected Request getRequest() {
 		StringBuilder sb = new StringBuilder();
 		if (this.sinceToken == null)
 			sb.append("/restful/rhizome/bundlelist.json");
@@ -104,7 +104,7 @@ public class RhizomeBundleList extends AbstractJsonList<RhizomeListBundle, IOExc
 		}
 		if (recipient!=null)
 			sb.append(parmDelim).append("recipient=").append(recipient.toHex());
-		return sb.toString();
+		return new Request("GET", sb.toString());
 	}
 
 	@Override

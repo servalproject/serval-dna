@@ -61,8 +61,8 @@ public interface ServalDHttpConnectionFactory {
 		}
 	}
 
-	public HttpURLConnection newServalDHttpConnection(String path) throws ServalDInterfaceException, IOException;
+	public HttpURLConnection newServalDHttpConnection(String verb, String path) throws ServalDInterfaceException, IOException;
 
-	public HttpURLConnection newServalDHttpConnection(String path, Iterable<QueryParam> query_params) throws ServalDInterfaceException, IOException;
+	public HttpURLConnection newServalDHttpConnection(String verb, String path, Iterable<QueryParam> query_params) throws ServalDInterfaceException, IOException;
 
 }

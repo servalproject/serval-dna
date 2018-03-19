@@ -67,7 +67,7 @@ public class MeshMSConversationList {
 	{
 		try {
 			rowCount = 0;
-			httpConnection = httpConnector.newServalDHttpConnection("/restful/meshms/" + sid.toHex() + "/conversationlist.json");
+			httpConnection = httpConnector.newServalDHttpConnection("GET", "/restful/meshms/" + sid.toHex() + "/conversationlist.json");
 			httpConnection.connect();
 			json = MeshMSCommon.receiveRestfulResponse(httpConnection, HttpURLConnection.HTTP_OK);
 			json.consume(JSONTokeniser.Token.START_OBJECT);

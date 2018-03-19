@@ -134,7 +134,7 @@ public class MeshMSCommon
 
 	public static MeshMSStatus sendMessage(ServalDHttpConnectionFactory connector, SubscriberId sid1, SubscriberId sid2, String text) throws IOException, ServalDInterfaceException, MeshMSException
 	{
-		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshms/" + sid1.toHex() + "/" + sid2.toHex() + "/sendmessage");
+		HttpURLConnection conn = connector.newServalDHttpConnection("GET", "/restful/meshms/" + sid1.toHex() + "/" + sid2.toHex() + "/sendmessage");
 		PostHelper helper = new PostHelper(conn);
 		helper.connect();
 		helper.writeField("message", text);
@@ -147,7 +147,7 @@ public class MeshMSCommon
 
 	public static MeshMSStatus markAllConversationsRead(ServalDHttpConnectionFactory connector, SubscriberId sid1) throws IOException, ServalDInterfaceException, MeshMSException
 	{
-		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshms/" + sid1.toHex() + "/readall");
+		HttpURLConnection conn = connector.newServalDHttpConnection("GET", "/restful/meshms/" + sid1.toHex() + "/readall");
 		conn.setRequestMethod("POST");
 		conn.connect();
 		int[] expected_response_codes = { HttpURLConnection.HTTP_OK, HttpURLConnection.HTTP_CREATED };
@@ -159,7 +159,7 @@ public class MeshMSCommon
 
 	public static MeshMSStatus markAllMessagesRead(ServalDHttpConnectionFactory connector, SubscriberId sid1, SubscriberId sid2) throws IOException, ServalDInterfaceException, MeshMSException
 	{
-		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshms/" + sid1.toHex() + "/" + sid2.toHex() + "/readall");
+		HttpURLConnection conn = connector.newServalDHttpConnection("GET", "/restful/meshms/" + sid1.toHex() + "/" + sid2.toHex() + "/readall");
 		conn.setRequestMethod("POST");
 		conn.connect();
 		int[] expected_response_codes = { HttpURLConnection.HTTP_OK, HttpURLConnection.HTTP_CREATED };
@@ -171,7 +171,7 @@ public class MeshMSCommon
 
 	public static MeshMSStatus advanceReadOffset(ServalDHttpConnectionFactory connector, SubscriberId sid1, SubscriberId sid2, long offset) throws IOException, ServalDInterfaceException, MeshMSException
 	{
-		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshms/" + sid1.toHex() + "/" + sid2.toHex() + "/recv/" + offset + "/read");
+		HttpURLConnection conn = connector.newServalDHttpConnection("GET", "/restful/meshms/" + sid1.toHex() + "/" + sid2.toHex() + "/recv/" + offset + "/read");
 		conn.setRequestMethod("POST");
 		conn.connect();
 		int[] expected_response_codes = { HttpURLConnection.HTTP_OK, HttpURLConnection.HTTP_CREATED };

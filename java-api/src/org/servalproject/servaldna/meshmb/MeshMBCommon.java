@@ -43,7 +43,7 @@ public class MeshMBCommon {
     }
 
     public static int sendMessage(ServalDHttpConnectionFactory connector, SigningKey id, String text) throws IOException, ServalDInterfaceException {
-        HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshmb/" + id.toHex() + "/sendmessage");
+        HttpURLConnection conn = connector.newServalDHttpConnection("GET", "/restful/meshmb/" + id.toHex() + "/sendmessage");
         PostHelper helper = new PostHelper(conn);
         helper.connect();
         helper.writeField("message", text);
@@ -62,6 +62,7 @@ public class MeshMBCommon {
         if (name!=null && !"".equals(name))
             parms.add(new ServalDHttpConnectionFactory.QueryParam("name", name));
         HttpURLConnection conn = connector.newServalDHttpConnection(
+				"GET",
                 "/restful/meshmb/"+id.signingKey.toHex()+"/"+action.toString().toLowerCase()+"/"+peer.signingKey.toHex(),
                 parms
         );

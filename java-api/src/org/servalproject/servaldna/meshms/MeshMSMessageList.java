@@ -66,13 +66,13 @@ public class MeshMSMessageList extends AbstractJsonList<MeshMSMessage, MeshMSExc
 	}
 
 	@Override
-	protected String getUrl() {
+	protected Request getRequest() {
 		if (this.sinceToken == null)
-			return "/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + "/messagelist.json";
+			return new Request("GET", "/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + "/messagelist.json");
 		else if(this.sinceToken.equals(""))
-			return "/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + "/newsince/messagelist.json";
+			return new Request("GET", "/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + "/newsince/messagelist.json");
 		else
-			return "/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + "/newsince/" + sinceToken + "/messagelist.json";
+			return new Request("GET", "/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + "/newsince/" + sinceToken + "/messagelist.json");
 	}
 
 	@Override
