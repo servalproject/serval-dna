@@ -2302,6 +2302,9 @@ static int _render_response(struct http_request *r)
   struct http_response hr = r->response;
   assert(hr.status_code >= 100);
   assert(hr.status_code < 600);
+  // Status codes 301 and 302 must be accompanied by a Location header.
+  if (hr.status_code == 301 || hr.status_code == 302)
+    assert(hr.header.location);
   // Status code 401 must be accompanied by a WWW-Authenticate header.
   if (hr.status_code == 401)
     assert(hr.header.www_authenticate.scheme != NOAUTH);
@@ -2358,6 +2361,11 @@ static int _render_response(struct http_request *r)
   strbuf_sprintf(sb, "HTTP/1.%d %03u %s\r\n", hr.header.minor_version, hr.status_code, hr.reason);
   strbuf_puts(sb, "Connection: Close\r\n");
   strbuf_sprintf(sb, "Server: servald %s\r\n", version_servald);
+  if (hr.header.location) {
+    strbuf_puts(sb, "Location: ");
+    strbuf_puts(sb, hr.header.location);
+    strbuf_puts(sb, "\r\n");
+  }
   strbuf_puts(sb, "Content-Type: ");
   strbuf_append_mime_content_type(sb, hr.header.content_type);
   strbuf_puts(sb, "\r\n");

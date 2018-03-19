@@ -115,6 +115,7 @@ struct http_response_headers {
   http_size_t content_length;
   http_size_t content_range_start; // range_end = range_start + content_length - 1
   http_size_t resource_length; // size of entire resource
+  const char *location; // used with 301 and 302 responses
   const struct mime_content_type *content_type; // one of the CONTENT_TYPE_ consts declared above
   const char *boundary;
   struct http_origin allow_origin;
