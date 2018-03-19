@@ -234,7 +234,7 @@ public class RhizomeManifest {
 	}
 
 	public static RhizomeManifest fromZipComment(RandomAccessFile file) throws IOException, RhizomeManifestParseException {
-		int readLen = RhizomeManifest.TEXT_FORMAT_MAX_SIZE + 22;
+		int readLen = 0xFFFF + 22;
 		file.seek(file.length() - readLen);
 		byte buff[] = new byte[readLen];
 		file.readFully(buff);
@@ -250,20 +250,22 @@ public class RhizomeManifest {
 				continue;
 
 			// located zip EOCD record marker 0x504b0506
-			offset += 20;
-			int manifestLen = (buff[offset++]&0xFF) | ((buff[offset++] & 0xFF) << 8);
-			if (manifestLen != readLen - offset)
-				throw new RhizomeManifestParseException("Zip Comment length ("+manifestLen+") doesn't align with end of file ("+readLen+", "+offset+")");
-			if (manifestLen == 0)
-				throw new RhizomeManifestParseException("No Zip Comment");
+			int testOffset = offset + 20;
+			int commentLen = (buff[testOffset++]&0xFF) | ((buff[testOffset++] & 0xFF) << 8);
+			if (commentLen != readLen - testOffset)
+				continue;
+			if (commentLen == 0)
+				throw new RhizomeManifestParseException("No zip comment present");
+			if (commentLen > RhizomeManifest.TEXT_FORMAT_MAX_SIZE)
+				throw new RhizomeManifestParseException("Zip comment is too long to be a valid manifest");
 
-			RhizomeManifest manifest = RhizomeManifest.fromTextFormat(buff, offset, manifestLen);
-			long expectedFileSize = file.length() - readLen + offset;
+			RhizomeManifest manifest = RhizomeManifest.fromTextFormat(buff, testOffset, commentLen);
+			long expectedFileSize = file.length() - readLen + testOffset;
 			if (manifest.filesize != expectedFileSize)
 				throw new RhizomeManifestParseException("Manifest filesize doesn't match zip file length");
 			return manifest;
 		}
-		throw new RhizomeManifestParseException("Zip EOCD record not found");
+		throw new RhizomeManifestParseException("Valid zip EOCD record not found");
 	}
 
 	private static boolean isFieldNameFirstChar(char c)
