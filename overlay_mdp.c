@@ -1126,6 +1126,7 @@ static void send_route(
 static int routing_table(void **record, void *context)
 {
   struct subscriber *subscriber = *record;
+  DEBUGF(mdprequests, "   subscriber sid=%s reachable=%s", alloca_tohex_sid_t(subscriber->sid), alloca_reachable_flags(subscriber->reachable));
   if (subscriber->reachable != REACHABLE_NONE){
     struct routing_state *state = (struct routing_state *)context;
     if ((subscriber->reachable & REACHABLE_SELF) == 0 || subscriber != get_my_subscriber(0)){
@@ -1597,7 +1598,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	mdp_interface_packet(client, header, payload);
 	break;
       case MDP_ROUTE_TABLE:
-	DEBUGF(mdprequests, "Processing MDP_ROUTING_TABLE from %s", alloca_socket_address(client));
+	DEBUGF(mdprequests, "Processing MDP_ROUTE_TABLE from %s", alloca_socket_address(client));
 	{
 	  struct routing_state state={
 	    .client = client,

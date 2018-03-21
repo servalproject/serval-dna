@@ -205,6 +205,12 @@ struct file_meta;
 strbuf strbuf_append_file_meta(strbuf sb, const struct file_meta *metap);
 #define alloca_file_meta(metap)    strbuf_str(strbuf_append_file_meta(strbuf_alloca(80), (metap)))
 
+/* Append a representation of routing reachable flags.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_reachable_flags(strbuf sb, int flags);
+#define alloca_reachable_flags(flags)    strbuf_str(strbuf_append_reachable_flags(strbuf_alloca(80), (flags)))
+
 /* Append a string using HTTP quoted-string format: delimited by double quotes (") and
  * internal double quotes and backslash escaped by leading backslash.
  * @author Andrew Bettison <andrew@servalproject.com>

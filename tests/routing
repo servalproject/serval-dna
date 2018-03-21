@@ -44,7 +44,7 @@ link_matches() {
    done
    sid="$1"
    tfw_log "Looking for link ${sid}, ${link_type}, ${interface_ex}, ${via}"
-   if ! $GREP "^${sid}:${link_type}:${interface_ex}:${via}:" $_tfw_tmp/stdout; then
+   if ! $GREP "^${sid}:${link_type}:${interface_ex}:${via}:" "$TFWSTDOUT"; then
       tfw_log "Link not found"
       return 1
    fi
@@ -90,6 +90,7 @@ configure_servald_server() {
    executeOk_servald config \
       set debug.mdprequests yes \
       set debug.linkstate yes \
+      set debug.subscriber yes \
       set debug.verbose yes \
       set debug.overlayrouting yes \
       set log.console.level debug \

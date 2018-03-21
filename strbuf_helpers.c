@@ -66,6 +66,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/socket.h>
 #include <netdb.h>
 #include "lang.h" // for FALLTHROUGH
+#include "overlay_address.h" // for REACHABLE_ flags
 #include "http_server.h"
 #include "strbuf_helpers.h"
 #include "str.h"
@@ -620,6 +621,40 @@ strbuf strbuf_append_file_meta(strbuf sb, const struct file_meta *metap)
   strbuf_puts(sb, "{ .mtime=");
   strbuf_append_timespec(sb, &metap->mtime);
   strbuf_sprintf(sb, ", .size=%ld }", (long)metap->size);
+  return sb;
+}
+
+strbuf strbuf_append_reachable_flags(strbuf sb, int flags) {
+  if (flags == REACHABLE_NONE)
+    strbuf_puts(sb, "NONE");
+  else {
+    const char *sep = "";
+    if (flags & REACHABLE_SELF) {
+      strbuf_puts(sb, sep); 
+      strbuf_puts(sb, "SELF");
+      sep = "|";
+    }
+    if (flags & REACHABLE_BROADCAST) {
+      strbuf_puts(sb, sep); 
+      strbuf_puts(sb, "BROADCAST");
+      sep = "|";
+    }
+    if (flags & REACHABLE_UNICAST) {
+      strbuf_puts(sb, sep); 
+      strbuf_puts(sb, "UNICAST");
+      sep = "|";
+    }
+    if (flags & REACHABLE_INDIRECT) {
+      strbuf_puts(sb, sep); 
+      strbuf_puts(sb, "INDIRECT");
+      sep = "|";
+    }
+    if (flags & REACHABLE_ASSUMED) {
+      strbuf_puts(sb, sep); 
+      strbuf_puts(sb, "ASSUMED");
+      sep = "|";
+    }
+  }
   return sb;
 }
 
