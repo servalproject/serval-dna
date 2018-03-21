@@ -1,6 +1,7 @@
 /* 
 Serval DNA MDP addressing
 Copyright (C) 2012-2013 Serval Project Inc.
+Copyright (C) 2018 Flinders University
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -124,6 +125,16 @@ void release_my_subscriber();
 extern __thread struct subscriber *directory_service;
 
 struct subscriber *find_subscriber(const uint8_t *sid, int len, int create);
+
+typedef struct subscriber_iterator {
+  tree_iterator tree_iterator;
+} subscriber_iterator;
+
+void subscriber_iterator_start(subscriber_iterator *it);
+void subscriber_iterator_advance_to(subscriber_iterator *it, const sid_t *sid);
+struct subscriber **subscriber_iterator_get_current(subscriber_iterator *it);
+void subscriber_iterator_advance(subscriber_iterator *it);
+void subscriber_iterator_free(subscriber_iterator *it);
 
 void enum_subscribers(struct subscriber *start, walk_callback callback, void *context);
 int set_reachable(struct subscriber *subscriber, struct network_destination *destination, struct subscriber *next_hop, int hop_count, struct subscriber *prior_hop);

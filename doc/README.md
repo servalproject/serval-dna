@@ -43,6 +43,7 @@ DNA][] component of the [Serval mesh network][].
    REST APIs through which applications access the services of the Serval mesh
    network, including:
     * [Keyring REST API](./REST-API-Keyring.md) -- identity management
+    * [Route REST API](./REST-API-Route.md) -- network routing and peers
     * [Rhizome REST API](./REST-API-Rhizome.md) -- decentralised content distribution
     * [MeshMS REST API](./REST-API-MeshMS.md) -- secure, one-to-one messaging
 

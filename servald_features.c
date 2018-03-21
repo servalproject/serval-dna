@@ -54,6 +54,7 @@ void servald_features()
   USE_FEATURE(http_rhizome);
   USE_FEATURE(http_rhizome_direct);
   USE_FEATURE(http_rest_keyring);
+  USE_FEATURE(http_rest_route);
   USE_FEATURE(http_rest_rhizome);
   USE_FEATURE(http_rest_meshms);
   USE_FEATURE(http_rest_meshmb);

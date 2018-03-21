@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "http_server.h"
 #include "keyring.h"
+#include "overlay_address.h"
 #include "meshms.h"
 #include "os.h"
 
@@ -161,13 +162,21 @@ typedef struct httpd_request
     */
     struct rhizome_read read_state;
 
-    /* For responses that list SIDs.
+    /* For responses that list identities in the keyring.
     */
     struct {
       enum list_phase phase;
       keyring_iterator it;
     }
       sidlist;
+
+    /* For responses that list known subscribers, eg, routing table.
+    */
+    struct {
+      enum list_phase phase;
+      subscriber_iterator it;
+    }
+      subscriberlist;
 
     /* For responses that list manifests.
     */

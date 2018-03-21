@@ -173,6 +173,33 @@ struct subscriber *find_subscriber(const uint8_t *sidp, int len, int create)
   return result;
 }
 
+// iterate over subscribers in ascending binary order
+
+void subscriber_iterator_start(subscriber_iterator *it)
+{
+  tree_iterator_start(&it->tree_iterator, &root);
+}
+
+void subscriber_iterator_advance_to(subscriber_iterator *it, const sid_t *sid)
+{
+  tree_iterator_advance_to(&it->tree_iterator, sid->binary, sizeof sid->binary);
+}
+
+struct subscriber **subscriber_iterator_get_current(subscriber_iterator *it)
+{
+  return (struct subscriber **) tree_iterator_get_node(&it->tree_iterator);
+}
+
+void subscriber_iterator_advance(subscriber_iterator *it)
+{
+  tree_iterator_advance(&it->tree_iterator);
+}
+
+void subscriber_iterator_free(subscriber_iterator *it)
+{
+  tree_iterator_free(&it->tree_iterator);
+}
+
 /*
  walk the tree, starting at start inclusive, calling the supplied callback function
  */

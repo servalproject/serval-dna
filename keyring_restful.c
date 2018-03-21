@@ -152,9 +152,6 @@ static int restful_keyring_identitylist_json_content(struct http_request *hr, un
 static int restful_keyring_identitylist_json_content_chunk(struct http_request *hr, strbuf b)
 {
   httpd_request *r = (httpd_request *) hr;
-  // The "my_sid" and "their_sid" per-conversation fields allow the same JSON structure to be used
-  // in a future, non-SID-specific request, eg, to list all conversations for all currently open
-  // identities.
   const char *headers[] = {
     "sid",
     "identity",

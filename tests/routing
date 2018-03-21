@@ -2,7 +2,8 @@
 
 # Tests for Route discovery
 #
-# Copyright 2012 Serval Project, Inc.
+# Copyright 2012-2015 Serval Project, Inc.
+# Copyright 2016-2018 Flinders University
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -18,73 +19,9 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
-
-interface_up() {
-   $GREP "Interface .* is up" $instance_servald_log || return 1
-   return 0
-}
-
-link_matches() {
-   local interface_ex=".*"
-   local link_type="\(BROADCAST\|UNICAST\)"
-   local via="0*"
-   local sid=""
-   while [ $# -ne 0 ]; do
-      case "$1" in
-      --interface) interface_ex="$2"; shift 2;;
-      --broadcast) link_type="BROADCAST"; shift;;
-      --unicast) link_type="UNICAST"; shift;;
-      --via) link_type="INDIRECT"; via="$2"; interface_ex=""; shift 2;;
-      --any) via=".*"; link_type=".*"; shift;;
-      *) break;;
-      esac
-   done
-   sid="$1"
-   tfw_log "Looking for link ${sid}, ${link_type}, ${interface_ex}, ${via}"
-   if ! $GREP "^${sid}:${link_type}:${interface_ex}:${via}:" "$TFWSTDOUT"; then
-      tfw_log "Link not found"
-      return 1
-   fi
-}
-
-has_link() {
-   executeOk_servald route print
-   link_matches $@
-}
-
-has_no_link() {
-   has_link --any $@ || return 0
-   return 1
-}
-
-path_exists() {
-   local dest
-   eval dest=\$$#
-   local dest_sidvar=SID${dest#+}
-   local first_inst=$1
-   local next_inst=$first_inst
-   shift
-   local I
-   for I; do
-      local sidvar=SID${I#+}
-      [ -n "${!sidvar}" ] || break
-      set_instance $next_inst
-      executeOk_servald route print
-      link_matches ${!sidvar} || return 1
-      [ $I = $dest ] && break
-      link_matches --via ${!sidvar} ${!dest_sidvar} || return 1
-      next_inst=$I
-   done
-   # so we think this path should exist, check that it works
-   set_instance $first_inst
-   executeOk_servald mdp trace --timeout=20 "${!dest_sidvar}"
-#   assertStdoutGrep "^[0-9]+:${!dest_sidvar}\$"
-   tfw_cat --stdout
-   return 0
-}
+source "${0%/*}/../testdefs_routing.sh"
 
 configure_servald_server() {
    executeOk_servald config \
@@ -97,11 +34,6 @@ configure_servald_server() {
       set log.console.show_pid on \
       set log.console.show_time on \
       set rhizome.enable no
-}
-
-log_routing_table() {
-   executeOk_servald route print
-   tfw_cat --stdout --stderr
 }
 
 teardown() {
@@ -406,7 +338,7 @@ setup_scan() {
       set interfaces.1.broadcast.drop on
   foreach_instance +A +B +C start_servald_server
   foreach_instance +A +B +C \
-    wait_until interface_up
+    wait_until interface_is_up
 }
 test_scan() {
    set_instance +A
@@ -470,7 +402,7 @@ setup_fixedAddress() {
    touch "$SERVALD_VAR/dummy1"
    foreach_instance +A +B start_servald_server
    foreach_instance +A +B \
-      wait_until interface_up
+      wait_until interface_is_up
 }
 doc_fixedAddress="Establish a link from a configured fixed address"
 test_fixedAddress() {

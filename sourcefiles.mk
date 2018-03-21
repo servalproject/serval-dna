@@ -99,6 +99,7 @@ SERVAL_DAEMON_SOURCES = \
 	overlay_packetformats.c \
 	overlay_payload.c \
 	route_link.c \
+	route_restful.c \
 	rhizome.c \
 	rhizome_bundle.c \
 	rhizome_crypto.c \

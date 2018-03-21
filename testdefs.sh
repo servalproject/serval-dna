@@ -424,9 +424,9 @@ servald_start() {
 # Utility function:
 #  - fetch the daemon's primary SID
 get_servald_primary_sid() {
-   local _instance="$2"
+   local _instance="$1"
    [ -z "$_instance" ] || push_and_set_instance $_instance || return $?
-   local _var="$1"
+   local _var="$2"
    local _sid=$(<"$SERVALINSTANCE_PATH/proc/primary_sid")
    assert --message="instance $instance_name primary SID is known" [ -n "$_sid" ]
    if [ -n "$_var" ]; then

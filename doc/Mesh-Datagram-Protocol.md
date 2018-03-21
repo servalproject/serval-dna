@@ -8,11 +8,11 @@ make it particularly suitable for use in Ad Hoc wireless networks, which can
 suffer high levels of packet loss due to weak signal, interference and
 congestion.
 
-MDP carries [messages](#mdp-message) from [sender](#sender) to
-[recipient](#recipient) [node](#node)s, or [broadcasts](#broadcast) to all
-nodes.  MDP guarantees that message contents will be correct if delivered, but
-does not guarantee one delivery (messages may be lost or delivered more than
-once), arrival time, or message order.
+MDP carries [messages](#mdp-message) from [sender](#sender) to [recipient](#recipient)
+[node](#node)s, or [broadcasts](#broadcast) to all nodes.  MDP guarantees that
+message contents will be correct if delivered, but does not guarantee exactly
+one delivery (messages may be lost or delivered more than once), arrival time,
+or message order.
 
 MDP can be carried over any wireless or wired data link, whether a shared
 medium (eg, [CSMA/CA][] used in [Wi-Fi][]) or a dedicated medium (eg, [AX.25
@@ -78,7 +78,7 @@ called a *subscriber*), then strictly speaking, the Serval mesh network could
 be said to carry messages between *users* not between *devices*.  There is
 nothing to prevent a [keyring][] entry from being copied from one device to
 another, thus it is possible for two or more devices to have the same MDP
-Address.  At present, Serval routing does not handle this case, so it could
+Address.  At present, Serval [routing][] does not handle this case, so it could
 cause unwanted effects such as route flapping or dropped messages.
 
 In practice, the “duplicate MDP Address” problem is rare for the time being,
@@ -261,15 +261,9 @@ MDP transmits a [MDP message](#mdp-message) over a [link](#link) by
 encapsulating it into an **overlay packet** (also called **MDP packet** or
 **overlay frame**).  The MDP overlay packet is a [layer 2][] concept; it is
 only concerned with transporting MDP messages across a single link to a
-neighbouring *peer* [node](#node).  Once an overlay packet arrives, the
-receiver unpacks all of its MDP messages, consumes those for which it (or one
-of its zero-hop identities) is the [recipient](#recipient) and independently
-routes each of the remaining messages to its next appropriate peer.
-
-Every overlay packet contains the [MDP address](#mdp-address)es of its
-[transmitter](#transmitter) and [receiver](#receiver).
-
-An overlay packet may contain many MDP messages.  The header of each MDP
+neighbouring [peer][] node.  Once an overlay packet arrives, the receiver
+unpacks all of its MDP messages, consumes those for which it (or one of its
+[zero-hop][] identities) is the [recipient](#recipient) and independently
 message in an overlay packet is constructed afresh when it is embedded into the
 packet, setting its [flag bits](#mdp-message-flags) and re-writing the [address
 fields](#mdp-address-fields) within the context of the overlay packet, in order
@@ -340,6 +334,7 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [layer 2]: https://en.wikipedia.org/wiki/Data_link_layer
 [layer 3]: https://en.wikipedia.org/wiki/Network_layer
 [layer 4]: https://en.wikipedia.org/wiki/Transport_layer
+[peer]: ./REST-API-Route.md#peer
 [UDP]: http://en.wikipedia.org/wiki/User_Datagram_Protocol
 [MTU]: http://en.wikipedia.org/wiki/Maximum_transmission_unit
 [SID]: ./REST-API-Keyring.md#serval-id
@@ -349,6 +344,8 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [configured]: ./Servald-Configuration.md
 [network interfaces]: ./Servald-Configuration.md#network-interfaces
 [keyring]: ./REST-API-Keyring.md
+[routing]: ./REST-API-Route.md
+[zero-hop]: ./REST-API-Route.md#zero-hop
 [encrypted]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:security_framework
 [signed]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:security_framework
 [local sockets]: https://en.wikipedia.org/wiki/Unix_domain_socket
