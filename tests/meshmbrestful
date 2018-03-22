@@ -1,17 +1,31 @@
 #!/bin/bash
 
+# Tests for Serval DNA MeshMB REST API
+#
+# Copyright 2016-2018 Flinders University
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
-source "${0%/*}/../testdefs_json.sh"
+source "${0%/*}/../testdefs_rest.sh"
 
 setup_instance() {
    set_instance $1
+   setup_rest_config
    executeOk_servald config \
-      set api.restful.users.harry.password potter \
-      set api.restful.users.ron.password weasley \
-      set api.restful.users.hermione.password grainger \
-      set debug.http_server on \
-      set debug.httpd on \
       set debug.meshmb on \
       set debug.meshms on \
       set debug.verbose on \
@@ -29,14 +43,12 @@ set_extra_config() {
 }
 
 setup() {
-   setup_curl 7
-   setup_json
+   setup_rest_utilities
    setup_servald
    export SERVALD_RHIZOME_DB_RETRY_LIMIT_MS=60000
    setup_instance +A
    start_servald_instances +A
-   wait_until servald_restful_http_server_started +A
-   get_servald_restful_http_server_port PORTA +A
+   wait_until_rest_server_ready
 }
 
 finally() {
@@ -49,36 +61,42 @@ teardown() {
    report_all_servald_servers
 }
 
-doc_MeshMBRestSend="Restful send of a broadcast message"
+doc_AuthBasicMissing="REST API missing MeshMB Basic Authentication credentials"
+test_AuthBasicMissing() {
+   rest_request GET "/restful/meshmb/$IDA1/feedlist.json" 401 --no-auth
+   assertGrep response.headers "^WWW-Authenticate: Basic realm=\"Serval RESTful API\"$CR\$"
+   assertJq response.json 'contains({"http_status_code": 401})'
+   assertJq response.json 'contains({"http_status_message": ""})'
+}
+
+doc_AuthBasicWrong="REST API incorrect MeshMB Basic Authentication credentials"
+test_AuthBasicWrong() {
+   rest_request GET "/restful/meshmb/$IDA1/feedlist.json" 401 --user=fred:nurks
+   assertGrep response.headers "^WWW-Authenticate: Basic realm=\"Serval RESTful API\"$CR\$"
+   assertJq response.json 'contains({"http_status_code": 401})'
+   assertJq response.json 'contains({"http_status_message": ""})'
+   rest_request GET "/restful/meshms/$SIDA/conversationlist.json" 200 --user=ron:weasley
+}
+
+doc_MeshMBRestSend="REST API MeshMB send a broadcast message"
 test_MeshMBRestSend() {
-   executeOk curl \
-         --silent --fail --show-error \
-         --output sendmessage.json \
-         --basic --user harry:potter \
-         --form "message=Hello World;type=text/plain;charset=utf-8" \
-         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/sendmessage"
+   rest_request POST "/restful/meshmb/$IDA1/sendmessage" 201 \
+      --form-part="message=Hello World;type=text/plain;charset=utf-8"
    executeOk_servald rhizome export bundle $IDA1 broadcast.manifest broadcast
    tfw_cat -h broadcast.manifest
    tfw_cat -h broadcast
 }
 
-doc_MeshMBRestList="Restful list of meshmb messages"
+doc_MeshMBRestList="REST API MeshMB list of all messages"
 setup_MeshMBRestList() {
    setup
    executeOk_servald meshmb send $IDA1 "Message 1"
    executeOk_servald meshmb send $IDA1 "Message 2"
 }
 test_MeshMBRestList() {
-   executeOk curl \
-         --silent --fail --show-error \
-         --output listmessages.json \
-         --dump-header http.headers \
-         --basic --user harry:potter \
-         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/messagelist.json"
-   tfw_cat http.headers listmessages.json
-   tfw_preserve listmessages.json
-   assert [ "$(jq '.rows | length' listmessages.json)" = 2 ]
-   transform_list_json listmessages.json list.json
+   rest_request GET "/restful/meshmb/$IDA1/messagelist.json"
+   assert [ "$(jq '.rows | length' response.json)" = 2 ]
+   transform_list_json response.json list.json
    tfw_preserve list.json
    assertJq list.json \
             "contains([
@@ -94,7 +112,7 @@ test_MeshMBRestList() {
             ])"
 }
 
-doc_MeshMBRestFollow="Restful follow another feed"
+doc_MeshMBRestFollow="REST API MeshMB follow a feed"
 setup_MeshMBRestFollow() {
    IDENTITY_COUNT=3
    setup
@@ -103,36 +121,21 @@ setup_MeshMBRestFollow() {
    executeOk_servald meshmb send $IDA3 "Message 3"
 }
 test_MeshMBRestFollow() {
-   executeOk curl \
-         --silent --fail --show-error \
-         --output follow.json \
-         --basic --user harry:potter \
-         --request POST \
-         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/follow/$IDA2"
+   rest_request POST "/restful/meshmb/$IDA1/follow/$IDA2" 201
    executeOk_servald meshmb list following $IDA1
    assertStdoutGrep --matches=1 ":$IDA2:$SIDA2:false::[0-9]\+:Message 2\$"
    assertStdoutGrep --matches=0 ":$IDA3:$SIDA3:false::[0-9]\+:Message 3\$"
-   executeOk curl \
-         --silent --fail --show-error \
-         --output follow.json \
-         --basic --user harry:potter \
-         --request POST \
-         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/follow/$IDA3"
+   rest_request POST "/restful/meshmb/$IDA1/follow/$IDA3" 201
    executeOk_servald meshmb list following $IDA1
    assertStdoutGrep --matches=1 ":$IDA2:$SIDA2:false::[0-9]\+:Message 2\$"
    assertStdoutGrep --matches=1 ":$IDA3:$SIDA3:false::[0-9]\+:Message 3\$"
-   executeOk curl \
-         --silent --fail --show-error \
-         --output follow.json \
-         --basic --user harry:potter \
-         --request POST \
-         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/ignore/$IDA2"
+   rest_request POST "/restful/meshmb/$IDA1/ignore/$IDA2" 201
    executeOk_servald meshmb list following $IDA1
    assertStdoutGrep --matches=0 ":$IDA2:$SIDA2:false::[0-9]\+:Message 2\$"
    assertStdoutGrep --matches=1 ":$IDA3:$SIDA3:false::[0-9]\+:Message 3\$"
 }
 
-doc_MeshMBRestFeeds="Restful list subscribed feeds"
+doc_MeshMBRestFeeds="REST API MeshMB list subscribed feeds"
 setup_MeshMBRestFeeds() {
    IDENTITY_COUNT=3
    setup
@@ -143,16 +146,9 @@ setup_MeshMBRestFeeds() {
    executeOk_servald meshmb follow $IDA1 $IDA3
 }
 test_MeshMBRestFeeds() {
-   executeOk curl \
-         --silent --fail --show-error \
-         --output feedlist.json \
-         --dump-header http.headers \
-         --basic --user harry:potter \
-         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/feedlist.json"
-   tfw_cat http.headers feedlist.json
-   tfw_preserve feedlist.json
-   assert [ "$(jq '.rows | length' feedlist.json)" = 2 ]
-   transform_list_json feedlist.json list.json
+   rest_request GET "/restful/meshmb/$IDA1/feedlist.json"
+   assert [ "$(jq '.rows | length' response.json)" = 2 ]
+   transform_list_json response.json list.json
    tfw_preserve list.json
    assertJq list.json \
             "contains([
@@ -168,26 +164,19 @@ test_MeshMBRestFeeds() {
             ])"
 }
 
-doc_MeshMBRestEmptyActivity="Restful activity with no content"
+doc_MeshMBRestEmptyActivity="REST API MeshMB activity with no content"
 setup_MeshMBRestEmptyActivity() {
    IDENTITY_COUNT=1
    setup
 }
 test_MeshMBRestEmptyActivity() {
-   executeOk --timeout=10 curl \
-         --silent --fail --show-error \
-         --output activity.json \
-         --dump-header http.headers \
-         --basic --user harry:potter \
-         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/activity.json"
-   tfw_cat http.headers activity.json
-   tfw_preserve activity.json
-   assert [ "$(jq '.rows | length' activity.json)" = 0 ]
-   transform_list_json activity.json list.json
+   rest_request GET "/restful/meshmb/$IDA1/activity.json"
+   assert [ "$(jq '.rows | length' response.json)" = 0 ]
+   transform_list_json response.json list.json
    tfw_preserve list.json
 }
 
-doc_MeshMBRestActivity="Restful thread incoming activity"
+doc_MeshMBRestActivity="REST API MeshMB thread incoming activity"
 setup_MeshMBRestActivity() {
    IDENTITY_COUNT=5
    setup
@@ -218,18 +207,10 @@ setup_MeshMBRestActivity() {
    executeOk_servald meshmb activity $IDA1
 }
 test_MeshMBRestActivity() {
-   executeOk curl \
-         --silent --fail --show-error \
-         --output activity.json \
-         --dump-header http.headers \
-         --basic --user harry:potter \
-         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/activity.json"
-   tfw_cat http.headers activity.json
-   tfw_preserve activity.json
-   assert [ "$(jq '.rows | length' activity.json)" = 10 ]
-   transform_list_json activity.json list.json
+   rest_request GET "/restful/meshmb/$IDA1/activity.json"
+   assert [ "$(jq '.rows | length' response.json)" = 10 ]
+   transform_list_json response.json list.json
    tfw_preserve list.json
-
    assertJq list.json "contains([{ __index: 0, id: \"$IDA1\", author: \"$SIDA1\", name: \"Feed A\", message: \"Message 11\"}])"
    assertJq list.json "contains([{ __index: 1, id: \"$IDA5\", author: \"$SIDA5\", name: \"Feed E\", message: \"Message 10\"}])"
    assertJq list.json "contains([{ __index: 2, id: \"$IDA4\", author: \"$SIDA4\", name: \"Feed D\", message: \"Message 9\"}])"
@@ -242,7 +223,7 @@ test_MeshMBRestActivity() {
    assertJq list.json "contains([{ __index: 9, id: \"$IDA2\", author: \"$SIDA2\", name: \"Feed B\", message: \"Message 2\"}])"
 }
 
-doc_MeshMBRestNewActivity="Restful newsince incoming activity"
+doc_MeshMBRestNewActivity="REST API MeshMB newsince incoming activity"
 setup_MeshMBRestNewActivity() {
    IDENTITY_COUNT=3
    setup
@@ -253,52 +234,44 @@ setup_MeshMBRestNewActivity() {
    executeOk_servald meshmb send $IDA3 "Message 2"
    executeOk_servald meshmb follow $IDA1 $IDA2
    executeOk_servald meshmb follow $IDA1 $IDA3
-   executeOk curl \
-         --silent --fail --show-error \
-         --output activity.json \
-         --dump-header http.headers \
-         --basic --user harry:potter \
-         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/activity.json"
-   assert [ "$(jq '.rows | length' activity.json)" = 2 ]
-   transform_list_json activity.json array_of_objects.json
+   rest_request GET "/restful/meshmb/$IDA1/activity.json"
+   assert [ "$(jq '.rows | length' response.json)" = 2 ]
+   transform_list_json response.json array_of_objects.json
    tfw_preserve array_of_objects.json
    token=$(jq --raw-output '.[0][".token"]' array_of_objects.json)
    assert [ -n "$token" ]
 }
 test_MeshMBRestNewActivity() {
    for i in 1 2 3; do
-      fork %curl$i curl \
-            --silent --fail --show-error \
-            --no-buffer \
-            --output newsince$i.json \
-            --basic --user harry:potter \
-            "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/activity/$token/activity.json"
+      fork %client$i rest_request GET "/restful/meshmb/$IDA1/activity/$token/activity.json" \
+            --output=response$i.json \
+            --no-buffer
    done
-   wait_until [ -e newsince1.json -a -e newsince2.json -a -e newsince3.json ]
+   wait_until [ -e response1.json -a -e response2.json -a -e response3.json ]
    executeOk_servald meshmb send $IDA2 "Message 3"
    executeOk_servald meshmb send $IDA3 "Message 4"
    executeOk_servald meshmb send $IDA2 "Message 5"
    executeOk_servald meshmb send $IDA3 "Message 6"
    executeOk_servald meshmb send $IDA1 "Message 7"
    for i in 1 2 3; do
-      wait_until grep "Message 3" newsince$i.json
-      wait_until grep "Message 4" newsince$i.json
-      wait_until grep "Message 5" newsince$i.json
-      wait_until grep "Message 6" newsince$i.json
-      wait_until grep "Message 7" newsince$i.json
+      wait_until grep "Message 3" response$i.json
+      wait_until grep "Message 4" response$i.json
+      wait_until grep "Message 5" response$i.json
+      wait_until grep "Message 6" response$i.json
+      wait_until grep "Message 7" response$i.json
    done
    fork_terminate_all
    fork_wait_all
    for i in 1 2 3; do
-      if [ $(jq . newsince$i | wc -c) -eq 0 ]; then
-         echo ']}' >>newsince$i.json
-         assert [ $(jq . newsince$i.json | wc -c) -ne 0 ]
+      if [ $(jq . response$i | wc -c) -eq 0 ]; then
+         echo ']}' >>response$i.json
+         assert [ $(jq . response$i.json | wc -c) -ne 0 ]
       fi
-      transform_list_json newsince$i.json objects$i.json
-      tfw_preserve newsince$i.json objects$i.json
+      transform_list_json response$i.json objects$i.json
+      tfw_preserve response$i.json objects$i.json
    done
    for i in 1 2 3; do
-      assert [ "$(jq '.rows | length' newsince$i.json)" = 5 ]
+      assert [ "$(jq '.rows | length' response$i.json)" = 5 ]
       assertJq objects$i.json "contains([{ id: \"$IDA2\", author: \"$SIDA2\", name: \"Feed B\", message: \"Message 3\"}])"
       assertJq objects$i.json "contains([{ id: \"$IDA3\", author: \"$SIDA3\", name: \"Feed C\", message: \"Message 4\"}])"
       assertJq objects$i.json "contains([{ id: \"$IDA2\", author: \"$SIDA2\", name: \"Feed B\", message: \"Message 5\"}])"
@@ -307,6 +280,4 @@ test_MeshMBRestNewActivity() {
    done
 }
 
-
 runTests "$@"
-

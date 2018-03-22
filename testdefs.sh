@@ -424,15 +424,17 @@ servald_start() {
 # Utility function:
 #  - test whether the daemon's HTTP server has started
 servald_http_server_started() {
-   local logvar=LOG${1#+}
-   $GREP 'HTTP SERVER START.*port=[0-9]' "${!logvar}"
+   local _instance=${1:-+$instance_name}
+   local _logvar=LOG${_instance#+}
+   $GREP 'HTTP SERVER START.*port=[0-9]' "${!_logvar}"
 }
 
 # Utility function:
 #  - test whether the daemon's HTTP server has started
 servald_restful_http_server_started() {
-   local logvar=LOG${1#+}
-   $GREP 'HTTP SERVER START.*port=[0-9].*services=[^ ]*\<RESTful\>' "${!logvar}"
+   local _instance=${1:-+$instance_name}
+   local _logvar=LOG${_instance#+}
+   $GREP 'HTTP SERVER START.*port=[0-9].*services=[^ ]*\<RESTful\>' "${!_logvar}"
 }
 
 # Utility function:

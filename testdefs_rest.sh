@@ -1,5 +1,7 @@
-# Common definitions for manipulating JSON in test scripts.
+# Common definitions for REST API test scripts, including manipulation of JSON.
+#
 # Copyright 2014 Serval Project Inc.
+# Copyright 2018 Flinders University
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -14,6 +16,107 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+# Setup function:
+# - ensure that the curl(1) and jq(1) utilities are available
+setup_rest_utilities() {
+   setup_curl 7
+   setup_json
+}
+
+# Setup function:
+# - configure the given (or current) instance with helpful debug options and
+#   some standard REST API usernames/passwords
+setup_rest_config() {
+   local _instance="$1"
+   [ -z "$_instance" ] || push_and_set_instance $_instance || return $?
+   executeOk_servald config \
+      set debug.http_server on \
+      set debug.httpd on \
+      set api.restful.users.harry.password potter \
+      set api.restful.users.ron.password weasley \
+      set api.restful.users.hermione.password grainger
+   [ -z "$_instance" ] || pop_instance
+   return 0
+}
+
+# Setup function:
+# - wait for the current instance's server to start processing REST requests
+# - initialise the REST_PORT_{I} shell variable with the port number of the REST
+#   server running in instance {I}
+# - zero the request count for the rest_request() function
+wait_until_rest_server_ready() {
+   local _instance
+   case $1 in
+   '') _instance=$instance_name;;
+   +[A-Z]) _instance=${1#+};;
+   *) error "invalid instance arg: $1";;
+   esac
+   wait_until servald_restful_http_server_started +$_instance
+   local _portvar=REST_PORT_$_instance
+   get_servald_restful_http_server_port $_portvar +$_instance
+   REQUEST_COUNT=0
+}
+
+# Utility function:
+# - perform a REST request to the given instance (default current instance) and
+#   expect a given response (default 200 OK)
+rest_request() {
+   local _instance=$instance_name
+   case $1 in
+   +[A-Z]) _instance=${1#+}; shift;;
+   esac
+   local _portvar=REST_PORT_$_instance
+   local request_verb="${1?}"
+   local path="${2?}"
+   shift 2
+   local response_code=200
+   case $1 in
+   [0-9][0-9][0-9]) response_code=$1; shift;;
+   esac
+   local timeout=()
+   local auth=(--basic)
+   local user=(--user harry:potter)
+   local buffer=()
+   local output="response.json"
+   local dump_header="response.headers"
+   local trace="response.trace"
+   local output_preserve="response-$((++REQUEST_COUNT)).json"
+   local trace_preserve="response-$((++REQUEST_COUNT)).trace"
+   local form_parts=()
+   local data=()
+   local headers=()
+   while [ $# -ne 0 ]; do
+      case $1 in
+      --timeout=*) timeout=(--timeout="${1#*=}"); shift;;
+      --no-auth) auth=(); user=(); shift;;
+      --no-buffer) buffer=(--no-buffer); shift;;
+      --user=*) user=(--user "${1#*=}"); shift;;
+      --add-header=*) headers+=(--header "${1#*=}"); shift;;
+      --output=*) output="${1#*=}"; output_preserve="$output"; shift;;
+      --dump-header=*) dump_header="${1#*=}"; shift;;
+      --form-part=*) form_parts+=(--form "${1#*=}"); data=(); shift;;
+      --data=*) data+=(--data "${1#*=}"); form_parts=(); shift;;
+      *) error "unsupported option: $1";;
+      esac
+   done
+   executeOk "${timeout[@]}" curl \
+         --silent --show-error \
+         --write-out '%{http_code}' \
+         --output "$output" \
+         --dump-header "$dump_header" \
+         --trace-ascii "$trace" \
+         "${auth[@]}" "${user[@]}" "${buffer[@]}" \
+         --request "$request_verb" \
+         "${headers[@]}" \
+         "${data[@]}" "${form_parts[@]}" \
+         "http://$addr_localhost:${!_portvar}$path"
+   tfw_cat "$dump_header" "$output"
+   [ "$output_preserve" != "$output" ] && cp "$output" "$output_preserve"
+   cp "$trace" "$trace_preserve"
+   tfw_preserve "$output_preserve" "$trace_preserve"
+   assertStdoutIs "$response_code"
+}
 
 # Utility function:
 # - ensure that a given version or later of the jq(1) utility is available
