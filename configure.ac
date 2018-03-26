@@ -148,7 +148,7 @@ AS_IF([test "x$enable_xcode_sdk" != x], [ dnl
     AS_IF([test "x$RANLIB" = x:], [AC_MSG_ERROR([Archive indexer not found: ranlib])])
 
     dnl C preprocessor option to support cross-compiling.
-    AX_APPEND_COMPILE_FLAGS(["-arch $host_cpu"], [CPPFLAGS])
+    AX_APPEND_COMPILE_FLAGS(["-arch $host_cpu"], [CPPFLAGS], ["-Werror"])
 ])
 
 dnl Check for C assembler.
