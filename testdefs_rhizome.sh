@@ -467,7 +467,7 @@ rhizome_add_file() {
 
 rhizome_add_files() {
    local size=64
-   local sidvar="SID$instance_name"
+   local sidvar="SID${instance_name}1"
    local -a names=()
    for arg; do
       case "$arg" in
@@ -489,7 +489,7 @@ rhizome_update_file() {
    local orig_name="$1"
    local new_name="$2"
    [ -e "$new_name" ] || echo 'File $new_name' >"$new_name"
-   local sidvar="SID$instance_name"
+   local sidvar="SID${instance_name}1"
    [ "$new_name" != "$orig_name" ] && cp "$orig_name.manifest" "$new_name.manifest"
    $SED -i -e '/^date=/d;/^filehash=/d;/^filesize=/d;/^version=/d;/^name=/d' "$new_name.manifest"
    executeOk_servald rhizome add file "${!sidvar}" "$new_name" "$new_name.manifest"
