@@ -37,8 +37,9 @@ public class BundleId extends SigningKey {
 		super(binary);
 	}
 
+	private static ContentType mimeType = ContentType.fromConstant("rhizome/bid; format=hex");
 	@Override
-	public String getMimeType() {
-		return "rhizome/bid";
+	public ContentType getMimeType() {
+		return mimeType;
 	}
 }

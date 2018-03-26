@@ -42,8 +42,9 @@ public class BundleSecret extends AbstractId {
 		super(binary);
 	}
 
+	private static ContentType mimeType = ContentType.fromConstant("rhizome/bundlesecret; format=hex");
 	@Override
-	public String getMimeType() {
-		return "rhizome/bundlesecret";
+	public ContentType getMimeType() {
+		return mimeType;
 	}
 }

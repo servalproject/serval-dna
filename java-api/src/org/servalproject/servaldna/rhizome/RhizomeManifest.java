@@ -35,6 +35,7 @@ import java.io.OutputStreamWriter;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import org.servalproject.servaldna.AbstractId;
+import org.servalproject.servaldna.ContentType;
 import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.BundleId;
 import org.servalproject.servaldna.FileHash;
@@ -43,7 +44,7 @@ import org.servalproject.servaldna.BundleKey;
 public class RhizomeManifest {
 
 	public final static int TEXT_FORMAT_MAX_SIZE = 8192;
-	public static final String MIME_TYPE = "rhizome/manifest; format=text+binarysig";
+	public static final ContentType MIME_TYPE = ContentType.fromConstant("rhizome/manifest; format=text+binarysig");
 
 	// Core fields used for routing and expiry (cannot be null)
 	public final BundleId id;

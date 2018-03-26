@@ -77,7 +77,7 @@ public class PostHelper {
         sb.append('"');
     }
 
-    protected void writeHeading(String name, String filename, String type, String encoding)
+    protected void writeHeading(String name, String filename, ContentType type, String encoding)
     {
         StringBuilder sb = new StringBuilder();
         sb.append("\r\n--").append(boundary).append("\r\n");
@@ -88,7 +88,7 @@ public class PostHelper {
             quoteString(sb, filename);
         }
         sb.append("\r\n");
-        sb.append("Content-Type: ").append(type).append("\r\n");
+        sb.append("Content-Type: ").append(type.toString()).append("\r\n");
         if (encoding!=null)
             sb.append("Content-Transfer-Encoding: ").append(encoding).append("\r\n");
         sb.append("\r\n");
@@ -96,17 +96,17 @@ public class PostHelper {
     }
 
     public void writeField(String name, String value){
-        writeHeading(name, null, "text/plain; charset=utf-8", null);
+        writeHeading(name, null, ContentType.textPlain, null);
         writer.print(value);
     }
 
     public void writeField(String name, AbstractId value){
-        writeHeading(name, null, value.getMimeType() + "; format=hex", null);
+        writeHeading(name, null, value.getMimeType(), null);
         writer.print(value.toHex());
     }
 
     public OutputStream beginFileField(String name, String filename){
-        writeHeading(name, filename, "application/octet-stream", "binary");
+        writeHeading(name, filename, ContentType.applicationOctetStream, "binary");
         writer.flush();
         return output;
     }
@@ -119,13 +119,13 @@ public class PostHelper {
             output.write(buffer, 0, n);
     }
 
-    public void writeField(String name, String type, byte value[]) throws IOException {
+    public void writeField(String name, ContentType type, byte value[]) throws IOException {
         writeHeading(name, null, type, "binary");
         writer.flush();
         output.write(value);
     }
 
-    public void writeField(String name, String type, byte value[], int offset, int length) throws IOException {
+    public void writeField(String name, ContentType type, byte value[], int offset, int length) throws IOException {
         writeHeading(name, null, type, "binary");
         writer.flush();
         output.write(value, offset, length);

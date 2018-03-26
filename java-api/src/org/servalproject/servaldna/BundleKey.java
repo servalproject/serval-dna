@@ -30,9 +30,10 @@ public class BundleKey extends AbstractId {
 		return 32;
 	}
 
+	private static ContentType mimeType = ContentType.fromConstant("rhizome/bundlekey; format=hex");
 	@Override
-	public String getMimeType() {
-		return "rhizome/bundlekey";
+	public ContentType getMimeType() {
+		return mimeType;
 	}
 
 	public BundleKey(String hex) throws InvalidHexException {

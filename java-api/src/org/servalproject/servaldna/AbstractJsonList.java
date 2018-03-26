@@ -74,10 +74,15 @@ public abstract class AbstractJsonList<T, E extends Exception> {
         httpConnection = httpConnector.newServalDHttpConnection(request.verb, request.url);
         httpConnection.connect();
 
-        if ("application/json".equals(httpConnection.getContentType())){
-            json = new JSONTokeniser(
-                    (httpConnection.getResponseCode() >= 300) ?
-                            httpConnection.getErrorStream() : httpConnection.getInputStream());
+        try {
+            ContentType contentType = new ContentType(httpConnection.getContentType());
+            if (ContentType.applicationJson.matches(contentType)){
+                json = new JSONTokeniser(
+                        (httpConnection.getResponseCode() >= 300) ?
+                                httpConnection.getErrorStream() : httpConnection.getInputStream());
+            }
+        } catch (ContentType.ContentTypeException e) {
+            throw new ServalDInterfaceException("malformed HTTP Content-Type: " + httpConnection.getContentType(), e);
         }
 
         if (httpConnection.getResponseCode()!=200){

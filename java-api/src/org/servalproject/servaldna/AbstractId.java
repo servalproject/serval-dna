@@ -51,7 +51,7 @@ public abstract class AbstractId {
 		return binary;
 	}
 
-	public abstract String getMimeType();
+	public abstract ContentType getMimeType();
 
 	public AbstractId(String hex) throws InvalidHexException {
 		if (hex==null)

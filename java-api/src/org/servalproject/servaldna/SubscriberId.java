@@ -31,9 +31,10 @@ public class SubscriberId extends AbstractId {
 		return BINARY_SIZE;
 	}
 
+	private static ContentType mimeType = ContentType.fromConstant("serval/sid; format=hex");
 	@Override
-	public String getMimeType() {
-		return "serval/sid";
+	public ContentType getMimeType() {
+		return mimeType;
 	}
 
 	public SubscriberId(String hex) throws InvalidHexException {

@@ -32,9 +32,10 @@ public class FileHash extends AbstractId {
 		return BINARY_SIZE;
 	}
 
+	private static ContentType mimeType = ContentType.fromConstant("rhizome/filehash; format=hex");
 	@Override
-	public String getMimeType() {
-		return "rhizome/filehash";
+	public ContentType getMimeType() {
+		return mimeType;
 	}
 
 	public FileHash(String hex) throws InvalidHexException {

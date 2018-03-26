@@ -42,9 +42,10 @@ public class SigningKey extends AbstractId {
         return BINARY_SIZE;
     }
 
+    private static ContentType mimeType = ContentType.fromConstant("serval/identity; format=hex");
     @Override
-    public String getMimeType() {
-        return "serval/identity";
+    public ContentType getMimeType() {
+        return mimeType;
     }
 
     @Override

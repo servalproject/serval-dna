@@ -23,6 +23,7 @@ package org.servalproject.servaldna.meshms;
 
 import org.servalproject.json.JSONInputException;
 import org.servalproject.json.JSONTokeniser;
+import org.servalproject.servaldna.ContentType;
 import org.servalproject.servaldna.PostHelper;
 import org.servalproject.servaldna.ServalDFailureException;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
@@ -44,18 +45,28 @@ public class MeshMSCommon
 
 	protected static JSONTokeniser receiveRestfulResponse(HttpURLConnection conn, int[] expected_response_codes) throws IOException, ServalDInterfaceException, MeshMSException
 	{
-		if (!"application/json".equals(conn.getContentType()))
-			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
+		JSONTokeniser json = null;
+		try {
+			ContentType contentType = new ContentType(conn.getContentType());
+			if (ContentType.applicationJson.matches(contentType)){
+				if (conn.getResponseCode()>=300)
+					json = new JSONTokeniser(conn.getErrorStream());
+				else
+					json = new JSONTokeniser(conn.getInputStream());
+			}
+		} catch (ContentType.ContentTypeException e) {
+			throw new ServalDInterfaceException("malformed HTTP Content-Type: " + conn.getContentType());
+		}
 		for (int code: expected_response_codes) {
 			if (conn.getResponseCode() == code) {
-				JSONTokeniser json = new JSONTokeniser(conn.getInputStream());
+				if (json == null)
+					throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
 				return json;
 			}
 		}
 		switch (conn.getResponseCode()) {
 		case HttpURLConnection.HTTP_NOT_FOUND:
 		case 419: // Authentication Timeout, for missing secret
-			JSONTokeniser json = new JSONTokeniser(conn.getErrorStream());
 			Status status = decodeRestfulStatus(json);
 			throwRestfulResponseExceptions(status, conn.getURL());
 			throw new ServalDInterfaceException("unexpected MeshMS status = " + status.meshms_status_code + ", \"" + status.meshms_status_message + "\"");

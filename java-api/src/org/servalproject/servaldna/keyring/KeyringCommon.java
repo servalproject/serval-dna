@@ -23,6 +23,7 @@ package org.servalproject.servaldna.keyring;
 
 import org.servalproject.json.JSONInputException;
 import org.servalproject.json.JSONTokeniser;
+import org.servalproject.servaldna.ContentType;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.ServalDNotImplementedException;
@@ -43,6 +44,7 @@ public class KeyringCommon
 {
 
 	public static class Status {
+		ContentType contentType;
 		InputStream input_stream;
 		JSONTokeniser json;
 		public int http_status_code;
@@ -61,14 +63,20 @@ public class KeyringCommon
 		Status status = new Status();
 		status.http_status_code = conn.getResponseCode();
 		status.http_status_message = conn.getResponseMessage();
+		try {
+			status.contentType = new ContentType(conn.getContentType());
+		} catch (ContentType.ContentTypeException e) {
+			throw new ServalDInterfaceException("malformed HTTP Content-Type: " + conn.getContentType(),e);
+		}
+
 		for (int code: expected_response_codes) {
 			if (status.http_status_code == code) {
 				status.input_stream = conn.getInputStream();
 				return status;
 			}
 		}
-		if (!conn.getContentType().equals("application/json"))
-			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
+		if (!ContentType.applicationJson.matches(status.contentType))
+			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + status.contentType);
 		if (status.http_status_code >= 300) {
 			status.json = new JSONTokeniser(conn.getErrorStream());
 			decodeRestfulStatus(status);
@@ -97,8 +105,6 @@ public class KeyringCommon
 	protected static Status receiveRestfulResponse(HttpURLConnection conn, int[] expected_response_codes) throws IOException, ServalDInterfaceException
 	{
 		Status status = receiveResponse(conn, expected_response_codes);
-		if (!conn.getContentType().equals("application/json"))
-			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
 		status.json = new JSONTokeniser(status.input_stream);
 		return status;
 	}
