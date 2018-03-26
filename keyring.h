@@ -28,8 +28,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 struct cli_parsed;
 #include "xprintf.h"
 
+enum keyring_keytype {
+    KEYTYPE_INVALID = 0,
+    KEYTYPE_CRYPTOBOX = 0x01, // must be lowest valid
+    KEYTYPE_CRYPTOSIGN = 0x02,
+    KEYTYPE_RHIZOME = 0x03,
+    // DIDs aren't really keys, but the keyring is a real handy place to keep
+    // them, and keep them private if people so desire
+    KEYTYPE_DID = 0x04,
+    // Arbitrary name/value pairs
+    KEYTYPE_PUBLIC_TAG = 0x05,
+    // Combined signing / encryption key data
+    KEYTYPE_CRYPTOCOMBINED = 0x06,
+};
+
+const char *keytype_str(enum keyring_keytype ktype, const char *unknown);
+
 typedef struct keypair {
-  unsigned type;
+  enum keyring_keytype type;
   unsigned char *private_key;
   size_t private_key_len;
   unsigned char *public_key;
@@ -105,8 +121,8 @@ typedef struct keyring_iterator{
 void keyring_iterator_start(keyring_file *k, keyring_iterator *it);
 keyring_identity * keyring_next_identity(keyring_iterator *it);
 keypair * keyring_next_key(keyring_iterator *it);
-keypair * keyring_next_keytype(keyring_iterator *it, unsigned keytype);
-keypair *keyring_identity_keytype(const keyring_identity *id, unsigned keytype);
+keypair * keyring_next_keytype(keyring_iterator *it, enum keyring_keytype keytype);
+keypair *keyring_identity_keytype(const keyring_identity *id, enum keyring_keytype keytype);
 keypair *keyring_find_did(keyring_iterator *it, const char *did);
 keyring_identity *keyring_find_identity_sid(keyring_file *k, const sid_t *sidp);
 keyring_identity *keyring_find_identity(keyring_file *k, const identity_t *sign);
@@ -115,19 +131,6 @@ void keyring_free(keyring_file *k);
 void keyring_release_identities_by_pin(keyring_file *f, const char *pin);
 void keyring_release_identity(keyring_file *k, keyring_identity *id);
 int keyring_release_subscriber(keyring_file *k, const sid_t *sid);
-
-#define KEYTYPE_CRYPTOBOX 0x01 // must be lowest
-#define KEYTYPE_CRYPTOSIGN 0x02
-#define KEYTYPE_RHIZOME 0x03
-/* DIDs aren't really keys, but the keyring is a real handy place to keep them,
-   and keep them private if people so desire */
-#define KEYTYPE_DID 0x04
-
-/* Arbitrary name / value pairs */
-#define KEYTYPE_PUBLIC_TAG 0x05
-
-// Combined signing / encryption key data
-#define KEYTYPE_CRYPTOCOMBINED 0x06
 
 /* per-thread global handle to keyring file for use in running commands and server */
 extern __thread keyring_file *keyring;

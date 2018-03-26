@@ -172,6 +172,13 @@ static void cli_output_identity(struct cli_context *context, const keyring_ident
 	  }
 	}
 	break;
+      case KEYTYPE_CRYPTOBOX:
+      case KEYTYPE_CRYPTOSIGN:
+      case KEYTYPE_CRYPTOCOMBINED:
+      case KEYTYPE_RHIZOME:
+	break;
+      case KEYTYPE_INVALID:
+	FATALF("ktype = 0x%02x(%s)", kp->type, keytype_str(kp->type, "unknown"));
     }
     kp=kp->next;
   }
@@ -184,7 +191,6 @@ static int app_keyring_list2(const struct cli_parsed *parsed, struct cli_context
   assert(keyring == NULL);
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-    
   keyring_iterator it;
   keyring_iterator_start(keyring, &it);
   const keyring_identity *id;
@@ -194,13 +200,23 @@ static int app_keyring_list2(const struct cli_parsed *parsed, struct cli_context
     keypair *kp=id->keypairs;
     fields+=2;
     while(kp){
-      if (kp->type==KEYTYPE_PUBLIC_TAG)
+      switch (kp->type) {
+      case KEYTYPE_PUBLIC_TAG:
 	fields++;
-      if (kp->type==KEYTYPE_DID){
+	break;
+      case KEYTYPE_DID:
 	if (strlen((char*)kp->private_key))
 	  fields++;
 	if (strlen((char*)kp->public_key))
 	  fields++;
+	break;
+      case KEYTYPE_CRYPTOBOX:
+      case KEYTYPE_CRYPTOSIGN:
+      case KEYTYPE_CRYPTOCOMBINED:
+      case KEYTYPE_RHIZOME:
+	break;
+      case KEYTYPE_INVALID:
+	FATALF("ktype = 0x%02x(%s)", kp->type, keytype_str(kp->type, "unknown"));
       }
       kp=kp->next;
     }

@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2016-2017 Flinders University
+Copyright (C) 2016-2018 Flinders University
 Copyright (C) 2013-2015 Serval Project Inc.
 Copyright (C) 2010-2012 Paul Gardner-Stephen
  
@@ -245,7 +245,7 @@ keypair * keyring_next_key(keyring_iterator *it)
   return it->keypair;
 }
 
-keypair *keyring_next_keytype(keyring_iterator *it, unsigned keytype)
+keypair *keyring_next_keytype(keyring_iterator *it, enum keyring_keytype keytype)
 {
   keypair *kp;
   while((kp=keyring_next_key(it)) && kp->type!=keytype)
@@ -253,7 +253,7 @@ keypair *keyring_next_keytype(keyring_iterator *it, unsigned keytype)
   return kp;
 }
 
-keypair *keyring_identity_keytype(const keyring_identity *id, unsigned keytype)
+keypair *keyring_identity_keytype(const keyring_identity *id, enum keyring_keytype keytype)
 {
   keypair *kp=id->keypairs;
   while(kp && kp->type!=keytype)
@@ -535,9 +535,10 @@ static int keyring_munge_block(
 #undef APPEND
 }
 
-static const char *keytype_str(unsigned ktype, const char *unknown)
+const char *keytype_str(enum keyring_keytype ktype, const char *unknown)
 {
   switch (ktype) {
+  case KEYTYPE_INVALID: return "INVALID";
   case KEYTYPE_CRYPTOBOX: return "CRYPTOBOX";
   case KEYTYPE_CRYPTOSIGN: return "CRYPTOSIGN";
   case KEYTYPE_RHIZOME: return "RHIZOME";
@@ -548,7 +549,7 @@ static const char *keytype_str(unsigned ktype, const char *unknown)
   }
 }
 
-struct keytype {
+struct key_type {
   size_t public_key_size;
   size_t private_key_size;
   size_t packed_size;
@@ -863,7 +864,7 @@ static int load_did_name(keypair *kp, const char *text)
  * deprecated, ie, recognised and simply skipped.  The packer and unpacker functions can be changed
  * to NULL.
  */
-const struct keytype keytypes[] = {
+const struct key_type key_types[] = {
   [KEYTYPE_CRYPTOBOX] = {
       /* Only the private key is stored, and the public key (SID) is derived from the private key
        * when the keyring is read.
@@ -959,16 +960,16 @@ static void keyring_free_keypair(keypair *kp)
   free(kp);
 }
 
-static keypair *keyring_alloc_keypair(unsigned ktype, size_t len)
+static keypair *keyring_alloc_keypair(enum keyring_keytype ktype, size_t len)
 {
-  assert(ktype != 0);
+  assert(ktype != KEYTYPE_INVALID);
   keypair *kp = emalloc_zero(sizeof(keypair));
   if (!kp)
     return NULL;
   kp->type = ktype;
-  if (ktype < NELS(keytypes)) {
-    kp->private_key_len = keytypes[ktype].private_key_size;
-    kp->public_key_len = keytypes[ktype].public_key_size;
+  if (ktype < NELS(key_types)) {
+    kp->private_key_len = key_types[ktype].private_key_size;
+    kp->public_key_len = key_types[ktype].public_key_size;
   } else {
     kp->private_key_len = len;
     kp->public_key_len = 0;
@@ -1009,14 +1010,14 @@ static int keyring_pack_identity(const keyring_identity *id, unsigned char packe
 	    rotation);
   keypair *kp=id->keypairs;
   while(kp && !rbuf.wrap){
-    unsigned ktype = kp->type;
+    enum keyring_keytype ktype = kp->type;
     const char *kts = keytype_str(ktype, "unknown");
     int (*packer)(const keypair *, struct rotbuf *) = NULL;
     size_t keypair_len=0;
-    const struct keytype *kt = &keytypes[ktype];
-    if (ktype == 0x00)
-      FATALF("ktype=0 in keypair kp=%u", kp);
-    if (ktype < NELS(keytypes)) {
+    const struct key_type *kt = &key_types[ktype];
+    if (ktype == KEYTYPE_INVALID)
+      FATALF("ktype = 0x%02x(%s) in keypair kp=%u", ktype, keytype_str(ktype, "unknown"), kp);
+    if (ktype < NELS(key_types)) {
       packer = kt->packer;
       keypair_len = kt->packed_size;
       if (keypair_len==0){
@@ -1166,8 +1167,8 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot_data, const
 	      rotation);
   while (!rbuf.wrap) {
     struct rotbuf rbo = rbuf;
-    unsigned char ktype = rotbuf_getc(&rbuf);
-    if (rbuf.wrap || ktype == 0x00)
+    enum keyring_keytype ktype = rotbuf_getc(&rbuf);
+    if (rbuf.wrap || ktype == KEYTYPE_INVALID)
       break; // End of data, stop looking
     size_t keypair_len;
     // No length bytes after the original four key types, for backward compatibility.  All other key
@@ -1177,8 +1178,10 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot_data, const
     case KEYTYPE_CRYPTOSIGN:
     case KEYTYPE_RHIZOME:
     case KEYTYPE_DID:
-      keypair_len = keytypes[ktype].packed_size;
+      keypair_len = key_types[ktype].packed_size;
       break;
+    case KEYTYPE_INVALID:
+      FATAL("invalid");
     default:
       keypair_len = rotbuf_getc(&rbuf) << 8;
       keypair_len |= rotbuf_getc(&rbuf);
@@ -1198,8 +1201,8 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot_data, const
     }
     struct rotbuf rbstart = rbuf;
     int (*unpacker)(keypair *, struct rotbuf *, size_t) = NULL;
-    if (ktype < NELS(keytypes))
-      unpacker = keytypes[ktype].unpacker;
+    if (ktype < NELS(key_types))
+      unpacker = key_types[ktype].unpacker;
     else
       unpacker = unpack_private_only;
 
@@ -1278,29 +1281,35 @@ static int keyring_finalise_identity(uint8_t *dirty, keyring_identity *id)
   keypair *kp = id->keypairs;
   while(kp){
     switch(kp->type){
+      case KEYTYPE_INVALID:
+	FATALF("ktype = 0x%02x(%s)", kp->type, keytype_str(kp->type, "unknown"));
       case KEYTYPE_CRYPTOBOX:
 	id->box_pk = (const sid_t *)kp->public_key;
 	id->box_sk = kp->private_key;
 	break;
       case KEYTYPE_CRYPTOSIGN:{
-	const sign_keypair_t *keypair = (const sign_keypair_t *)kp->private_key;
-	if (!crypto_isvalid_keypair(&keypair->private_key, &keypair->public_key)){
-	  /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
-	     so replace it */
-	  WARN("SAS key is invalid -- regenerating.");
-	  crypto_sign_keypair(kp->public_key, kp->private_key);
-	  if (dirty)
-	    *dirty = 1;
+	  const sign_keypair_t *keypair = (const sign_keypair_t *)kp->private_key;
+	  if (!crypto_isvalid_keypair(&keypair->private_key, &keypair->public_key)){
+	    /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
+	       so replace it */
+	    WARN("SAS key is invalid -- regenerating.");
+	    crypto_sign_keypair(kp->public_key, kp->private_key);
+	    if (dirty)
+	      *dirty = 1;
+	  }
+	  id->sign_keypair = (const sign_keypair_t *)kp->private_key;
 	}
-	id->sign_keypair = (const sign_keypair_t *)kp->private_key;
-      }
-      break;
+	break;
       case KEYTYPE_CRYPTOCOMBINED:{
 	struct combined_pk *pk = (struct combined_pk *)kp->public_key;
 	struct combined_sk *sk = (struct combined_sk *)kp->private_key;
 	id->box_pk = &pk->box_key;
 	id->box_sk = sk->box_key;
 	id->sign_keypair = &sk->sign_key;
+	break;
+      case KEYTYPE_RHIZOME:
+      case KEYTYPE_DID:
+      case KEYTYPE_PUBLIC_TAG:
 	break;
       }
     }
@@ -1476,14 +1485,14 @@ static keyring_identity *keyring_new_identity()
 
   /* Allocate key pairs */
   unsigned ktype;
-  for (ktype = 1; ktype < NELS(keytypes); ++ktype) {
-    if (keytypes[ktype].creator) {
+  for (ktype = 1; ktype < NELS(key_types); ++ktype) {
+    if (key_types[ktype].creator) {
       keypair *kp = keyring_alloc_keypair(ktype, 0);
       if (kp == NULL){
 	keyring_free_identity(id);
 	return NULL;
       }
-      keytypes[ktype].creator(kp);
+      key_types[ktype].creator(kp);
       keyring_identity_add_keypair(id, kp);
     }
   }
@@ -1941,6 +1950,14 @@ void keyring_identity_extract(const keyring_identity *id, const char **didp, con
       if (namep)
 	*namep = (const char *) kp->public_key;
       return;
+    case KEYTYPE_CRYPTOBOX:
+    case KEYTYPE_CRYPTOSIGN:
+    case KEYTYPE_RHIZOME:
+    case KEYTYPE_PUBLIC_TAG:
+    case KEYTYPE_CRYPTOCOMBINED:
+      break;
+    case KEYTYPE_INVALID:
+      FATALF("ktype = 0x%02x(%s)", kp->type, keytype_str(kp->type, "unknown"));
     }
     kp=kp->next;
   }
@@ -2086,10 +2103,10 @@ static int cmp_identity_ptrs(const keyring_identity *const *a, const keyring_ide
 static void keyring_dump_keypair(const keypair *kp, XPRINTF xpf, int include_secret)
 {
   assert(kp->type != 0);
-  assert(kp->type < NELS(keytypes));
-  xprintf(xpf, "type=%u(%s) ", kp->type, keytype_str(kp->type, "unknown"));
-  if (keytypes[kp->type].dumper)
-    keytypes[kp->type].dumper(kp, xpf, include_secret);
+  assert(kp->type < NELS(key_types));
+  xprintf(xpf, "type=0x%02x(%s) ", kp->type, keytype_str(kp->type, "unknown"));
+  if (key_types[kp->type].dumper)
+    key_types[kp->type].dumper(kp, xpf, include_secret);
   else
     dump_private_public(kp, xpf, include_secret);
 }
@@ -2148,7 +2165,7 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
     unsigned idn;
     unsigned ktype;
     int i, j;
-    int n = sscanf(line, "%u: type=%u (%n%*[^)]%n)", &idn, &ktype, &i, &j);
+    int n = sscanf(line, "%u: type=0x%x (%n%*[^)]%n)", &idn, &ktype, &i, &j);
     if (n == EOF && (ferror(input) || feof(input)))
 	break;
     if (n != 2){
@@ -2156,7 +2173,7 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
 	keyring_free_identity(id);
       return WHYF("malformed input n=%u", n);
     }
-    if (ktype == 0){
+    if (ktype == KEYTYPE_INVALID){
       if (id)
 	keyring_free_identity(id);
       return WHY("invalid input: ktype=0");
@@ -2172,8 +2189,8 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
       return -1;
     }
     int (*loader)(keypair *, const char *) = load_unknown;
-    if (strcmp(ktypestr, "unknown") != 0 && ktype < NELS(keytypes))
-      loader = keytypes[ktype].loader;
+    if (strcmp(ktypestr, "unknown") != 0 && ktype < NELS(key_types))
+      loader = key_types[ktype].loader;
     if (loader(kp, content) == -1) {
       if (id)
 	keyring_free_identity(id);
