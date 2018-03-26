@@ -51,12 +51,6 @@ static inline struct log_output_android_state *_state(struct log_output *out)
 /* Functions for querying configuration.
  */
 
-static bool_t log_android_dump_config(const struct log_output *UNUSED(out))
-{
-  return config.log.android.dump_config;
-}
-
-
 static int log_android_minimum_level(const struct log_output *UNUSED(out))
 {
   return config.log.android.level;
@@ -102,7 +96,6 @@ static void log_android_end_line(struct log_output_iterator *it, int level)
 }
 
 static struct log_output static_log_output = {
-  .dump_config = log_android_dump_config,
   .minimum_level = log_android_minimum_level,
   .show_pid = log_android_show_pid,
   .show_time = log_android_show_time,
