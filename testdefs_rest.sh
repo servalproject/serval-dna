@@ -268,4 +268,5 @@ transform_list_json() {
             .["__index"] = $index
          ]
       ' "$1" >"$2"
+   assert --message="$1 contains a well-formed JSON list" [ $? -eq 0 -a -s "$2" ]
 }
