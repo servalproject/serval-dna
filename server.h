@@ -49,6 +49,9 @@ void server_close();
 
 void server_loop(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeup)());
 
+int server_write_proc_state(const char *path, const char *fmt, ...);
+int server_unlink_proc_state(const char *path);
+
 void server_rhizome_add_bundle(uint64_t rowid);
 
 DECLARE_TRIGGER(shutdown);

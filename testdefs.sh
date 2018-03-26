@@ -422,6 +422,22 @@ servald_start() {
 }
 
 # Utility function:
+#  - fetch the daemon's primary SID
+get_servald_primary_sid() {
+   local _instance="$2"
+   [ -z "$_instance" ] || push_and_set_instance $_instance || return $?
+   local _var="$1"
+   local _sid=$(<"$SERVALINSTANCE_PATH/proc/primary_sid")
+   assert --message="instance $instance_name primary SID is known" [ -n "$_sid" ]
+   if [ -n "$_var" ]; then
+      eval "$_var=\$_sid"
+      tfw_log "$_var=$_sid"
+   fi
+   [ -z "$_instance" ] || pop_instance
+   return 0
+}
+
+# Utility function:
 #  - test whether the daemon's HTTP server has started
 servald_http_server_started() {
    local _instance=${1:-+$instance_name}

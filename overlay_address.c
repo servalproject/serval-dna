@@ -1,5 +1,6 @@
 /*
 Serval DNA MDP addressing
+Copyright (C) 2016-2018 Flinders University
 Copyright (C) 2012-2015 Serval Project Inc.
 Copyright (C) 2012 Paul Gardner-Stephen
  
@@ -28,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <assert.h>
 #include <arpa/inet.h>
+#include "lang.h" // for bool_t
 #include "serval.h"
 #include "conf.h"
 #include "keyring.h"
@@ -54,37 +56,64 @@ static struct broadcast bpilist[MAX_BPIS];
 
 static __thread struct tree_root root={.index_size_bytes=SID_SIZE};
 
-static __thread struct subscriber *my_subscriber=NULL;
+static __thread bool_t primary_sid_written = 0;
+static __thread struct subscriber *primary_sid = NULL;
+static __thread struct subscriber *my_subscriber = NULL;
 
-struct subscriber *get_my_subscriber(bool_t create){
+struct subscriber *get_my_subscriber(bool_t create)
+{
   if (!serverMode)
     return NULL;
-  assert(keyring != NULL);
   if (my_subscriber && my_subscriber->reachable != REACHABLE_SELF)
     my_subscriber = NULL;
-  if (!my_subscriber){
-    keyring_identity *id = keyring->identities;
-    while(id){
-      if (id->subscriber->reachable == REACHABLE_SELF){
+  // Look for a reachable self-identity in the keyring.
+  if (!my_subscriber) {
+    assert(keyring != NULL);
+    keyring_identity *id;
+    for (id = keyring->identities; id; id = id->next)
+      if (id->subscriber->reachable == REACHABLE_SELF) {
 	my_subscriber = id->subscriber;
-	return my_subscriber;
+	break;
       }
-      id = id->next;
-    }
-    // If there is no reachable self-identity in the keyring, then roll one in-memory, which will
-    // persist until the server terminates.
-    if (create){
-      id = keyring_inmemory_identity();
+  }
+  // If there is no reachable self-identity in the keyring, then roll one in-memory, which will
+  // persist until the server terminates.
+  if (!my_subscriber && create) {
+    keyring_identity *id = keyring_inmemory_identity();
+    if (id)
       my_subscriber = id->subscriber;
+  }
+  // Normally, the server creates files in proc/ before it creates its pidfile, and does not modify
+  // those files while running.  This avoids any race conditions with other processes that read the
+  // files.  In this case, the proc/primary_sid file is written _after_ the pidfile, and could
+  // potentially be re-written while running (eg, if the primary identity is deleted, causing the
+  // server to choose another).  Potential race conditions are avoided because (1) the size of the
+  // file never alters, and (2) the server_write_proc_state() function overwrites any existing
+  // content using a single, indivisible write(2) system call.
+  if (!primary_sid_written || primary_sid != my_subscriber) {
+    primary_sid = my_subscriber;
+    if (my_subscriber) {
+      const char *sidhex = alloca_tohex_sid_t(primary_sid->sid);
+      server_write_proc_state("primary_sid", "%s", sidhex);
+      INFOF("PRIMARY IDENTITY sid=%s", sidhex);
     }
+    else {
+      server_unlink_proc_state("primary_sid");
+      INFOF("NO PRIMARY IDENTITY");
+    }
+    primary_sid_written = 1;
   }
   return my_subscriber;
 }
 
-void release_my_subscriber(){
+void release_my_subscriber()
+{
   if (my_subscriber && my_subscriber->identity->slot==0)
     keyring_free_identity(my_subscriber->identity);
+  server_unlink_proc_state("primary_sid");
   my_subscriber = NULL;
+  primary_sid = NULL;
+  primary_sid_written = 0;
 }
 
 static int free_node(void **record, void *UNUSED(context))
@@ -98,6 +127,8 @@ static int free_node(void **record, void *UNUSED(context))
       alloca_tohex_sid_t(subscriber->sid), subscriber->sync_state);
   if (subscriber->identity)
     FATAL("Can't free a subscriber that is unlocked in the keyring");
+  if (subscriber == my_subscriber)
+    FATAL("Can't free a subscriber that is the primary identity");
   free(subscriber);
   *record=NULL;
   return 0;

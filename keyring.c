@@ -1502,10 +1502,11 @@ static keyring_identity *keyring_new_identity()
 
 keyring_identity *keyring_inmemory_identity(){
   keyring_identity *id = keyring_new_identity();
-  keyring_finalise_identity(NULL, id);
-  if (id)
+  if (id) {
+    keyring_finalise_identity(NULL, id);
     add_subscriber(id);
-  INFOF("created in-memory identity SID=%s", alloca_tohex_sid_t(id->subscriber->sid));
+    INFOF("created in-memory identity SID=%s", alloca_tohex_sid_t(id->subscriber->sid));
+  }
   return id;
 }
 

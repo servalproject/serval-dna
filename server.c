@@ -77,7 +77,6 @@ static void serverCleanUp();
 static const char *_server_pidfile_path(struct __sourceloc __whence);
 #define server_pidfile_path() (_server_pidfile_path(__WHENCE__))
 
-static int server_write_proc_state(const char *path, const char *fmt, ...);
 static int server_get_proc_state(const char *path, char *buff, size_t buff_len);
 static void server_stop_alarms();
 
@@ -343,6 +342,9 @@ static int server_write_pid()
   server_write_proc_state("http_port", "%d", httpd_server_port);
   server_write_proc_state("mdp_inet_port", "%d", mdp_loopback_port);
 
+  // Create or unlink the "primary_sid" proc state file.
+  get_my_subscriber(0);
+
   // Create a locked pidfile to advertise that the server is now running.
   const char *pidfile_path = server_pidfile_path();
   if (pidfile_path == NULL)
@@ -452,29 +454,46 @@ static int get_proc_path(const char *path, char *buf, size_t bufsiz)
   return 0;
 }
 
-static int server_write_proc_state(const char *path, const char *fmt, ...)
+int server_write_proc_state(const char *path, const char *fmt, ...)
 {
   char path_buf[400];
   if (get_proc_path(path, path_buf, sizeof path_buf)==-1)
     return -1;
     
+  // Create the directory that contains the path, if it does not already exist.
   size_t dirsiz = strlen(path_buf) + 1;
   char dir_buf[dirsiz];
   strcpy(dir_buf, path_buf);
   const char *dir = dirname(dir_buf); // modifies dir_buf[]
-  if (mkdirs_info(dir, 0700) == -1)
-    return WHY_perror("mkdirs()");
+  if (emkdirs_info(dir, 0700) == -1)
+    return -1;
+
+  // Format the file's new content in a local buffer on the stack.
+  strbuf sb;
+  STRBUF_ALLOCA_FIT(sb, 1024, strbuf_va_printf(sb, fmt));
   
-  FILE *f = fopen(path_buf, "w");
-  if (!f)
-    return WHY_perror("fopen()");
-  
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(f, fmt, ap);
-  va_end(ap);
-  
-  fclose(f);
+  // Overwrite the file, creating it if necessary, using a single write(2) system call, followed by
+  // a ftruncate(2) system call (in case the file already existed and was longer than its new
+  // content).  This allows potential race conditions to be avoided for files that are overwritten
+  // while the server runs, as long as the written contents are always the same size, or always
+  // contain a terminating sequence (eg, newline).
+  int fd = open(path_buf, O_CREAT | O_WRONLY, 0700);
+  if (fd == -1)
+    return WHYF_perror("open(%s, O_CREAT|O_WRONLY, 0700)", alloca_str_toprint(path_buf));
+  int ret = write_all(fd, strbuf_str(sb), strbuf_len(sb));
+  if (ret != -1 && (ret = ftruncate(fd, strbuf_len(sb)) == -1))
+    ret = WHYF_perror("ftruncate(%s, %zu)", alloca_str_toprint(path_buf), strbuf_len(sb));
+  close(fd);
+  return ret;
+}
+
+int server_unlink_proc_state(const char *path)
+{
+  char path_buf[400];
+  if (get_proc_path(path, path_buf, sizeof path_buf)==-1)
+    return -1;
+  if (unlink(path) == -1 && errno != ENOENT)
+    return WHYF_perror("unlink(%s)", alloca_str_toprint(path));
   return 0;
 }
 
@@ -483,16 +502,20 @@ static int server_get_proc_state(const char *path, char *buff, size_t buff_len)
   char path_buf[400];
   if (get_proc_path(path, path_buf, sizeof path_buf)==-1)
     return -1;
-  
   FILE *f = fopen(path_buf, "r");
-  if (!f)
-    return -1;
-  
-  int ret=0;
-  
-  if (!fgets(buff, buff_len, f))
-    ret = WHY_perror("fgets");
-  
+  if (!f) {
+    if (errno != ENOENT)
+      return WHYF_perror("fopen(%s)", alloca_str_toprint(path_buf));
+    return 1;
+  }
+  int ret = 0;
+  errno = 0; // fgets() does not set errno on end-of-file
+  if (!fgets(buff, buff_len, f)) {
+    if (errno)
+      ret = WHYF_perror("fgets from %s", alloca_str_toprint(path_buf));
+    else
+      ret = 1;
+  }
   fclose(f);
   return ret;
 }
@@ -788,11 +811,15 @@ static void cli_server_details(struct cli_context *context, const struct pid_tid
       cli_put_long(context, id->tid, "\n");
     }
     char buff[256];
-    if (server_get_proc_state("http_port", buff, sizeof buff)!=-1){
+    if (server_get_proc_state("primary_sid", buff, sizeof buff) == 0){
+      cli_field_name(context, "primary_sid", ":");
+      cli_put_string(context, buff, "\n");
+    }
+    if (server_get_proc_state("http_port", buff, sizeof buff) == 0){
       cli_field_name(context, "http_port", ":");
       cli_put_string(context, buff, "\n");
     }
-    if (server_get_proc_state("mdp_inet_port", buff, sizeof buff)!=-1){
+    if (server_get_proc_state("mdp_inet_port", buff, sizeof buff) == 0){
       cli_field_name(context, "mdp_inet_port", ":");
       cli_put_string(context, buff, "\n");
     }
