@@ -716,6 +716,12 @@ strbuf strbuf_json_boolean(strbuf sb, int boolean)
   return sb;
 }
 
+strbuf strbuf_json_integer(strbuf sb, int64_t integer)
+{
+  strbuf_sprintf(sb, "%"PRId64, integer);
+  return sb;
+}
+
 static const uint32_t offsetsFromUTF8[6] = {
   0x00000000UL, 0x00003080UL, 0x000E2080UL,
   0x03C82080UL, 0xFA082080UL, 0x82082080UL
@@ -820,8 +826,7 @@ strbuf strbuf_json_atom(strbuf sb, const struct json_atom *atom)
     case JSON_BOOLEAN:
       return strbuf_json_boolean(sb, atom->u.boolean);
     case JSON_INTEGER:
-      strbuf_sprintf(sb, "%"PRId64, atom->u.integer);
-      return sb;
+      return strbuf_json_integer(sb, atom->u.integer);
     case JSON_STRING_NULTERM:
       return strbuf_json_string(sb, atom->u.string.content);
     case JSON_STRING_LENGTH:

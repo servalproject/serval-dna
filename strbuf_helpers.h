@@ -234,6 +234,7 @@ strbuf strbuf_html_escape(strbuf sb, const char *, size_t);
  */
 strbuf strbuf_json_null(strbuf sb);
 strbuf strbuf_json_boolean(strbuf sb, int boolean);
+strbuf strbuf_json_integer(strbuf sb, int64_t integer);
 strbuf strbuf_json_string(strbuf sb, const char *str); // str can be NULL
 strbuf strbuf_json_string_len(strbuf sb, const char *str, size_t strlen); // str cannot be NULL
 strbuf strbuf_json_hex(strbuf sb, const unsigned char *buf, size_t len);
