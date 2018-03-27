@@ -48,7 +48,7 @@ start_servald_090() {
    extract_stdout_keyvalue SIDA sid "$rexp_sid"
    DIDA=5550001
    NAMEA="Agent A. Smith"
-   executeOk_servald set did $SIDA $DIDA "$NAMEA"
+   executeOk_servald set did "$SIDA" "$DIDA" "$NAMEA"
    SERVALD_SERVER_CHDIR="$instance_dir" SERVALD_LOG_FILE="$instance_servald_log" executeOk_servald start
    wait_until grep "[Ii]nterface .* is up" "$instance_servald_log"
 }
@@ -78,12 +78,12 @@ test_dna_090_version() {
    executeOk_servald route print
    tfw_cat --stdout --stderr
    assertStdoutGrep --stdout --matches=1 "^${SIDB}:BROADCAST :0*\$"
-   executeOk_servald mdp ping $SIDB 1
+   executeOk_servald mdp ping "$SIDB" 1
    tfw_cat --stdout --stderr
    set_instance +B
-   executeOk_servald mdp ping $SIDA 1
+   executeOk_servald mdp ping "$SIDA" 1
    tfw_cat --stdout --stderr
-   executeOk_servald dna lookup $DIDA
+   executeOk_servald dna lookup "$DIDA"
    tfw_cat --stdout --stderr
 }
 

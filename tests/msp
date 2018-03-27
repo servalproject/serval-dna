@@ -24,7 +24,7 @@ source "${0%/*}/../testdefs.sh"
 
 _simulator() {
    # TODO timeout & failure reporting?
-   $servald_build_root/simulator <&8 >$SIM_OUT
+   "$servald_build_root/simulator" <&8 >$SIM_OUT
 }
 start_simulator() {
   SIM_IN="$PWD/SIM_IN"
@@ -78,7 +78,7 @@ setup_connect_fail() {
 }
 test_connect_fail() {
    set_instance +A
-   execute --exit-status=1 --timeout=20 $servald msp connect $SIDB 512 <<EOF
+   execute --exit-status=1 --timeout=20 "$servald" msp connect "$SIDB" 512 <<EOF
 Hello from the client
 EOF
    tfw_cat --stderr
@@ -101,7 +101,7 @@ test_hello() {
    set_instance +A
    fork %listen server_hello
    set_instance +B
-   executeOk_servald --timeout=20 msp connect $SIDA 512 <<EOF
+   executeOk_servald --timeout=20 msp connect "$SIDA" 512 <<EOF
 Hello from the client
 EOF
    assertStdoutGrep --matches=1 "^Hello from the server$"
@@ -124,7 +124,7 @@ test_client_no_data() {
    set_instance +A
    fork %listen server_client_no_data
    set_instance +B
-   executeOk_servald --timeout=20 msp connect $SIDA 512 <<EOF
+   executeOk_servald --timeout=20 msp connect "$SIDA" 512 <<EOF
 EOF
    assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stderr
@@ -149,7 +149,7 @@ test_server_no_data() {
    set_instance +A
    fork %listen server_server_no_data
    set_instance +B
-   executeOk_servald --timeout=20 msp connect $SIDA 512 <file1
+   executeOk_servald --timeout=20 msp connect "$SIDA" 512 <file1
    assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stderr
    fork_wait %listen
@@ -166,7 +166,7 @@ listen_pipe() {
    tfw_cat --stdout --stderr
 }
 connect_pipe() {
-   executeOk_servald msp connect $1 512 < <(echo "START" && sleep 20 && echo "END")
+   executeOk_servald msp connect "$1" 512 < <(echo "START" && sleep 20 && echo "END")
    assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stdout --stderr
 }
@@ -174,7 +174,7 @@ test_keep_alive() {
    set_instance +A
    fork %listen listen_pipe
    set_instance +B
-   fork %connect connect_pipe $SIDA
+   fork %connect connect_pipe "$SIDA"
    fork_wait %listen %connect
 }
 
@@ -185,7 +185,7 @@ setup_forward() {
    start_servald_instances +A +B
 }
 client_forward() {
-   executeOk --timeout=20 $servald msp connect --once --forward=$1 $2 512
+   executeOk --timeout=20 "$servald" msp connect --once --forward="$1" "$2" 512
    assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stdout --stderr
 }
@@ -193,7 +193,7 @@ test_forward() {
    set_instance +A
    fork %listen server_hello
    set_instance +B
-   fork %connect client_forward 2048 $SIDA
+   fork %connect client_forward 2048 "$SIDA"
    sleep 1
    executeOk nc6 -q 30 -v 127.0.0.1 2048 < <(echo "Hello from the client")
    assertStdoutGrep --matches=1 "^Hello from the server$"
@@ -212,7 +212,7 @@ server_forward() {
    tfw_cat --stderr
 }
 nc_listen() {
-   execute nc6 -q -1 -v -l -p $1 < <(echo "Hello from the server")
+   execute nc6 -q -1 -v -l -p "$1" < <(echo "Hello from the server")
    tfw_cat --stdout --stderr
 }
 test_tcp_tunnel() {
@@ -220,7 +220,7 @@ test_tcp_tunnel() {
    set_instance +A
    fork %server server_forward 6000
    set_instance +B
-   fork %client client_forward 6001 $SIDA
+   fork %client client_forward 6001 "$SIDA"
    sleep 1
    executeOk nc6 -q 10 -v 127.0.0.1 6001 < <(echo "Hello from the client")
    tfw_cat --stdout --stderr
@@ -256,7 +256,7 @@ test_slow_unreliable() {
    set_instance +A
    fork %listen slow_listen
    set_instance +B
-   executeOk_servald msp connect $SIDA 512 < file1
+   executeOk_servald msp connect "$SIDA" 512 < file1
    assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_log "execution time (ms); $realtime_ms"
    tfw_cat --stderr
@@ -270,7 +270,7 @@ setup_refused(){
    start_servald_instances +A +B
 }
 server_refused(){
-   executeOk $servald msp listen --once --forward=4001 512
+   executeOk "$servald" msp listen --once --forward=4001 512
    assertStderrGrep --matches=1 " Connection refused"
    tfw_cat --stderr
 }
@@ -278,7 +278,7 @@ test_refused(){
    set_instance +A
    fork %listen server_refused
    set_instance +B
-   executeOk_servald msp connect $SIDA 512 < <(echo "Hello")
+   executeOk_servald msp connect "$SIDA" 512 < <(echo "Hello")
    assertStderrGrep --matches=1 " Connection with .* closed suddenly$"
    tfw_cat --stdout --stderr
    fork_wait %listen
@@ -291,7 +291,7 @@ setup_terminate() {
    start_servald_instances +A +B
 }
 client_terminate() {
-   executeOk_servald msp connect --once --forward=3001 $SIDA 512
+   executeOk_servald msp connect --once --forward=3001 "$SIDA" 512
    assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stdout --stderr
 }

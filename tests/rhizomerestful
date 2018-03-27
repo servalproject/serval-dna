@@ -36,7 +36,7 @@ setup() {
    if [ -z "$IDENTITY_COUNT" ]; then
       create_single_identity
    else
-      create_identities $IDENTITY_COUNT
+      create_identities "$IDENTITY_COUNT"
    fi
    export SERVALD_RHIZOME_DB_RETRY_LIMIT_MS=60000
    start_servald_instances +A
@@ -102,7 +102,7 @@ doc_RhizomeList="REST API list 100 Rhizome bundles as JSON"
 setup_RhizomeList() {
    setup
    NBUNDLES=100
-   rhizome_add_bundles $SIDA 0 $((NBUNDLES-1))
+   rhizome_add_bundles "$SIDA" 0 $((NBUNDLES-1))
    assert [ "$ROWID_MAX" -ge "$NBUNDLES" ]
 }
 test_RhizomeList() {
@@ -144,7 +144,7 @@ setup_RhizomeListNewSince() {
    # Use REST interface to add bundles, not CLI, in order to avoid a database
    # locking storm
    rhizome_use_restful harry potter
-   rhizome_add_bundles $SIDA 0 5
+   rhizome_add_bundles "$SIDA" 0 5
    rest_request GET "/restful/rhizome/bundlelist.json"
    assert [ "$(jq '.rows | length' response.json)" = 6 ]
    transform_list_json response.json array_of_objects.json
@@ -158,7 +158,7 @@ test_RhizomeListNewSince() {
             --no-buffer
    done
    wait_until [ -e newsince1.json -a -e newsince2.json -a -e newsince3.json ]
-   rhizome_add_bundles $SIDA 6 10
+   rhizome_add_bundles "$SIDA" 6 10
    for i in 1 2 3; do
       wait_until grep "${BID[10]}" newsince$i.json
    done
@@ -212,7 +212,7 @@ assert_http_response_headers() {
 doc_RhizomeManifest="REST API fetch Rhizome manifest"
 setup_RhizomeManifest() {
    setup
-   rhizome_add_bundles $SIDA 0 2
+   rhizome_add_bundles "$SIDA" 0 2
 }
 test_RhizomeManifest() {
    for n in 0 1 2; do
@@ -242,8 +242,8 @@ test_RhizomeManifestNonexist() {
 doc_RhizomePayloadRaw="REST API fetch Rhizome raw payload"
 setup_RhizomePayloadRaw() {
    setup
-   rhizome_add_bundles $SIDA 0 1
-   rhizome_add_bundles --encrypted $SIDA 2 3
+   rhizome_add_bundles "$SIDA" 0 1
+   rhizome_add_bundles --encrypted "$SIDA" 2 3
 }
 test_RhizomePayloadRaw() {
    for n in 0 1 2 3; do
@@ -280,7 +280,7 @@ setup_RhizomePayloadRawNonexistPayload() {
       executeOk_servald config set rhizome.max_blob_size 0
    }
    setup
-   rhizome_add_bundles $SIDA 0 0
+   rhizome_add_bundles "$SIDA" 0 0
    rhizome_delete_payload_blobs "${HASH[0]}"
 }
 test_RhizomePayloadRawNonexistPayload() {
@@ -300,8 +300,8 @@ test_RhizomePayloadRawNonexistPayload() {
 doc_RhizomePayloadDecrypted="REST API fetch Rhizome decrypted payload"
 setup_RhizomePayloadDecrypted() {
    setup
-   rhizome_add_bundles $SIDA 0 1
-   rhizome_add_bundles --encrypted $SIDA 2 3
+   rhizome_add_bundles "$SIDA" 0 1
+   rhizome_add_bundles --encrypted "$SIDA" 2 3
 }
 test_RhizomePayloadDecrypted() {
    for n in 0 1 2 3; do
@@ -322,10 +322,10 @@ test_RhizomePayloadDecrypted() {
 doc_RhizomePayloadDecryptedForeign="REST API cannot fetch foreign Rhizome decrypted payload"
 setup_RhizomePayloadDecryptedForeign() {
    setup
-   rhizome_add_bundles --encrypted $SIDA 0 0
+   rhizome_add_bundles --encrypted "$SIDA" 0 0
    set_instance +B
    create_single_identity
-   rhizome_add_bundles --encrypted $SIDB 1 1
+   rhizome_add_bundles --encrypted "$SIDB" 1 1
    executeOk_servald rhizome export manifest "${BID[1]}" file1.manifest
    set_instance +A
    executeOk_servald rhizome import bundle raw1 file1.manifest
@@ -357,7 +357,7 @@ setup_RhizomePayloadDecryptedNonexistPayload() {
       executeOk_servald config set rhizome.max_blob_size 0
    }
    setup
-   rhizome_add_bundles $SIDA 0 0
+   rhizome_add_bundles "$SIDA" 0 0
    rhizome_delete_payload_blobs "${HASH[0]}"
 }
 test_RhizomePayloadDecryptedNonexistPayload() {
@@ -631,7 +631,7 @@ test_RhizomeInsertEmpty() {
    extract_manifest_id BID empty.manifest
    executeOk_servald rhizome list
    assert_rhizome_list empty
-   executeOk_servald rhizome extract bundle $BID xempty.manifest xempty
+   executeOk_servald rhizome extract bundle "$BID" xempty.manifest xempty
    assert [ ! -e xempty ]
    assert diff xempty.manifest empty.manifest
 }
@@ -642,7 +642,7 @@ setup_RhizomeUpdateToEmpty() {
    >empty
    assert [ ! -s empty ]
    create_file nonempty 101
-   executeOk_servald rhizome add file $SIDA nonempty nonempty.manifest
+   executeOk_servald rhizome add file "$SIDA" nonempty nonempty.manifest
    executeOk_servald rhizome list
    assert_rhizome_list nonempty
    extract_manifest_id BID nonempty.manifest
@@ -659,7 +659,7 @@ test_RhizomeUpdateToEmpty() {
    assertGrep --matches=1 --ignore-case response.headers "^Serval-Rhizome-Result-Payload-Status-Message: .*payload empty.*$CR\$"
    executeOk_servald rhizome list
    assert_rhizome_list empty
-   executeOk_servald rhizome extract bundle $BID xempty.manifest xempty
+   executeOk_servald rhizome extract bundle "$BID" xempty.manifest xempty
    assert [ ! -e xempty ]
    assert diff xempty.manifest empty.manifest
 }
@@ -682,7 +682,7 @@ test_RhizomeInsertLarge() {
    extract_manifest_id BID file1.manifest
    executeOk_servald rhizome list
    assert_rhizome_list file1
-   executeOk_servald rhizome extract bundle $BID xfile1.manifest xfile1
+   executeOk_servald rhizome extract bundle "$BID" xfile1.manifest xfile1
    assert diff xfile1.manifest file1.manifest
    assert cmp file1 xfile1
 }
@@ -899,7 +899,7 @@ setup_RhizomeImport() {
    set_instance +B
    create_single_identity
    create_file file1 100
-   executeOk_servald rhizome add file $SIDB file1 file1.manifest
+   executeOk_servald rhizome add file "$SIDB" file1 file1.manifest
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
    extract_manifest_filehash filehash file1.manifest
@@ -959,7 +959,7 @@ setup_RhizomeImportLarge() {
    set_instance +B
    create_single_identity
    create_file file1 50m
-   executeOk_servald rhizome add file $SIDB file1 file1.manifest
+   executeOk_servald rhizome add file "$SIDB" file1 file1.manifest
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
    executeOk_servald rhizome export manifest "$manifestid" file1.manifest
@@ -982,7 +982,7 @@ setup_RhizomeImportParamsBad() {
    set_instance +B
    create_single_identity
    create_file file1 100
-   executeOk_servald rhizome add file $SIDB file1 file1.manifest
+   executeOk_servald rhizome add file "$SIDB" file1 file1.manifest
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
    executeOk_servald rhizome export manifest "$manifestid" file1.manifest
@@ -1047,10 +1047,10 @@ test_RhizomeJournalAppend() {
    http_unquote_string H_NAME
    extract_http_header H_BK response.headers Serval-Rhizome-Bundle-BK "$rexp_bundlekey"
    extract_http_header H_AUTHOR response.headers Serval-Rhizome-Bundle-Author "$rexp_bundlekey"
-   assert [ $H_SIZE -eq $file1_size ]
+   assert [ "$H_SIZE" -eq "$file1_size" ]
    assert [ "$H_SERVICE" = anything ]
    assert [ "$H_NAME" = hoopla ]
-   assert [ "$H_AUTHOR" = $SIDA ]
+   assert [ "$H_AUTHOR" = "$SIDA" ]
    extract_manifest_id BID file1.manifest
    extract_manifest_version VERSION file1.manifest
    extract_manifest_filesize SIZE file1.manifest
@@ -1136,7 +1136,7 @@ setup_RhizomeAppendNonJournalForbidden() {
    echo "File One" > file1
    echo "File Two" > file2
    >file2.manifest
-   executeOk_servald rhizome add file $SIDA file1 file1.manifest
+   executeOk_servald rhizome add file "$SIDA" file1 file1.manifest
    tfw_cat --stdout --stderr
    assert_stdout_add_file file1
    extract_stdout_manifestid BID

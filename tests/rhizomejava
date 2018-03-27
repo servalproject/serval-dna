@@ -54,7 +54,7 @@ doc_RhizomeList="Java API Rhizome list 100 bundles"
 setup_RhizomeList() {
    setup
    NBUNDLES=100
-   rhizome_add_bundles $SIDA1 0 $((NBUNDLES-1))
+   rhizome_add_bundles "$SIDA1" 0 $((NBUNDLES-1))
    assert [ "$ROWID_MAX" -ge "$NBUNDLES" ]
 }
 test_RhizomeList() {
@@ -96,7 +96,7 @@ setup_RhizomeListNewSince() {
    # Use REST interface to add bundles, not CLI, in order to avoid a database
    # locking storm
    rhizome_use_restful harry potter
-   rhizome_add_bundles $SIDA1 0 5
+   rhizome_add_bundles "$SIDA1" 0 5
    executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-list
    assertStdoutLineCount == 6
    unset_vars_with_prefix XX_
@@ -112,7 +112,7 @@ test_RhizomeListNewSince() {
       fork %list$i rhizome_list_newsince
    done
    wait_until [ -e newsince1 -a -e newsince2 -a -e newsince3 ]
-   rhizome_add_bundles $SIDA1 6 10
+   rhizome_add_bundles "$SIDA1" 6 10
    for i in 1 2 3; do
       wait_until --timeout=10 grep "${BID[10]}" newsince$i
    done
@@ -161,7 +161,7 @@ assert_metadata() {
 doc_RhizomeManifest="Java API fetch Rhizome manifest"
 setup_RhizomeManifest() {
    setup
-   rhizome_add_bundles $SIDA1 0 2
+   rhizome_add_bundles "$SIDA1" 0 2
 }
 test_RhizomeManifest() {
    for n in 0 1 2; do
@@ -188,8 +188,8 @@ test_RhizomeManifestNonexist() {
 doc_RhizomePayloadRaw="Java API fetch Rhizome raw payload"
 setup_RhizomePayloadRaw() {
    setup
-   rhizome_add_bundles $SIDA1 0 1
-   rhizome_add_bundles --encrypted $SIDA1 2 3
+   rhizome_add_bundles "$SIDA1" 0 1
+   rhizome_add_bundles --encrypted "$SIDA1" 2 3
 }
 test_RhizomePayloadRaw() {
    for n in 0 1 2 3; do
@@ -219,7 +219,7 @@ setup_RhizomePayloadRawNonexistPayload() {
       executeOk_servald config set rhizome.max_blob_size 0
    }
    setup
-   rhizome_add_bundles $SIDA1 0 0
+   rhizome_add_bundles "$SIDA1" 0 0
    rhizome_delete_payload_blobs "${HASH[0]}"
 }
 test_RhizomePayloadRawNonexistPayload() {
@@ -232,8 +232,8 @@ test_RhizomePayloadRawNonexistPayload() {
 doc_RhizomePayloadDecrypted="Java API fetch Rhizome decrypted payload"
 setup_RhizomePayloadDecrypted() {
    setup
-   rhizome_add_bundles $SIDA1 0 1
-   rhizome_add_bundles --encrypted $SIDA1 2 3
+   rhizome_add_bundles "$SIDA1" 0 1
+   rhizome_add_bundles --encrypted "$SIDA1" 2 3
 }
 test_RhizomePayloadDecrypted() {
    for n in 0 1 2 3; do
@@ -252,7 +252,7 @@ setup_RhizomePayloadDecryptedNonexistManifest() {
       executeOk_servald config set rhizome.max_blob_size 0
    }
    setup
-   rhizome_add_bundles $SIDA1 0 0
+   rhizome_add_bundles "$SIDA1" 0 0
    rhizome_delete_payload_blobs "${HASH[0]}"
 }
 test_RhizomePayloadDecryptedNonexistManifest() {
@@ -265,10 +265,10 @@ test_RhizomePayloadDecryptedNonexistManifest() {
 doc_RhizomePayloadDecryptedForeign="Java API cannot fetch foreign Rhizome decrypted payload"
 setup_RhizomePayloadDecryptedForeign() {
    setup
-   rhizome_add_bundles --encrypted $SIDA1 0 0
+   rhizome_add_bundles --encrypted "$SIDA1" 0 0
    set_instance +B
    create_single_identity
-   rhizome_add_bundles --encrypted $SIDB 1 1
+   rhizome_add_bundles --encrypted "$SIDB" 1 1
    executeOk_servald rhizome export manifest "${BID[1]}" file1.manifest
    set_instance +A
    executeOk_servald rhizome import bundle raw1 file1.manifest
@@ -366,7 +366,7 @@ setup_RhizomeImport() {
    setup
    set_instance +B
    create_single_identity
-   rhizome_add_bundles $SIDB 1 1
+   rhizome_add_bundles "$SIDB" 1 1
    executeOk_servald rhizome export manifest "${BID[1]}" file1.manifest
    set_instance +A
 }

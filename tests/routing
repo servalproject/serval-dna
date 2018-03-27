@@ -124,9 +124,9 @@ test_single_link() {
    wait_until --timeout=10 path_exists +A +B
    wait_until --timeout=5 path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDA 1
+   executeOk_servald mdp ping --timeout=3 "$SIDA" 1
    tfw_cat --stdout --stderr
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   executeOk_servald mdp ping --timeout=3 "$SIDB" 1
    tfw_cat --stdout --stderr
 }
 
@@ -142,17 +142,17 @@ setup_multiple_ids() {
 }
 test_multiple_ids() {
    set_instance +A
-   wait_until has_link --any $SIDB1
-   wait_until has_link --any $SIDB2
+   wait_until has_link --any "$SIDB1"
+   wait_until has_link --any "$SIDB2"
    set_instance +B
-   wait_until has_link --any $SIDA1
-   wait_until has_link --any $SIDA2
+   wait_until has_link --any "$SIDA1"
+   wait_until has_link --any "$SIDA2"
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDB1 1
-   executeOk_servald mdp ping --timeout=3 $SIDB2 1
+   executeOk_servald mdp ping --timeout=3 "$SIDB1" 1
+   executeOk_servald mdp ping --timeout=3 "$SIDB2" 1
    set_instance +B
-   executeOk_servald mdp ping --timeout=3 $SIDA1 1
-   executeOk_servald mdp ping --timeout=3 $SIDA2 1
+   executeOk_servald mdp ping --timeout=3 "$SIDA1" 1
+   executeOk_servald mdp ping --timeout=3 "$SIDA2" 1
 }
 
 doc_unlock_ids="Routes appear and disappear as identities are [un]locked"
@@ -172,11 +172,11 @@ test_unlock_ids() {
    set_instance +A
    executeOk_servald id enter pin 'entry-pin'
    set_instance +B
-   wait_until has_link --via $SIDA $SIDX
+   wait_until has_link --via "$SIDA" "$SIDX"
    set_instance +A
    executeOk_servald id relinquish pin 'entry-pin'
    set_instance +B
-   wait_until --timeout=30 has_no_link $SIDX
+   wait_until --timeout=30 has_no_link "$SIDX"
 }
 
 doc_migrate_id="Unlocking the same identity triggers migration"
@@ -200,11 +200,11 @@ test_migrate_id() {
    set_instance +A
    executeOk_servald id enter pin 'entry-pin'
    set_instance +B
-   wait_until --timeout=10 has_link --via $SIDA $SIDX
+   wait_until --timeout=10 has_link --via "$SIDA" "$SIDX"
    set_instance +B
    executeOk_servald id enter pin 'entry-pin'
    set_instance +A
-   wait_until --timeout=10 has_link --via $SIDB $SIDX
+   wait_until --timeout=10 has_link --via "$SIDB" "$SIDX"
 }
 
 doc_single_mdp="Use single MDP per packet encapsulation"
@@ -222,7 +222,7 @@ test_single_mdp() {
    wait_until path_exists +A +B
    wait_until path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   executeOk_servald mdp ping --timeout=3 "$SIDB" 1
    tfw_cat --stdout --stderr
 }
 
@@ -241,7 +241,7 @@ test_mismatched_encap() {
    wait_until path_exists +A +B
    wait_until path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   executeOk_servald mdp ping --timeout=3 "$SIDB" 1
    tfw_cat --stdout --stderr
 }
 
@@ -263,12 +263,12 @@ test_single_p2p() {
    wait_until path_exists +B +A
    assertGrep "$instance_servald_log" 'Established point to point link'
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   executeOk_servald mdp ping --timeout=3 "$SIDB" 1
    tfw_cat --stdout --stderr
 }
 
 start_fakeradio() {
-   $servald_build_root/fakeradio 4 1 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
+   "$servald_build_root/fakeradio" 4 1 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
    FAKERADIO_PID=$!
    wait_until $GREP "^right:" "$SERVALD_VAR/radioout"
    local _line=`head -n 1 "$SERVALD_VAR/radioout"`
@@ -306,7 +306,7 @@ test_simulate_extender() {
    wait_until path_exists +A +B
    wait_until path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   executeOk_servald mdp ping --timeout=3 "$SIDB" 1
    tfw_cat --stdout --stderr
 }
 teardown_simulate_extender() {
@@ -333,15 +333,15 @@ setup_lowband_broadcast() {
 }
 test_lowband_broadcast() {
    set_instance +A
-   executeOk_servald mdp ping --interval=3 --timeout=6 $SIDB 3
+   executeOk_servald mdp ping --interval=3 --timeout=6 "$SIDB" 3
    tfw_cat --stdout --stderr
 }
 
 _simulator() {
    # TODO timeout & failure reporting?
-   executeOk --timeout=120 --error-on-fail $servald_build_root/simulator <$SIM_IN
+   executeOk --timeout=120 --error-on-fail "$servald_build_root/simulator" <$SIM_IN
    tfw_cat --stdout --stderr
-   rm $SIM_IN
+   rm "$SIM_IN"
 }
 start_simulator() {
   SIM_IN="$PWD/SIM_IN"
@@ -382,13 +382,13 @@ test_multiple_nodes() {
    wait_until --timeout=5 path_exists +C +A
    wait_until --timeout=5 path_exists +D +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   executeOk_servald mdp ping --timeout=3 "$SIDB" 1
    tfw_cat --stdout --stderr
    simulator_command set "net" "latency" "150"
-   executeOk_servald mdp ping --timeout=3 $SIDC 1
+   executeOk_servald mdp ping --timeout=3 "$SIDC" 1
    tfw_cat --stdout --stderr
    simulator_command set "net" "latency" "200"
-   executeOk_servald mdp ping --timeout=3 $SIDD 1
+   executeOk_servald mdp ping --timeout=3 "$SIDD" 1
    tfw_cat --stdout --stderr
 }
 finally_multiple_nodes() {
@@ -418,16 +418,16 @@ test_scan() {
    set_instance +A
    wait_until --timeout=10 has_seen_instances +B +C
    executeOk_servald route print
-   link_matches --unicast $SIDB
-   link_matches --unicast $SIDC
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   link_matches --unicast "$SIDB"
+   link_matches --unicast "$SIDC"
+   executeOk_servald mdp ping --timeout=3 "$SIDB" 1
    tfw_cat --stdout --stderr
 
    set_instance +B
    executeOk_servald route print
-   link_matches --unicast $SIDA
-   link_matches --via $SIDA $SIDC
-   executeOk_servald mdp ping --timeout=3 $SIDC 1
+   link_matches --unicast "$SIDA"
+   link_matches --via "$SIDA" "$SIDC"
+   executeOk_servald mdp ping --timeout=3 "$SIDC" 1
    tfw_cat --stdout --stderr
 }
 
@@ -441,9 +441,9 @@ test_scan_one() {
    wait_until scan_completed
    wait_until --timeout=10 has_seen_instances +B
    executeOk_servald route print
-   link_matches --unicast $SIDB
+   link_matches --unicast "$SIDB"
    assertStdoutGrep --matches=0 "^$SIDC:"
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   executeOk_servald mdp ping --timeout=3 "$SIDB" 1
    tfw_cat --stdout --stderr
 }
 
@@ -475,13 +475,13 @@ setup_fixedAddress() {
 doc_fixedAddress="Establish a link from a configured fixed address"
 test_fixedAddress() {
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDB 5
+   executeOk_servald mdp ping --timeout=3 "$SIDB" 5
    tfw_cat --stdout
    wait_until path_exists +A +B
 }
 
 scan_completed() {
-  $GREP "Scan completed" $instance_servald_log || return 1
+  $GREP "Scan completed" "$instance_servald_log" || return 1
   return 0
 }
 
@@ -501,11 +501,11 @@ setup_single_filter() {
 }
 test_single_filter() {
    set_instance +A
-   wait_until --timeout=10 has_link --unicast $SIDB
+   wait_until --timeout=10 has_link --unicast "$SIDB"
    set_instance +B
-   wait_until --timeout=5 has_link --broadcast $SIDA
+   wait_until --timeout=5 has_link --broadcast "$SIDA"
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   executeOk_servald mdp ping --timeout=3 "$SIDB" 1
    tfw_cat --stdout --stderr
 }
 
@@ -523,11 +523,11 @@ setup_broadcast_only() {
 test_broadcast_only() {
    simulator_command up "net"
    set_instance +A
-   wait_until has_link --broadcast $SIDB
+   wait_until has_link --broadcast "$SIDB"
    set_instance +B
-   wait_until has_link --broadcast $SIDA
+   wait_until has_link --broadcast "$SIDA"
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   executeOk_servald mdp ping --timeout=3 "$SIDB" 1
    tfw_cat --stdout --stderr
 }
 finally_broadcast_only() {
@@ -548,13 +548,13 @@ setup_prefer_unicast() {
 }
 test_prefer_unicast() {
    set_instance +A
-   wait_until has_link --unicast $SIDB
+   wait_until has_link --unicast "$SIDB"
    set_instance +B
-   wait_until has_link --unicast $SIDA
+   wait_until has_link --unicast "$SIDA"
    wait_until path_exists +A +B
    wait_until path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   executeOk_servald mdp ping --timeout=3 "$SIDB" 1
    tfw_cat --stdout --stderr
 }
 
@@ -572,13 +572,13 @@ setup_prefer_broadcast() {
 }
 test_prefer_broadcast() {
    set_instance +A
-   wait_until has_link --broadcast $SIDB
+   wait_until has_link --broadcast "$SIDB"
    set_instance +B
-   wait_until has_link --broadcast $SIDA
+   wait_until has_link --broadcast "$SIDA"
    wait_until path_exists +A +B
    wait_until path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   executeOk_servald mdp ping --timeout=3 "$SIDB" 1
    tfw_cat --stdout --stderr
 }
 
@@ -596,9 +596,9 @@ test_multihop_linear() {
    wait_until path_exists +A +B +C +D
    wait_until path_exists +D +C +B +A
    set_instance +A
-   executeOk_servald --stdout --stderr mdp ping --timeout=3 $SIDD 1
+   executeOk_servald --stdout --stderr mdp ping --timeout=3 "$SIDD" 1
    tfw_cat --stdout --stderr
-   executeOk_servald mdp trace $SIDD
+   executeOk_servald mdp trace "$SIDD"
    tfw_cat --stdout --stderr
    assertStdoutGrep --matches=1 "^0:$SIDA\$"
    assertStdoutGrep --matches=1 "^1:$SIDB\$"
@@ -630,7 +630,7 @@ test_unicast_route() {
    wait_until --timeout=20 path_exists +A +B +C +D
    wait_until --timeout=5 path_exists +D +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDD 1
+   executeOk_servald mdp ping --timeout=3 "$SIDD" 1
    tfw_cat --stdout --stderr
 }
 
@@ -646,12 +646,12 @@ setup_offline() {
 instance_offline() {
    local I N
    for I; do
-      [ $I = $instance_arg ] && continue
+      [ "$I" = "$instance_arg" ] && continue
       for ((N=1; 1; ++N)); do
-         local sidvar=SID${I#+}$N
+         local sidvar="SID${I#+}$N"
          [ -n "${!sidvar}" ] || break
          tfw_log "Checking if $I is offline for $instance_arg"
-         has_no_link ${!sidvar} || return 1
+         has_no_link "${!sidvar}" || return 1
       done
    done
 }
@@ -770,19 +770,19 @@ doc_multi_interface="Multiple links of different types to the same neighbour"
 test_multi_interface() {
    simulator_command up "wlan0" "eth0"
    set_instance +A
-   wait_until has_link --interface "dummy2.*" $SIDB
+   wait_until has_link --interface "dummy2.*" "$SIDB"
    set_instance +B
-   wait_until has_link --interface "dummy2.*" $SIDA
+   wait_until has_link --interface "dummy2.*" "$SIDA"
    set_instance +A
    simulator_command down "eth0"
-   wait_until has_link --interface "dummy1.*" $SIDB
+   wait_until has_link --interface "dummy1.*" "$SIDB"
    set_instance +B
-   wait_until has_link --interface "dummy1.*" $SIDA
+   wait_until has_link --interface "dummy1.*" "$SIDA"
    set_instance +A
    simulator_command up "eth0"
-   wait_until has_link --interface "dummy2.*" $SIDB
+   wait_until has_link --interface "dummy2.*" "$SIDB"
    set_instance +B
-   wait_until has_link --interface "dummy2.*" $SIDA
+   wait_until has_link --interface "dummy2.*" "$SIDA"
 }
 finally_multi_interface() {
    simulator_quit
@@ -804,7 +804,7 @@ test_ping_unreliable_1hop() {
    wait_until --timeout=10 path_exists +A +B
    wait_until --timeout=5 path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDB 100
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates "$SIDB" 100
    tfw_cat --stdout --stderr
    received=$($SED -n -e 's/.*\<\([0-9][0-9]*\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$($SED -n -e 's/.*\<\([0-9][0-9]*\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
@@ -834,7 +834,7 @@ test_ping_unreliable_2hop() {
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDC 100
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates "$SIDC" 100
    tfw_cat --stdout --stderr
    received=$($SED -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$($SED -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
@@ -865,7 +865,7 @@ test_ping_congested() {
    wait_until --timeout=10 path_exists +A +B
    wait_until --timeout=5 path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.100 --timeout=3 $SIDB 100
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 "$SIDB" 100
    tfw_cat --stdout --stderr
 }
 finally_ping_congested() {
@@ -917,7 +917,7 @@ test_unreliable_links() {
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDC 50
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates "$SIDC" 50
    tfw_cat --stdout --stderr
    received=$($SED -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$($SED -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
@@ -963,7 +963,7 @@ test_unreliable_links2() {
    wait_until --timeout=20 path_exists +A +B +C +D
    wait_until --timeout=20 path_exists +D +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDD 50
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates "$SIDD" 50
    tfw_cat --stdout --stderr
    received=$($SED -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$($SED -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
@@ -998,7 +998,7 @@ test_circle() {
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 --wait-for-duplicates $SIDC 1
+   executeOk_servald mdp ping --timeout=3 --wait-for-duplicates "$SIDC" 1
    tfw_cat --stdout --stderr
    stop_servald_server +B
    foreach_instance +A +C \
@@ -1006,7 +1006,7 @@ test_circle() {
    wait_until path_exists +A +H +G +F +E +D +C
    wait_until path_exists +C +D +E +F +G +H +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 --wait-for-duplicates $SIDC 1
+   executeOk_servald mdp ping --timeout=3 --wait-for-duplicates "$SIDC" 1
    tfw_cat --stdout --stderr
 }
 
@@ -1028,13 +1028,13 @@ setup_crowded_mess() {
 doc_crowded_mess="Multiple possible paths"
 test_crowded_mess() {
    set_instance +H
-   wait_until has_link --via "[0-9A-F]*" $SIDA
+   wait_until has_link --via "[0-9A-F]*" "$SIDA"
    set_instance +A
-   wait_until has_link --via "[0-9A-F]*" $SIDH
-   executeOk_servald mdp trace $SIDD
+   wait_until has_link --via "[0-9A-F]*" "$SIDH"
+   executeOk_servald mdp trace "$SIDD"
    assertStdoutGrep --matches=1 "^[0-9]:${SIDD}\$"
    tfw_cat --stdout
-   executeOk_servald mdp ping --timeout=3 --wait-for-duplicates $SIDH 3
+   executeOk_servald mdp ping --timeout=3 --wait-for-duplicates "$SIDH" 3
    tfw_cat --stdout --stderr
 }
 

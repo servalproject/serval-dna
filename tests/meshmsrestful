@@ -27,14 +27,14 @@ source "${0%/*}/../testdefs_meshms.sh"
 shopt -s extglob
 
 setup_instance() {
-   set_instance $1
+   set_instance "$1"
    setup_rest_config
    set_meshms_config
    set_extra_config
    if [ -z "$IDENTITY_COUNT" ]; then
       create_single_identity
    else
-      create_identities $IDENTITY_COUNT
+      create_identities "$IDENTITY_COUNT"
    fi
 }
 
@@ -102,10 +102,10 @@ setup_MeshmsListConversations() {
    IDENTITY_COUNT=5
    setup
    # create 3 threads, with all permutations of incoming and outgoing messages
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
-   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
-   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message3"
-   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message4"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message1"
+   executeOk_servald meshms send message "$SIDA3" "$SIDA1" "Message2"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA4" "Message3"
+   executeOk_servald meshms send message "$SIDA4" "$SIDA1" "Message4"
 }
 test_MeshmsListConversations() {
    rest_request GET "/restful/meshms/$SIDA1/conversationlist.json"
@@ -140,8 +140,8 @@ test_MeshmsListConversations() {
                }
             ])"
    # mark all incoming messages as read
-   executeOk_servald meshms read messages $SIDA1
-   executeOk_servald meshms read messages $SIDA1 $SIDA3
+   executeOk_servald meshms read messages "$SIDA1"
+   executeOk_servald meshms read messages "$SIDA1" "$SIDA3"
    tfw_cat --stderr
    rest_request GET "/restful/meshms/$SIDA1/conversationlist.json"
    assert [ "$(jq '.rows | length' response.json)" = 3 ]
@@ -180,9 +180,9 @@ doc_MeshmsListMessages="REST API list MeshMS messages in one conversation as JSO
 setup_MeshmsListMessages() {
    IDENTITY_COUNT=2
    setup
-   meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<<>><>>A<<>'
+   meshms_add_messages "$SIDA1" "$SIDA2" '><>>A>A<>><><><>>>A>A><<<<<>><>>A<<>'
    let NROWS=NSENT+NRECV+(NACK?1:0)
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    tfw_cat --stdout
    delivered_offset=$($SED -n -e '/^[0-9]\+:[0-9]\+:[0-9]\+:[0-9]\+:ACK:delivered$/{n;s/^[0-9]\+:\([0-9]\+\):[0-9]\+:[0-9]\+:>:.*/\1/p;q}' "$TFWSTDOUT")
    [ -z "$delivered_offset" ] && delivered_offset=0
@@ -260,7 +260,7 @@ setup_MeshmsListMessagesNewSince() {
       executeOk_servald config set api.restful.newsince_timeout 1s
    }
    setup
-   meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<<>><>>A<<>'
+   meshms_add_messages "$SIDA1" "$SIDA2" '><>>A>A<>><><><>>>A>A><<<<<>><>>A<<>'
    let NROWS=NSENT+NRECV+(NACK?1:0)
    rest_request GET "/restful/meshms/$SIDA1/$SIDA2/messagelist.json"
    assert [ "$(jq '.rows | length' response.json)" = $NROWS ]
@@ -308,7 +308,7 @@ setup_MeshmsListMessagesNewSinceArrival() {
    # Use REST interface to send messages, not CLI, in order to avoid a database
    # locking storm
    meshms_use_restful harry potter
-   meshms_add_messages $SIDA1 $SIDA2 '><>A>'
+   meshms_add_messages "$SIDA1" "$SIDA2" '><>A>'
    let NROWS=NSENT+NRECV+(NACK?1:0)
    rest_request GET "/restful/meshms/$SIDA1/$SIDA2/messagelist.json"
    assert [ "$(jq '.rows | length' response.json)" = $NROWS ]
@@ -326,7 +326,7 @@ test_MeshmsListMessagesNewSinceArrival() {
    done
    wait_until [ -e response1.json -a -e response2.json -a -e response3.json ]
    for message in '>Rumplestiltskin' 'A' '<Howdydoody' '>Eulenspiegel'; do
-      meshms_add_messages $SIDA1 $SIDA2 "${message:0:1}" "${message:1}"
+      meshms_add_messages "$SIDA1" "$SIDA2" "${message:0:1}" "${message:1}"
       case ${message:0:1} in
       '<'|'>') waitfor="${message:1}";;
       'A') waitfor="ACK";;
@@ -345,11 +345,11 @@ setup_MeshmsSend() {
 test_MeshmsSend() {
    rest_request POST "/restful/meshms/$SIDA1/$SIDA2/sendmessage" 201 \
          --form-part="message=Hello World;type=text/plain;charset=utf-8"
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    assertStdoutGrep --matches=1 ':>:Hello World'
    rest_request POST "/restful/meshms/$SIDA2/$SIDA1/sendmessage" 201 \
          --form-part="message=Hello back!;type=text/plain;charset=utf-8"
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    assertStdoutGrep --matches=1 ':>:Hello World$'
    assertStdoutGrep --matches=1 ':<:Hello back!$'
 }
@@ -363,7 +363,7 @@ test_MeshmsSendMissingMessage() {
    rest_request POST "/restful/meshms/$SIDA2/$SIDA1/sendmessage" 400 --data=''
    assertJq response.json 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case response.json '.http_status_message' 'missing.*message.*form.*part'
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    assertStdoutLineCount '==' 2
 }
 
@@ -378,7 +378,7 @@ test_MeshmsSendDuplicateMessage() {
          --form-part="message=Hello two;type=text/plain;charset=utf-8"
    assertJq response.json 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case response.json '.http_status_message' 'duplicate.*message.*form.*part'
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    assertStdoutLineCount '==' 2
 }
 
@@ -392,7 +392,7 @@ test_MeshmsSendMessageMissingContentType() {
          --form-part="message=Hello there"
    assertJq response.json 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case response.json '.http_status_message' 'missing.*content.*type'
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    assertStdoutLineCount '==' 2
 }
 
@@ -406,7 +406,7 @@ test_MeshmsSendMessageUnsupportedContentType() {
          --form-part="message=Hello there;type=text/rich"
    assertJq response.json 'contains({"http_status_code": 415})'
    assertJqGrep --ignore-case response.json '.http_status_message' 'unsupported.*content.*type'
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    assertStdoutLineCount '==' 2
 }
 
@@ -420,7 +420,7 @@ test_MeshmsSendMessageMissingCharset() {
          --form-part="message=Hello there;type=text/plain"
    assertJq response.json 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case response.json '.http_status_message' 'missing.*charset'
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    assertStdoutLineCount '==' 2
 }
 
@@ -434,7 +434,7 @@ test_MeshmsSendMessageUnsupportedCharset() {
          --form-part="message=Hello there;type=text/plain;charset=latin-1"
    assertJq response.json 'contains({"http_status_code": 415})'
    assertJqGrep --ignore-case response.json '.http_status_message' 'unsupported.*charset'
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    assertStdoutLineCount '==' 2
 }
 
@@ -457,18 +457,18 @@ setup_MeshmsReadAllConversations() {
    IDENTITY_COUNT=5
    setup
    # create 3 threads, with all permutations of incoming and outgoing messages
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
-   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
-   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message3"
-   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message4"
-   executeOk_servald meshms list conversations $SIDA1
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message1"
+   executeOk_servald meshms send message "$SIDA3" "$SIDA1" "Message2"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA4" "Message3"
+   executeOk_servald meshms send message "$SIDA4" "$SIDA1" "Message4"
+   executeOk_servald meshms list conversations "$SIDA1"
    assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0\$"
    assertStdoutGrep --stderr --matches=1 ":$SIDA3:unread:11:0\$"
    assertStdoutGrep --stderr --matches=1 ":$SIDA4:unread:14:0\$"
 }
 test_MeshmsReadAllConversations() {
    rest_request POST "/restful/meshms/$SIDA1/readall" 201
-   executeOk_servald meshms list conversations $SIDA1
+   executeOk_servald meshms list conversations "$SIDA1"
    assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0\$"
    assertStdoutGrep --stderr --matches=1 ":$SIDA3::11:11\$"
    assertStdoutGrep --stderr --matches=1 ":$SIDA4::14:14\$"
@@ -479,18 +479,18 @@ setup_MeshmsPostSpuriousContent() {
    IDENTITY_COUNT=2
    setup
    # create 3 threads, with all permutations of incoming and outgoing messages
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
-   executeOk_servald meshms send message $SIDA2 $SIDA1 "Message2"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message3"
-   executeOk_servald meshms send message $SIDA2 $SIDA1 "Message4"
-   executeOk_servald meshms list conversations $SIDA1
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message1"
+   executeOk_servald meshms send message "$SIDA2" "$SIDA1" "Message2"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message3"
+   executeOk_servald meshms send message "$SIDA2" "$SIDA1" "Message4"
+   executeOk_servald meshms list conversations "$SIDA1"
    assertStdoutGrep --stderr --matches=1 ":$SIDA2:unread:35:0\$"
 }
 test_MeshmsPostSpuriousContent() {
    rest_request POST "/restful/meshms/$SIDA1/readall" 400 --form-part="offset=0"
    assertJq response.json 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case response.json '.http_status_message' 'content length'
-   executeOk_servald meshms list conversations $SIDA1
+   executeOk_servald meshms list conversations "$SIDA1"
    assertStdoutGrep --stderr --matches=1 ":$SIDA2:unread:35:0\$"
 }
 
@@ -499,20 +499,20 @@ setup_MeshmsReadAllMessages() {
    IDENTITY_COUNT=5
    setup
    # create 3 threads, with all permutations of incoming and outgoing messages
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
-   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message3"
-   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message4"
-   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message5"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message6"
-   executeOk_servald meshms list messages $SIDA2 $SIDA1
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message1"
+   executeOk_servald meshms send message "$SIDA3" "$SIDA1" "Message2"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message3"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA4" "Message4"
+   executeOk_servald meshms send message "$SIDA4" "$SIDA1" "Message5"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message6"
+   executeOk_servald meshms list messages "$SIDA2" "$SIDA1"
    tfw_cat --stdout
-   executeOk_servald meshms list conversations $SIDA2
+   executeOk_servald meshms list conversations "$SIDA2"
    assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:45:0\$"
 }
 test_MeshmsReadAllMessages() {
    rest_request POST "/restful/meshms/$SIDA2/$SIDA1/readall" 201
-   executeOk_servald meshms list conversations $SIDA2
+   executeOk_servald meshms list conversations "$SIDA2"
    assertStdoutGrep --stderr --matches=1 ":$SIDA1::45:45\$"
 }
 
@@ -521,21 +521,21 @@ setup_MeshmsReadMessage() {
    IDENTITY_COUNT=5
    setup
    # create 3 threads, with all permutations of incoming and outgoing messages
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
-   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message3"
-   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message4"
-   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message5"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message6"
-   executeOk_servald meshms list conversations $SIDA2
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message1"
+   executeOk_servald meshms send message "$SIDA3" "$SIDA1" "Message2"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message3"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA4" "Message4"
+   executeOk_servald meshms send message "$SIDA4" "$SIDA1" "Message5"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message6"
+   executeOk_servald meshms list conversations "$SIDA2"
    assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:45:0\$"
 }
 test_MeshmsReadMessage() {
    rest_request POST "/restful/meshms/$SIDA2/$SIDA1/recv/22/read" 201
-   executeOk_servald meshms list conversations $SIDA2
+   executeOk_servald meshms list conversations "$SIDA2"
    assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:45:22\$"
    rest_request POST "/restful/meshms/$SIDA2/$SIDA1/recv/11/read" 200
-   executeOk_servald meshms list conversations $SIDA2
+   executeOk_servald meshms list conversations "$SIDA2"
    assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:45:22\$"
 }
 
@@ -585,13 +585,13 @@ setup_unicode() {
 test_unicode() {
    SMILEY1=`echo -e "\xf0\x9f\x98\x80\x0a"`
    SMILEY2=`echo -e "\xf0\x9f\x98\x90\x0a"`
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "$SMILEY1"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "$SMILEY1"
    rest_request POST "/restful/meshms/$SIDA2/$SIDA1/sendmessage" 201 \
          --form-part="message=$SMILEY2;type=text/plain;charset=utf-8"
    rest_request GET "/restful/meshms/$SIDA1/$SIDA2/messagelist.json"
    assertGrep --matches=1 response.json '\\uD83D\\uDE10'
    assertGrep --matches=1 response.json '\\uD83D\\uDE00'
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    tfw_cat --stdout
    assertStdoutGrep --matches=1 "$SMILEY1"
    assertStdoutGrep --matches=1 "$SMILEY2"

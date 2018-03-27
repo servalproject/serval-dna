@@ -41,7 +41,7 @@ setup_logging() {
 setup_common() {
    setup_servald
    set_instance +A
-   create_identities $1
+   create_identities "$1"
    setup_logging
 }
 
@@ -50,7 +50,7 @@ setup_InitiallyEmpty() {
    setup_common 2
 }
 test_InitiallyEmpty() {
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    tfw_cat --stdout
    assertStdoutIs --stdout --line=1 -e '6\n'
    assertStdoutIs --stdout --line=2 -e '_id:my_offset:their_offset:age:type:message\n'
@@ -63,27 +63,27 @@ setup_SendAndList() {
 }
 test_SendAndList() {
    # create a single message and list it back
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message 1"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message 1"
    tfw_cat --stderr
-   executeOk_servald meshms send message $SIDA1 $SIDA3 "Message 1"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA3" "Message 1"
    tfw_cat --stderr
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    tfw_cat --stderr
    assertStdoutGrep --stdout --matches=1 "^0:12:0:$rexp_age:>:Message 1\$"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message 2"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message 2"
    tfw_cat --stderr
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    tfw_cat --stderr
    assertStdoutGrep --stdout --matches=1 "^0:30:0:$rexp_age:>:Message 2\$"
    assertStdoutGrep --stdout --matches=1 "^1:12:0:$rexp_age:>:Message 1\$"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message 3"
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message 3"
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
    tfw_cat --stdout
    assertStdoutGrep --stdout --matches=1 "^0:48:0:$rexp_age:>:Message 3\$"
    assertStdoutGrep --stdout --matches=1 "^1:30:0:$rexp_age:>:Message 2\$"
    assertStdoutGrep --stdout --matches=1 "^2:12:0:$rexp_age:>:Message 1\$"
    assertStdoutLineCount '==' 5
-   executeOk_servald meshms list messages $SIDA2 $SIDA1
+   executeOk_servald meshms list messages "$SIDA2" "$SIDA1"
    tfw_cat --stdout
    assertStdoutGrep --stdout --matches=1 "^0:3:48:$rexp_age:<:Message 3\$"
    assertStdoutGrep --stdout --matches=1 "^1:3:30:$rexp_age:<:Message 2\$"
@@ -96,31 +96,31 @@ check_meshms_bundles() {
    # The only "file" bundle should be the conversation list
    executeOk_servald rhizome list file
    unpack_stdout_list X
-   assert --stdout --stderr [ $XNROWS -eq 1 ]
-   assert --stdout --stderr [ ${XID[0]} = $CONV_BID ]
-   executeOk_servald rhizome extract bundle $CONV_BID manifest.conv payload.conv $CONV_SECRET
+   assert --stdout --stderr [ "$XNROWS" -eq 1 ]
+   assert --stdout --stderr [ "${XID[0]}" = "$CONV_BID" ]
+   executeOk_servald rhizome extract bundle "$CONV_BID" manifest.conv payload.conv "$CONV_SECRET"
    tfw_cat -v manifest.conv --hexdump payload.conv
    # The only "MeshMS2" bundles should be the two ply bundles
    executeOk_servald rhizome list MeshMS2
    unpack_stdout_list X
-   assert --stdout [ $XNROWS -eq 2 ]
+   assert --stdout [ "$XNROWS" -eq 2 ]
    local bid
    for bid in ${XID[*]}; do
-      executeOk_servald rhizome extract bundle $bid manifest.$bid payload.$bid
-      tfw_cat -v manifest.$bid --hexdump payload.$bid
+      executeOk_servald rhizome extract bundle "$bid" "manifest.$bid" "payload.$bid"
+      tfw_cat -v "manifest.$bid" --hexdump "payload.$bid"
    done
 }
 
 has_unread_messages() {
-   executeOk_servald meshms list conversations $1
-   if ! grep ":unread:" $_tfw_tmp/stdout; then
+   executeOk_servald meshms list conversations "$1"
+   if ! grep ":unread:" "$_tfw_tmp/stdout"; then
      return 1
    fi
 }
 
 messages_delivered() {
-   executeOk_servald meshms list messages $1 $2
-   if ! grep ":ACK:" $_tfw_tmp/stdout; then
+   executeOk_servald meshms list messages "$1" "$2"
+   if ! grep ":ACK:" "$_tfw_tmp/stdout"; then
      return 1
    fi
 }
@@ -131,26 +131,26 @@ setup_MessageThreading() {
    foreach_instance +A +B create_single_identity
    foreach_instance +A +B setup_logging
    set_instance +A
-   executeOk_servald meshms send message $SIDA $SIDB "Hello can you hear me"
-   executeOk_servald meshms send message $SIDA $SIDB "Still waiting"
+   executeOk_servald meshms send message "$SIDA" "$SIDB" "Hello can you hear me"
+   executeOk_servald meshms send message "$SIDA" "$SIDB" "Still waiting"
    set_instance +B
-   executeOk_servald meshms send message $SIDB $SIDA "Help Im trapped in a test case factory"
-   executeOk_servald meshms send message $SIDB $SIDA "Never mind"
+   executeOk_servald meshms send message "$SIDB" "$SIDA" "Help Im trapped in a test case factory"
+   executeOk_servald meshms send message "$SIDB" "$SIDA" "Never mind"
    start_servald_instances +A +B
 }
 test_MessageThreading() {
    set_instance +B
-   wait_until has_unread_messages $SIDB
-   executeOk_servald meshms list messages $SIDB $SIDA
+   wait_until has_unread_messages "$SIDB"
+   executeOk_servald meshms list messages "$SIDB" "$SIDA"
    assertStdoutGrep --stdout --matches=1 "^0:69:46:$rexp_age:<:Still waiting\$"
    assertStdoutGrep --stdout --matches=1 "^1:69:24:$rexp_age:<:Hello can you hear me\$"
    assertStdoutGrep --stdout --matches=1 "^2:60:0:$rexp_age:>:Never mind\$"
    assertStdoutGrep --stdout --matches=1 "^3:41:0:$rexp_age:>:Help Im trapped in a test case factory\$"
    assertStdoutLineCount '==' 6
    set_instance +A
-   wait_until has_unread_messages $SIDA
-   wait_until messages_delivered $SIDA $SIDB
-   executeOk_servald meshms list messages $SIDA $SIDB
+   wait_until has_unread_messages "$SIDA"
+   wait_until messages_delivered "$SIDA" "$SIDB"
+   executeOk_servald meshms list messages "$SIDA" "$SIDB"
    assertStdoutGrep --stdout --matches=1 "^0:55:60:$rexp_age:<:Never mind\$"
    assertStdoutGrep --stdout --matches=1 "^1:55:41:$rexp_age:<:Help Im trapped in a test case factory\$"
    assertStdoutGrep --stdout --matches=1 "^2:46:69:$rexp_age:ACK:delivered\$"
@@ -166,26 +166,26 @@ setup_reorderList() {
    create_identities 5
    setup_logging
    # ensure conversations are known
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Start"
-   executeOk_servald meshms send message $SIDA1 $SIDA3 "Start"
-   executeOk_servald meshms send message $SIDA1 $SIDA4 "Start"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Start"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA3" "Start"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA4" "Start"
 }
 test_reorderList() {
    # new incoming messages should bump to the top
-   executeOk_servald meshms send message $SIDA4 $SIDA1 "Bump"
-   executeOk_servald meshms list conversations $SIDA1
+   executeOk_servald meshms send message "$SIDA4" "$SIDA1" "Bump"
+   executeOk_servald meshms list conversations "$SIDA1"
    assertStdoutGrep --stderr --matches=1 "^0:$SIDA4:unread:"
-   executeOk_servald meshms send message $SIDA3 $SIDA1 "Bump"
-   executeOk_servald meshms list conversations $SIDA1
+   executeOk_servald meshms send message "$SIDA3" "$SIDA1" "Bump"
+   executeOk_servald meshms list conversations "$SIDA1"
    assertStdoutGrep --stderr --matches=1 "^0:$SIDA3:unread:"
    assertStdoutGrep --stderr --matches=1 "^1:$SIDA4:unread:"
-   executeOk_servald meshms send message $SIDA2 $SIDA1 "Bump"
-   executeOk_servald meshms list conversations $SIDA1
+   executeOk_servald meshms send message "$SIDA2" "$SIDA1" "Bump"
+   executeOk_servald meshms list conversations "$SIDA1"
    assertStdoutGrep --stderr --matches=1 "^0:$SIDA2:unread:"
    assertStdoutGrep --stderr --matches=1 "^1:$SIDA3:unread:"
    assertStdoutGrep --stderr --matches=1 "^2:$SIDA4:unread:"
-   executeOk_servald meshms send message $SIDA4 $SIDA1 "Bump"
-   executeOk_servald meshms list conversations $SIDA1
+   executeOk_servald meshms send message "$SIDA4" "$SIDA1" "Bump"
+   executeOk_servald meshms list conversations "$SIDA1"
    assertStdoutGrep --stderr --matches=1 "^0:$SIDA4:unread:"
    assertStdoutGrep --stderr --matches=1 "^1:$SIDA2:unread:"
    assertStdoutGrep --stderr --matches=1 "^2:$SIDA3:unread:"
@@ -198,13 +198,13 @@ setup_listConversations() {
    create_identities 5
    setup_logging
    # create 3 threads, with all permutations of incoming and outgoing messages
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
-   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
-   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message3"
-   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message4"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA2" "Message1"
+   executeOk_servald meshms send message "$SIDA3" "$SIDA1" "Message2"
+   executeOk_servald meshms send message "$SIDA1" "$SIDA4" "Message3"
+   executeOk_servald meshms send message "$SIDA4" "$SIDA1" "Message4"
 }
 test_listConversations() {
-   executeOk_servald meshms list conversations --include-message $SIDA1
+   executeOk_servald meshms list conversations --include-message "$SIDA1"
    tfw_cat --stdout
    assertStdoutIs --stderr --line=1 -e '6\n'
    assertStdoutIs --stderr --line=2 -e '_id:recipient:read:last_message:read_offset:message\n'
@@ -212,21 +212,21 @@ test_listConversations() {
    assertStdoutGrep --stderr --matches=1 ":$SIDA3:unread:11:0:Message2\$"
    assertStdoutGrep --stderr --matches=1 ":$SIDA4:unread:14:0:Message4\$"
    assertStdoutLineCount '==' 5
-   executeOk_servald meshms list conversations $SIDA1 1
+   executeOk_servald meshms list conversations "$SIDA1" 1
    assertStdoutLineCount '==' 4
-   executeOk_servald meshms list conversations $SIDA1 1 1
+   executeOk_servald meshms list conversations "$SIDA1" 1 1
    assertStdoutLineCount '==' 3
    # mark all incoming messages as read
-   executeOk_servald meshms read messages $SIDA1
+   executeOk_servald meshms read messages "$SIDA1"
    # explicitly mark sida3 as known
-   executeOk_servald meshms read messages $SIDA1 $SIDA3
-   executeOk_servald meshms list conversations $SIDA1
+   executeOk_servald meshms read messages "$SIDA1" "$SIDA3"
+   executeOk_servald meshms list conversations "$SIDA1"
    assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0\$"
    assertStdoutGrep --stderr --matches=1 ":$SIDA3::11:11\$"
    assertStdoutGrep --stderr --matches=1 ":$SIDA4::14:14\$"
    assertStdoutLineCount '==' 5
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
-   executeOk_servald meshms list messages $SIDA1 $SIDA4
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA2"
+   executeOk_servald meshms list messages "$SIDA1" "$SIDA4"
 }
 
 doc_sendNoIdentity="Send message from unknown identity"
@@ -238,11 +238,11 @@ setup_sendNoIdentity() {
    SIDX=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
 }
 test_sendNoIdentity() {
-   executeOk_servald meshms send message $SIDA1 $SIDX "First message"
-   execute $servald meshms send message $SIDX $SIDA1 "First reply"
+   executeOk_servald meshms send message "$SIDA1" "$SIDX" "First message"
+   execute "$servald" meshms send message "$SIDX" "$SIDA1" "First reply"
    assertExitStatus --stderr == 2
-   executeOk_servald meshms list messages $SIDA1 $SIDX
-   execute $servald meshms list messages $SIDX $SIDA1
+   executeOk_servald meshms list messages "$SIDA1" "$SIDX"
+   execute "$servald" meshms list messages "$SIDX" "$SIDA1"
    assertExitStatus --stderr == 2
 }
 

@@ -155,7 +155,7 @@ test_serviceDiscovery() {
    assertStdoutGrep "$SIDB"
    assertStdoutGrep "\<test_name\.msp\.port=512\>"
    tfw_cat --stdout --stderr
-   executeOk_servald --timeout=20 msp connect $SIDB 512 <<EOF
+   executeOk_servald --timeout=20 msp connect "$SIDB" 512 <<EOF
 Hi!
 EOF
    fork_wait %service

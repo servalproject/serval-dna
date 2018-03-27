@@ -64,7 +64,7 @@ setup_common() {
 }
 
 receive_and_update_bundle() {
-   wait_until "$@" bundle_received_by $BID:$VERSION +B
+   wait_until "$@" bundle_received_by "$BID:$VERSION" +B
    set_instance +B
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1
@@ -72,7 +72,7 @@ receive_and_update_bundle() {
    set_instance +A
    rhizome_update_file file1 file2
    set_instance +B
-   wait_until "$@" bundle_received_by $BID:$VERSION +B
+   wait_until "$@" bundle_received_by "$BID:$VERSION" +B
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file2
    assert_rhizome_received file2
@@ -110,7 +110,7 @@ setup_EncryptedTransfer() {
    set_instance +A
    echo "Clear Text" >file1
    echo -e "service=MeshMS1\nsender=$SIDA\nrecipient=$SIDB" >file1.manifest
-   executeOk_servald rhizome add file $SIDA file1 file1.manifest
+   executeOk_servald rhizome add file "$SIDA" file1 file1.manifest
    extract_manifest_id BID file1.manifest
    extract_manifest_version VERSION file1.manifest
    start_servald_instances +A +B
@@ -118,9 +118,9 @@ setup_EncryptedTransfer() {
    foreach_instance +B assert_peers_are_instances +A
 }
 test_EncryptedTransfer() {
-   wait_until bundle_received_by $BID:$VERSION +B
+   wait_until bundle_received_by "$BID:$VERSION" +B
    set_instance +B
-   executeOk_servald rhizome extract file $BID file1x
+   executeOk_servald rhizome extract file "$BID" file1x
    assert diff file1 file1x
 }
 
@@ -139,7 +139,7 @@ setup_NoFetch() {
    start_servald_instances +A +B
 }
 test_NoFetch() {
-   wait_until bundle_received_by $BID2:$VERSION2 +A
+   wait_until bundle_received_by "$BID2:$VERSION2" +A
    set_instance +A
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 file1 --fromhere=0 file2
@@ -242,7 +242,7 @@ setup_journalMDP() {
    set_instance +A
    create_file file1 2048
    create_file file2 2048
-   executeOk_servald rhizome journal append $SIDA "" file1
+   executeOk_servald rhizome journal append "$SIDA" "" file1
    extract_stdout_manifestid BID
    extract_stdout_version VERSION
    start_servald_instances +A +B
@@ -250,13 +250,13 @@ setup_journalMDP() {
    foreach_instance +B assert_peers_are_instances +A
 }
 test_journalMDP() {
-   wait_until bundle_received_by $BID:$VERSION +B
+   wait_until bundle_received_by "$BID:$VERSION" +B
    set_instance +A
-   executeOk_servald rhizome journal append $SIDA $BID file2
+   executeOk_servald rhizome journal append "$SIDA" "$BID" file2
    extract_stdout_version VERSION2
    set_instance +B
-   wait_until bundle_received_by $BID:$VERSION2 +B
-   assertGrep $instance_servald_log "Copying [0-9]\+ bytes from previous journal"
+   wait_until bundle_received_by "$BID:$VERSION2" +B
+   assertGrep "$instance_servald_log" "Copying [0-9]\+ bytes from previous journal"
 }
 
 doc_journalHTTP="Transfer and update a journal bundle via HTTP"
@@ -268,7 +268,7 @@ setup_journalHTTP() {
    set_instance +A
    create_file file1 2048
    create_file file2 2048
-   executeOk_servald rhizome journal append $SIDA "" file1
+   executeOk_servald rhizome journal append "$SIDA" "" file1
    extract_stdout_manifestid BID
    extract_stdout_version VERSION
    start_servald_instances +A +B
@@ -276,13 +276,13 @@ setup_journalHTTP() {
    foreach_instance +B assert_peers_are_instances +A
 }
 test_journalHTTP() {
-   wait_until bundle_received_by $BID:$VERSION +B
+   wait_until bundle_received_by "$BID:$VERSION" +B
    set_instance +A
-   executeOk_servald rhizome journal append $SIDA $BID file2
+   executeOk_servald rhizome journal append "$SIDA" "$BID" file2
    extract_stdout_version VERSION2
    set_instance +B
-   wait_until bundle_received_by $BID:$VERSION2 +B
-   assertGrep $instance_servald_log "Copying [0-9]\+ bytes from previous journal"
+   wait_until bundle_received_by "$BID:$VERSION2" +B
+   assertGrep "$instance_servald_log" "Copying [0-9]\+ bytes from previous journal"
 }
 
 #common setup and test routines for transferring a 1MB file
@@ -298,7 +298,7 @@ setup_bigfile_common() {
 }
 bigfile_common_test() {
    set_instance +B
-   wait_until --timeout=120 bundle_received_by $BID:$VERSION +B
+   wait_until --timeout=120 bundle_received_by "$BID:$VERSION" +B
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1
    assert_rhizome_received file1
@@ -388,7 +388,7 @@ setup_multitransfer_common() {
    assert_peers_are_instances +A +B +C +D
 }
 multitransfer_common_test() {
-   wait_until bundle_received_by $BID:$VERSION +B +C +D +E
+   wait_until bundle_received_by "$BID:$VERSION" +B +C +D +E
    for i in B C D E; do
       set_instance +$i
       executeOk_servald rhizome list
@@ -455,13 +455,13 @@ setup_FileTransferDelete() {
    start_servald_instances +A +B
    foreach_instance +A assert_peers_are_instances +B
    foreach_instance +B assert_peers_are_instances +A
-   wait_until bundle_received_by $BID:$VERSION +B
+   wait_until bundle_received_by "$BID:$VERSION" +B
    set_instance +A
    >file1_2
    rhizome_update_file file1 file1_2
 }
 test_FileTransferDelete() {
-   wait_until bundle_received_by $BID:$VERSION +B
+   wait_until bundle_received_by "$BID:$VERSION" +B
    set_instance +B
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1_2
@@ -477,22 +477,22 @@ setup_CorruptPayload() {
       set debug.rhizome_store 1
    rhizome_add_file file1 1024
    start_servald_instances +A +B
-   wait_until bundle_received_by $BID:$VERSION +B
+   wait_until bundle_received_by "$BID:$VERSION" +B
    set_instance +A
    stop_servald_server
    assert cmp file1 "$SERVALINSTANCE_PATH/blob/$FILEHASH"
    create_file file2 1024
    assert --error-on-fail ! cmp file1 file2
    cp file2 "$SERVALINSTANCE_PATH/blob/$FILEHASH"
-   execute --exit-status=255 $servald rhizome extract file $BID file1a
+   execute --exit-status=255 "$servald" rhizome extract file "$BID" file1a
    # TODO at the moment, the re-fetch is only triggered by restarting the
    # daemon.  Eventually (when the Rhizome Rank is implemented), the re-fetch
    # shoud be automatic and immediate without restarting the daemon.
    start_servald_server
 }
 test_CorruptPayload() {
-   wait_until grep -i "Stored file $FILEHASH" $LOGA
-   executeOk $servald rhizome extract file $BID file1a
+   wait_until grep -i "Stored file $FILEHASH" "$LOGA"
+   executeOk "$servald" rhizome extract file "$BID" file1a
 }
 
 doc_MissingPayload="A missing payload should be re-fetched"
@@ -505,19 +505,19 @@ setup_MissingPayload() {
    rhizome_add_file file1 1024
    assert cmp file1 "$SERVALINSTANCE_PATH/blob/$FILEHASH"
    start_servald_instances +A +B
-   wait_until bundle_received_by $BID:$VERSION +B
+   wait_until bundle_received_by "$BID:$VERSION" +B
    set_instance +A
    stop_servald_server
    rm -f "$SERVALINSTANCE_PATH/blob/$FILEHASH"
-   execute --exit-status=1 --stderr $servald rhizome extract file $BID file1a
+   execute --exit-status=1 --stderr "$servald" rhizome extract file "$BID" file1a
    # TODO at the moment, the re-fetch is only triggered by restarting the
    # daemon.  Eventually (when the Rhizome Rank is implemented), the re-fetch
    # shoud be automatic and immediate without restarting the daemon.
    start_servald_server
 }
 test_MissingPayload() {
-   wait_until grep -i "Stored file $FILEHASH" $LOGA
-   executeOk $servald rhizome extract file $BID file1a
+   wait_until grep -i "Stored file $FILEHASH" "$LOGA"
+   executeOk "$servald" rhizome extract file "$BID" file1a
 }
 
 doc_ConnectOnEnable="Enable and disable rhizome while fetching"
@@ -599,7 +599,7 @@ name. We decided against this approach as the VOMP channel driver was written
 in time to avoid it.
 EOF
    set_instance +B
-   executeOk_servald rhizome add file $SIDB README.WHYNOTSIPS README.WHYNOTSIPS.manifest
+   executeOk_servald rhizome add file "$SIDB" README.WHYNOTSIPS README.WHYNOTSIPS.manifest
    assert_manifest_complete README.WHYNOTSIPS.manifest
    assert_stdout_add_file README.WHYNOTSIPS
    set_instance +A
@@ -629,7 +629,7 @@ setup_HttpAddLocal() {
    set_instance +A
    executeOk_servald config \
       set rhizome.api.addfile.uri_path "/rhizome/secretaddfile" \
-      set rhizome.api.addfile.default_author $SIDA
+      set rhizome.api.addfile.default_author "$SIDA"
    start_servald_instances +A
    wait_until rhizome_http_server_started +A
    get_rhizome_server_port PORTA +A
@@ -698,7 +698,7 @@ test_DirectPush() {
    set_instance +B
    executeOk_servald rhizome direct push
    tfw_cat --stdout --stderr
-   assert bundle_received_by $BID_B1:$VERSION_B1 $BID_B2:$VERSION_B2 $BID_B3:$VERSION_B3 +A
+   assert bundle_received_by "$BID_B1:$VERSION_B1" "$BID_B2:$VERSION_B2" "$BID_B3:$VERSION_B3" +A
    set_instance +A
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 fileA1 fileA2 fileA3 --fromhere=0 fileB1 fileB2 fileB3
@@ -719,7 +719,7 @@ test_DirectPushArg() {
    set_instance +B
    executeOk_servald rhizome direct push "http://${addr_localhost}:${PORTA}"
    tfw_cat --stdout --stderr
-   assert bundle_received_by $BID_B1:$VERSION_B1 $BID_B2:$VERSION_B2 $BID_B3:$VERSION_B3 +A
+   assert bundle_received_by "$BID_B1:$VERSION_B1" "$BID_B2:$VERSION_B2" "$BID_B3:$VERSION_B3" +A
    set_instance +A
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 fileA1 fileA2 fileA3 --fromhere=0 fileB1 fileB2 fileB3
@@ -741,7 +741,7 @@ test_DirectPull() {
    set_instance +B
    executeOk_servald rhizome direct pull
    tfw_cat --stdout --stderr
-   assert bundle_received_by $BID_A1:$VERSION_A1 $BID_A2:$VERSION_A2 $BID_A3:$VERSION_A3 --stderr
+   assert bundle_received_by "$BID_A1:$VERSION_A1" "$BID_A2:$VERSION_A2" "$BID_A3:$VERSION_A3" --stderr
    set_instance +A
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 fileA1 fileA2 fileA3
@@ -763,7 +763,7 @@ test_DirectSync() {
    set_instance +B
    executeOk_servald rhizome direct sync
    tfw_cat --stdout --stderr
-   assert bundle_received_by $BID_A1:$VERSION_A1 $BID_A2:$VERSION_A2 $BID_A3:$VERSION_A3 --stderr
+   assert bundle_received_by "$BID_A1:$VERSION_A1" "$BID_A2:$VERSION_A2" "$BID_A3:$VERSION_A3" --stderr
    set_instance +A
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 fileA1 fileA2 fileA3 --fromhere=0 fileB1 fileB2 fileB3
@@ -779,7 +779,7 @@ test_DirectSync() {
 }
 
 interface_up() {
-   $GREP "Interface .* is up" $instance_servald_log || return 1
+   $GREP "Interface .* is up" "$instance_servald_log" || return 1
    return 0
 }
 start_radio_instance() {
@@ -804,7 +804,7 @@ start_radio_instance() {
 }
 
 start_fakeradio() {
-   $servald_build_root/fakeradio $1 $2 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
+   "$servald_build_root/fakeradio" "$1" "$2" > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
    FAKERADIO_PID=$!
    wait_until $GREP "^right:" "$SERVALD_VAR/radioout"
    local _line=`head "$SERVALD_VAR/radioout" -n 1`
@@ -897,7 +897,7 @@ setup_ManyFiles() {
       for j in {1..10}
       do
          tfw_log "Adding file$i-$j"
-         create_file file$i-$j $(( $j * 500 ))
+         create_file file$i-$j $((j * 500))
          sidvar=SID${i}1
          tfw_nolog executeOk_servald rhizome add file "${!sidvar}" file$i-$j file$i-$j.manifest
          tfw_nolog extract_stdout_manifestid BID

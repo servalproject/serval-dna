@@ -38,7 +38,7 @@ teardown_servald() {
 
 setup_instances() {
    for arg; do
-      set_instance $arg
+      set_instance "$arg"
       executeOk_servald config \
          set rhizome.enable off \
          set log.console.level debug \
@@ -287,8 +287,8 @@ test_KeyringPinServer() {
    start_servald_server --keyring-pin=yellow
    executeOk_servald id self
    unpack_stdout_list X
-   assert --stdout --stderr [ $XNROWS -eq 1 ]
-   assert --stdout --stderr [ ${XSID[0]} = $SIDA ]
+   assert --stdout --stderr [ "$XNROWS" -eq 1 ]
+   assert --stdout --stderr [ "${XSID[0]}" = "$SIDA" ]
 }
 finally_KeyringPinServer() {
    stop_servald_server
@@ -306,8 +306,8 @@ test_EntryPinServer() {
    start_servald_server --entry-pin=yodel
    executeOk_servald id self
    unpack_stdout_list X
-   assert --stdout --stderr [ $XNROWS -eq 1 ]
-   assert --stdout --stderr [ ${XSID[0]} = $SIDA ]
+   assert --stdout --stderr [ "$XNROWS" -eq 1 ]
+   assert --stdout --stderr [ "${XSID[0]}" = "$SIDA" ]
 }
 finally_EntryPinServer() {
    stop_servald_server
@@ -325,8 +325,8 @@ test_KeyringEntryPinServer() {
    start_servald_server --keyring-pin=yellow --entry-pin=yodel
    executeOk_servald id self
    unpack_stdout_list X
-   assert --stdout --stderr [ $XNROWS -eq 1 ]
-   assert --stdout --stderr [ ${XSID[0]} = $SIDA ]
+   assert --stdout --stderr [ "$XNROWS" -eq 1 ]
+   assert --stdout --stderr [ "${XSID[0]}" = "$SIDA" ]
 }
 finally_KeyringKeyringPinServer() {
    stop_servald_server
@@ -461,7 +461,7 @@ setup_LoadAtomic() {
 }
 test_LoadAtomic() {
    set_instance +B
-   execute --exit-status=255 $servald keyring load dA
+   execute --exit-status=255 "$servald" keyring load dA
    executeOk_servald keyring dump --secret dB2
    tfw_cat dB2
    assert cmp dB2 dB
@@ -589,7 +589,7 @@ setup_ReadOnlyEnv() {
 }
 test_ReadOnlyEnv() {
     export SERVALD_KEYRING_READONLY="true"
-    execute --exit-status=255 $servald keyring add ''
+    execute --exit-status=255 "$servald" keyring add ''
     tfw_cat --stderr
     executeOk_servald keyring list
     assert_keyring_list 1

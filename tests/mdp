@@ -46,14 +46,14 @@ setup_mdp_filters_ping() {
    start_servald_instances +A +B +C
    # Ensure that pings all work.
    set_instance +A
-   fork executeOk_servald mdp ping --timeout=10 $SIDB 1
-   fork executeOk_servald mdp ping --timeout=10 $SIDC 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDB" 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDC" 1
    set_instance +B
-   fork executeOk_servald mdp ping --timeout=10 $SIDA 1
-   fork executeOk_servald mdp ping --timeout=10 $SIDC 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDA" 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDC" 1
    set_instance +C
-   fork executeOk_servald mdp ping --timeout=10 $SIDA 1
-   fork executeOk_servald mdp ping --timeout=10 $SIDB 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDA" 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDB" 1
    fork_wait_all
 }
 
@@ -70,14 +70,14 @@ test_MDPFilterRulesDrop() {
    echo "drop *:7 >$SIDC" >>rulesA
    tfw_cat rulesA
    executeOk_servald config sync
-   fork execute_servald --exit-status=1 mdp ping --timeout=10 $SIDB 1
-   fork executeOk_servald mdp ping --timeout=10 $SIDC 1
+   fork execute_servald --exit-status=1 mdp ping --timeout=10 "$SIDB" 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDC" 1
    set_instance +B
-   fork executeOk_servald mdp ping --timeout=10 $SIDA 1
-   fork executeOk_servald mdp ping --timeout=10 $SIDC 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDA" 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDC" 1
    set_instance +C
-   fork execute_servald --exit-status=1 mdp ping --timeout=10 $SIDA 1
-   fork executeOk_servald mdp ping --timeout=10 $SIDB 1
+   fork execute_servald --exit-status=1 mdp ping --timeout=10 "$SIDA" 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDB" 1
    fork_wait_all
 }
 
@@ -97,14 +97,14 @@ test_MDPFilterRulesAllow() {
    echo "drop all" >>rulesA
    tfw_cat rulesA
    executeOk_servald config sync
-   fork executeOk_servald mdp ping --timeout=10 $SIDB 1
-   fork execute_servald --exit-status=1 mdp ping --timeout=10 $SIDC 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDB" 1
+   fork execute_servald --exit-status=1 mdp ping --timeout=10 "$SIDC" 1
    set_instance +B
-   fork executeOk_servald mdp ping --timeout=10 $SIDA 1
-   fork executeOk_servald mdp ping --timeout=10 $SIDC 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDA" 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDC" 1
    set_instance +C
-   fork execute_servald --exit-status=1 mdp ping --timeout=10 $SIDA 1
-   fork executeOk_servald mdp ping --timeout=10 $SIDB 1
+   fork execute_servald --exit-status=1 mdp ping --timeout=10 "$SIDA" 1
+   fork executeOk_servald mdp ping --timeout=10 "$SIDB" 1
    fork_wait_all
 }
 

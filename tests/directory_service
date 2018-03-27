@@ -50,27 +50,27 @@ setup_publish() {
    assert_no_servald_processes
    foreach_instance +A +B +C +D create_single_identity
    set_instance +D
-   executeOk_servald keyring set did $SIDD $DIDC "Agent D Smith"
-   DIDD1=$DIDC
+   executeOk_servald keyring set did "$SIDD" "$DIDC" "Agent D Smith"
+   DIDD1="$DIDC"
    NAMED1="Agent D Smith"
-   DIDD=$DIDC1
-   NAMED=$NAMED1
+   DIDD="$DIDC1"
+   NAMED="$NAMED1"
    set_instance +A
    executeOk_servald config \
       set dna.helper.executable "$servald_build_root/directory_service" \
       set debug.dnahelper on
-   foreach_instance +B +C +D executeOk_servald config set directory.service $SIDA
+   foreach_instance +B +C +D executeOk_servald config set directory.service "$SIDA"
    foreach_instance +A +B +C +D add_servald_interface
    start_servald_instances +A +B +C +D
 }
 
 doc_publish="Publish and retrieve a directory entry"
 test_publish() {
-   wait_until grep "DNAHELPER got STARTED ACK" $LOGA
+   wait_until grep "DNAHELPER got STARTED ACK" "$LOGA"
    foreach_instance +B +C +D wait_until sent_directory_request
-   wait_until is_published $SIDB
-   wait_until is_published $SIDC
-   wait_until is_published $SIDD
+   wait_until is_published "$SIDB"
+   wait_until is_published "$SIDC"
+   wait_until is_published "$SIDD"
    stop_servald_server +B
    stop_servald_server +C
    stop_servald_server +D
@@ -129,8 +129,8 @@ setup_routing() {
       set debug.dnahelper on
    foreach_instance +B +C \
       executeOk_servald config \
-         set directory.service $SIDA \
-         set hosts.$SIDA.address 10.0.1.1
+         set directory.service "$SIDA" \
+         set "hosts.$SIDA.address" 10.0.1.1
    set_instance +A
    start_routing_instance
    wait_until grep "DNAHELPER got STARTED ACK" $instance_servald_log
@@ -142,8 +142,8 @@ test_routing() {
    foreach_instance +B +C \
       wait_until sent_directory_request
    set_instance +A
-   wait_until is_published $SIDB
-   wait_until is_published $SIDC
+   wait_until is_published "$SIDB"
+   wait_until is_published "$SIDC"
    set_instance +B
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDA:UNICAST:"
@@ -158,7 +158,7 @@ test_routing() {
    executeOk_servald dna lookup "$DIDB"
    assertStdoutLineCount '==' 3
    assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
-   executeOk_servald mdp ping $SIDB 3
+   executeOk_servald mdp ping "$SIDB" 3
    tfw_cat --stdout --stderr
    executeOk_servald route print
    tfw_cat --stdout
