@@ -863,18 +863,26 @@ teardown_SimulatedRadio2() {
 doc_ManyFiles="Synchronise many small files, with some files in common"
 setup_ManyFiles() {
    setup_servald
+   configure_servald_server() {
+      add_servald_interface
+      executeOk_servald config \
+         set log.console.level debug \
+         set log.console.show_pid on \
+         set log.console.show_time on \
+         set debug.rhizome on \
+         set debug.rhizome_sync_keys on
+   }
    foreach_instance +A +B +C +D create_single_identity
    bundlesA=()
    bundlesB=()
    bundlesC=()
    bundlesD=()
-
-   for i in `seq 1 10`
+   for i in {1..10}
    do
       tfw_log "Adding common file-$i"
       tfw_nolog set_instance +A
       create_file file-$i 100
-      tfw_nolog executeOk_servald rhizome add file "${!sidvar}" file-$i file-$i.manifest
+      tfw_nolog executeOk_servald rhizome add file '' file-$i file-$i.manifest
       tfw_nolog set_instance +B
       tfw_nolog executeOk_servald rhizome import bundle file-$i file-$i.manifest
       tfw_nolog set_instance +C
@@ -886,10 +894,11 @@ setup_ManyFiles() {
    do
       eval "bundles$i=()"
       set_instance +$i
-      for j in `seq 1 10`
+      for j in {1..10}
       do
          tfw_log "Adding file$i-$j"
          create_file file$i-$j $(( $j * 500 ))
+         sidvar=SID${i}1
          tfw_nolog executeOk_servald rhizome add file "${!sidvar}" file$i-$j file$i-$j.manifest
          tfw_nolog extract_stdout_manifestid BID
          tfw_nolog extract_stdout_version VERSION
@@ -899,9 +908,8 @@ setup_ManyFiles() {
 
    start_servald_instances +A +B +C +D
 }
-
 test_ManyFiles() {
-   wait_until --timeout=30 bundle_received_by \
+   wait_until --timeout=240 bundle_received_by \
 	${bundlesB[*]} ${bundlesC[*]} ${bundlesD[*]} +A \
 	${bundlesA[*]} ${bundlesC[*]} ${bundlesD[*]} +B \
 	${bundlesA[*]} ${bundlesB[*]} ${bundlesD[*]} +C \
@@ -909,4 +917,3 @@ test_ManyFiles() {
 }
 
 runTests "$@"
-
