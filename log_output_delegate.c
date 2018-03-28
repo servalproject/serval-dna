@@ -77,7 +77,7 @@ static bool_t is_log_delegate_available(const struct log_output_iterator *UNUSED
 static void log_delegate_open(struct log_output_iterator *it)
 {
   struct log_output_delegate_state *state = _state(*it->output);
-  if (!state->opened) {
+  if (serval_log_delegate.print && !state->opened) {
     state->opened = 1;
     if (serval_log_delegate.show_prolog)
       serval_log_print_prolog(it);
