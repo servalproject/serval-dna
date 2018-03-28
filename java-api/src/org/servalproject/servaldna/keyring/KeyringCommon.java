@@ -195,7 +195,7 @@ public class KeyringCommon
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("name", name));
 		if (pin != null)
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("pin", pin));
-		HttpURLConnection conn = connector.newServalDHttpConnection("PATCH", "/restful/keyring/" + sid.toHex(), query_params);
+		HttpURLConnection conn = connector.newServalDHttpConnection("POST", "/restful/keyring/" + sid.toHex(), query_params);
 		conn.connect();
 		Status status = receiveRestfulResponse(conn, HttpURLConnection.HTTP_OK);
 		try {

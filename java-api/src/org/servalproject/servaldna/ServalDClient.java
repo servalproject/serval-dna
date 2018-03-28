@@ -286,28 +286,4 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 		return conn;
 	}
 
-	/* A hack to force java.net.HttpURLConnection to accept the non-standard "PATCH" request method.
-	 * Taken from https://stackoverflow.com/a/46323891
-	 */
-
-	private static class HttpURLConnectionHack {
-		public HttpURLConnectionHack() {
-			try {
-				Field methodsField = HttpURLConnection.class.getDeclaredField("methods");
-				Field modifiersField = Field.class.getDeclaredField("modifiers");
-				modifiersField.setAccessible(true);
-				modifiersField.setInt(methodsField, methodsField.getModifiers() & ~Modifier.FINAL);
-				methodsField.setAccessible(true);
-				String[] oldMethods = (String[]) methodsField.get(null);
-				Set<String> methodsSet = new LinkedHashSet<>(Arrays.asList(oldMethods));
-				methodsSet.add("PATCH");
-				String[] newMethods = methodsSet.toArray(new String[0]);
-				methodsField.set(null, newMethods);
-			} catch (NoSuchFieldException | IllegalAccessException e) {
-				throw new IllegalStateException(e);
-			}
-		}
-	}
-
-	private static final HttpURLConnectionHack dummy = new HttpURLConnectionHack();
 }

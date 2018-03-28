@@ -53,7 +53,7 @@ static int restful_keyring_(httpd_request *r, const char *remainder)
     if (strcmp(end, "") == 0) {
       if (r->http.verb == HTTP_VERB_GET)
 	return restful_keyring_get(r, "");
-      if (r->http.verb == HTTP_VERB_PATCH)
+      if (r->http.verb == HTTP_VERB_PATCH || r->http.verb == HTTP_VERB_POST)
 	return restful_keyring_set(r, "");
       if (r->http.verb == HTTP_VERB_DELETE)
 	return restful_keyring_remove(r, "");
