@@ -328,10 +328,10 @@ test_KeyringEntryPinServer() {
    assert --stdout --stderr [ "$XNROWS" -eq 1 ]
    assert --stdout --stderr [ "${XSID[0]}" = "$SIDA" ]
 }
-finally_KeyringKeyringPinServer() {
+finally_KeyringEntryPinServer() {
    stop_servald_server
 }
-teardown_KeyringKeyringPinServer() {
+teardown_KeyringEntryPinServer() {
    teardown_servald
 }
 

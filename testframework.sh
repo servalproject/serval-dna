@@ -344,23 +344,32 @@ runTests() {
       fi
       echo "$testPosition $testNumber $testName" NONE "$testSourceFile" >"$_tfw_results_dir/$testNumber"
       (  #)#<-- fixes Vim syntax highlighting
+         _tfw_status=
          # The directory where this test's log.txt and other artifacts are
          # deposited.
          _tfw_logdir_test="$_tfw_logdir_script/$testNumber.$testName"
          mkdir "$_tfw_logdir_test" || _tfw_fatalexit
-         # Pick a unique decimal number that must not coincide with other tests
-         # being run concurrently, _including tests being run in other test
-         # scripts by other users on the same host_.  We cannot simply use
-         # $testNumber.  The subshell process ID is ideal.  We don't use
-         # $BASHPID because MacOS only has Bash-3.2, and $BASHPID was introduced
-         # in Bash-4.
-         _tfw_unique=$($BASH -c 'echo $PPID')
-         # All files created by this test belong inside a temporary directory.
-         # The path name must be kept short because it is used to construct
-         # named socket paths, which have a limited length.
-         _tfw_tmp=$_tfw_tmpdir/_tfw-$_tfw_unique
-         trap '_tfw_status=$?; rm -rf "$_tfw_tmp"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
-         mkdir $_tfw_tmp || _tfw_fatalexit
+         # All files created by this test belong inside a temporary directory,
+         # whose path must be kept short because it is used to construct named
+         # socket paths, which have a limited length.  The directory name is
+         # based on a unique decimal number that does not coincide with other
+         # tests being run concurrently, _including tests that may be running in
+         # other test scripts on the same host_, so $testNumber may not be
+         # unique.  The following loop attempts to create the temporary
+         # directory, trying successive unique numbers, until it succeeds.  It
+         # should be immune to races because the mkdir(2) system call is atomic.
+         local failmsg
+         _tfw_tmp=
+         for try in {0..20}; do
+            _tfw_unique=$RANDOM
+            local tmpdir="$_tfw_tmpdir/_tf-$_tfw_unique"
+            if failmsg="$(mkdir "$tmpdir" 2>&1)"; then
+               _tfw_tmp="$tmpdir"
+               break
+            fi
+         done
+         [ -d "$_tfw_tmp" ] || _tfw_fatal "$failmsg"
+         trap '_tfw_status=$?; rm -rf "$_tfw_tmp"; _tfw_exit' EXIT SIGHUP SIGINT SIGTERM
          # Set up test coverage data directory, which contains all the .gcno
          # files of the executable(s) under test.  If using geninfo(1) to
          # generate coverage info files, then link to all the source files, to
@@ -452,7 +461,7 @@ runTests() {
          1) result=FAIL;;
          0) result=PASS;;
          esac
-         echo "$testPosition $testNumber $testName $result $testSourceFile" >"$_tfw_results_dir/$testNumber"
+         echo "$testPosition $testNumber $testName $result $testSourceFile" >|"$_tfw_results_dir/$testNumber"
          {
             echo "Name:     $testName ($scriptName)"
             echo "Result:   $result"
@@ -474,7 +483,6 @@ runTests() {
          _tfw_logdir_test="$_tfw_logdir_test.$result"
          if $_tfw_geninfo; then
             local testname=$(_tfw_string_to_identifier "$scriptName/$testName")
-            local result="$_tfw_tmp/result.info"
             local coverage="$_tfw_logdir_test/coverage.info"
             {
                echo '++++++++++ log.geninfo ++++++++++'
@@ -490,18 +498,19 @@ runTests() {
       fi
       _tfw_job_pgids[$job]=$(jobs -p %$job 2>/dev/null)
       ln -f -s "$_tfw_results_dir/$testNumber" "$_tfw_results_dir/job-$job"
-   done
+   done 2>>"$_tfw_tmpmain/stderr"
    # Wait for all child processes to finish.
    while _tfw_any_running_jobs; do
       _tfw_wait_job_finish
       _tfw_harvest_jobs
-   done
-   # Clean up working directory.
-   rm -rf "$_tfw_tmpmain"
-   trap - EXIT SIGHUP SIGINT SIGTERM
+   done 2>>"$_tfw_tmpmain/stderr"
    # Echo result summary and exit with success if no failures or errors.
    s=$([ $_tfw_testcount -eq 1 ] || echo s)
    echo "$_tfw_testcount test$s, $_tfw_passcount pass, $_tfw_failcount fail, $_tfw_errorcount error"
+   cat "$_tfw_tmpmain/stderr" >&2
+   # Clean up working directory.
+   rm -rf "$_tfw_tmpmain"
+   trap - EXIT SIGHUP SIGINT SIGTERM
    [ $_tfw_fatalcount -eq 0 -a $_tfw_failcount -eq 0 -a $_tfw_errorcount -eq 0 ]
 }
 
@@ -813,9 +822,10 @@ _tfw_teardown() {
 
 _tfw_exit() {
    case $_tfw_status:$_tfw_result in
+   255:* | *:FATAL ) exit 255;;
    254:* | *:ERROR ) exit 254;;
    1:* | *:FAIL ) exit 1;;
-   0:PASS ) exit 0;;
+   0:* | *:PASS ) exit 0;;
    esac
    _tfw_fatal "_tfw_status='$_tfw_status' _tfw_result='$_tfw_result'"
 }
@@ -2242,7 +2252,7 @@ escape_grep_extended() {
    re="${re//)/\\)}"
    re="${re//|/\\|}"
    re="${re//\[/\\[}"
-   re="${re//{/\\{}"
+   re="${re//{/\\{}";#"(fix Vim syntax highlighting)
    echo "$re"
 }
 
