@@ -20,6 +20,18 @@
 
 source "${0%/*}/../testframework.sh"
 
+PATH="$(abspath "${0%/*}/.."):$PATH"
+
+test_tfw_createfile() {
+   tfw_log "PATH=$PATH"
+   executeOk tfw_createfile --size=500 --label=wah --omit=2Dq
+   tfw_cat --stdout
+   assert [ $(stat --format '%s' "$TFWSTDOUT") -eq 500 ]
+   assertStdoutGrep --matches=0 2
+   assertStdoutGrep --matches=0 D
+   assertStdoutGrep --matches=0 q
+}
+
 test_tfw_cmp_version() {
    execute --exit-status=1 tfw_cmp_version 1 2
    execute --exit-status=2 tfw_cmp_version 1.0.1 1.0.0

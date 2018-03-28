@@ -56,7 +56,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "numeric_str.h"
 
-static const char *argv0 = "test_createfile";
+static const char *argv0 = "tfw_createfile";
 
 static void fatal(const char *fmt, ...)
 {
@@ -73,10 +73,9 @@ static void fatal(const char *fmt, ...)
   exit(1);
 }
 
-static inline char stripe(int i, const char *omit)
+static inline char stripe(int i)
 {
-  char c = (i >= ' ' && i <= '~') ? i : '.';
-  return strchr(omit, c) ? '.' : c;
+  return (i >= ' ' && i <= '~') ? i : '.';
 }
 
 int main(int argc, char **argv)
@@ -85,44 +84,56 @@ int main(int argc, char **argv)
   uint64_t size = 0;
   const char *label = "";
   const char *omit = "";
-  int i;
-  for (i = 1; i < argc; ++i) {
-    const char *arg = argv[i];
-    if (str_startswith(arg, "--size=", &arg)) {
-      if (!str_to_uint64_scaled(arg, 10, &size, NULL))
-	fatal("illegal --size= argument: %s", arg);
+  {
+    int i;
+    for (i = 1; i < argc; ++i) {
+      const char *arg = argv[i];
+      if (str_startswith(arg, "--size=", &arg)) {
+	if (!str_to_uint64_scaled(arg, 10, &size, NULL))
+	  fatal("illegal --size= argument: %s", arg);
+      }
+      else if (str_startswith(arg, "--label=", &arg))
+	label = arg;
+      else if (str_startswith(arg, "--omit=", &arg)) {
+	omit = arg;
+	if (strchr(omit, '.'))
+	  fatal("illegal --omit= argument, must not contain '.': %s", arg);
+      }
+      else
+	fatal("unrecognised argument: %s", arg);
     }
-    else if (str_startswith(arg, "--label=", &arg))
-      label = arg;
-    else if (str_startswith(arg, "--omit=", &arg)) {
-      omit = arg;
-      if (strchr(omit, '.'))
-	fatal("illegal --omit= argument, must not contain '.': %s", arg);
-    }
-    else
-      fatal("unrecognised argument: %s", arg);
   }
   uint64_t offset = 0;
-  char buf[127];
-  for (i = 0; i != sizeof buf; ++i)
-    buf[i] = stripe(i, omit);
+  char buf[129];
+  const size_t linesiz = sizeof buf - 2;
+  {
+    size_t i;
+    for (i = 0; i != linesiz; ++i)
+      buf[i] = stripe(i);
+  }
   const size_t labellen = strlen(label);
-  unsigned bouncemax = labellen < sizeof buf ? sizeof buf - labellen : sizeof buf;
+  unsigned bouncemax = labellen < linesiz ? linesiz - labellen : linesiz;
   unsigned bounce = 3;
   int bouncedelta = 1;
   while (!ferror(stdout) && offset < size) {
     unsigned n = sprintf(buf, "%"PRId64, offset);
-    buf[n] = stripe(n, omit);
+    buf[n] = stripe(n);
     size_t labelsiz = labellen;
-    if (labelsiz && bounce < sizeof buf) {
-      if (labelsiz > sizeof buf - bounce)
-	labelsiz = sizeof buf - bounce;
+    if (labelsiz && bounce < linesiz) {
+      if (labelsiz > linesiz - bounce)
+	labelsiz = linesiz - bounce;
       memcpy(buf + bounce, label, labelsiz);
     }
     unsigned remain = size - offset - 1;
-    if (remain > sizeof buf)
-      remain = sizeof buf;
-    
+    if (remain > linesiz)
+      remain = linesiz;
+    buf[remain++] = '\n';
+    buf[remain] = '\0';
+    {
+      char *p = buf;
+      while ((p = strpbrk(p, omit)))
+	*p++ = '.';
+    }
     {
       size_t off=0;
       while(off<remain){
@@ -132,17 +143,14 @@ int main(int argc, char **argv)
 	off+=wrote;
       }
     }
-    char eol = strchr(omit, '\n') ? '.' : '\n';
-    if (fputc(eol, stdout) == EOF)
-      fatal("write error: %s [errno=%d]", strerror(errno), errno);
-    offset += remain + 1;
+    offset += remain;
     if (bounce <= n || bounce >= bouncemax)
       bouncedelta *= -1;
     if (labelsiz) {
       if (bouncedelta > 0)
-	buf[bounce] = stripe(bounce, omit);
+	buf[bounce] = stripe(bounce);
       else
-	buf[bounce + labelsiz - 1] = stripe(bounce + labelsiz - 1, omit);
+	buf[bounce + labelsiz - 1] = stripe(bounce + labelsiz - 1);
     }
     bounce += bouncedelta;
   }
