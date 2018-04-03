@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <unistd.h>
 #include <assert.h>
 #include <string.h>
+#include <strings.h>
 #include "lang.h" // for bool_t
 #include "mem.h"
 #include "nibble_tree.h"
