@@ -26,6 +26,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "instance.h"
 #include "httpd.h"
+#include "feature.h"
+
+DEFINE_FEATURE(jni_server);
 
 static JNIEnv *server_env=NULL;
 static jclass IJniServer= NULL;

@@ -52,6 +52,7 @@ void servald_features()
 
   USE_FEATURE(dna_helper);
   USE_FEATURE(directory_client);
+  USE_FEATURE(log_output_file);
 
   USE_FEATURE(http_server);
   USE_FEATURE(http_rhizome);

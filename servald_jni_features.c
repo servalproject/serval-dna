@@ -1,5 +1,5 @@
 /*
-Serval DNA JNI instance directory path
+Serval DNA daemon features
 Copyright (C) 2016 Flinders University
 
 This program is free software; you can redistribute it and/or
@@ -17,15 +17,10 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include <assert.h>
-#include "jni_common.h"
-#include "instance.h"
+#include "feature.h"
 
-JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_setInstancePath(
-  JNIEnv *env, jobject UNUSED(this), jobject path)
+void servald_jni_features()
 {
-  const char *cpath = (*env)->GetStringUTFChars(env, path, NULL);
-  set_instance_path(cpath);
-  (*env)->ReleaseStringUTFChars(env, path, cpath);
-  return (jint)0;
+  USE_FEATURE(jni_commandline);
+  USE_FEATURE(jni_server);
 }

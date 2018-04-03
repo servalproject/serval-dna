@@ -26,6 +26,7 @@ void test_features()
   USE_FEATURE(cli_log);
   USE_FEATURE(cli_vomp_console);
   USE_FEATURE(cli_tests);
+  USE_FEATURE(log_output_console);
 }
 
 void command_cleanup() {}

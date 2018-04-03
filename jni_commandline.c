@@ -27,6 +27,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "conf.h"
 #include "debug.h"
+#include "instance.h"
+#include "feature.h"
+
+DEFINE_FEATURE(jni_commandline);
 
 static struct cli_vtable cli_vtable_jni;
 
@@ -192,6 +196,15 @@ static int initJniTypes(JNIEnv *env)
     return jni_throw(env, "java/lang/IllegalStateException", "Unable to locate method endTable");
 
   return 0;
+}
+
+JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_setInstancePath(
+  JNIEnv *env, jobject UNUSED(this), jobject path)
+{
+  const char *cpath = (*env)->GetStringUTFChars(env, path, NULL);
+  set_instance_path(cpath);
+  (*env)->ReleaseStringUTFChars(env, path, cpath);
+  return (jint)0;
 }
 
 /* JNI entry point to command line.  See org.servalproject.servald.ServalD class for the Java side.

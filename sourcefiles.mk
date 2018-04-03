@@ -130,7 +130,6 @@ SERVAL_DAEMON_SOURCES = \
 SERVAL_DAEMON_JNI_SOURCES = \
 	jni_common.c \
 	jni_commandline.c \
-	jni_instance.c \
 	jni_server.c
 
 SERVAL_DAEMON_SWIFT_SOURCES = \

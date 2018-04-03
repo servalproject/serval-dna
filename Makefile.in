@@ -53,10 +53,10 @@ SERVAL_DAEMON_OBJS = \
 
 ifeq (@HAVE_JNI_H@,yes)
 
-SERVAL_DAEMON_JNI_OBJS = \
-	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_DAEMON_JNI_SOURCES:.c=.o))
+SERVAL_DAEMON_JNI_OBJS = $(OBJSDIR_SERVALD)/servald_jni_features.o
 
-SERVAL_DAEMON_OBJS += $(SERVAL_DAEMON_JNI_OBJS)
+SERVAL_DAEMON_OBJS += \
+	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_DAEMON_JNI_SOURCES:.c=.o))
 
 endif
 
@@ -366,7 +366,6 @@ libservaldaemon.a: _servald.a $(LIBSODIUM_A)
 libservaldaemon.so: \
 		$(OBJSDIR_SERVALD)/servald_features.o \
 		$(OBJSDIR_SERVALD)/log_output_console.o \
-		$(OBJSDIR_SERVALD)/log_output_file.o \
 		$(SERVAL_DAEMON_JNI_OBJS) \
 		_servald.a \
 		$(LIBSODIUM_A)
@@ -379,7 +378,6 @@ libservaldaemon.so: \
 # to be pulled into the link.
 servald:	$(OBJSDIR_SERVALD)/servald_features.o \
 		$(OBJSDIR_SERVALD)/log_output_console.o \
-		$(OBJSDIR_SERVALD)/log_output_file.o \
 		libservaldaemon.a
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
@@ -393,7 +391,6 @@ ifneq ($(SWIFTC),) # Only provide Swift targets if the Swift compiler is availab
 # package.
 servaldswift: $(srcdir)/servaldswift.swift \
 	      $(OBJSDIR_SERVALD)/servald_features.o \
-	      $(OBJSDIR_SERVALD)/log_output_file.o \
 	      libservaldaemon.a \
 	      $(SWIFT_MODULE_NAME).swiftmodule \
 	      libServalDNA.a
@@ -410,7 +407,6 @@ servaldwrap: $(OBJSDIR_SERVALD)/servalwrap.o
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
 serval-tests: 	$(OBJSDIR_SERVALD)/test_features.o \
-		$(OBJSDIR_SERVALD)/log_output_console.o \
 		libservaldaemon.a
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
