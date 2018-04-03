@@ -190,16 +190,7 @@ struct network_destination * new_destination(struct overlay_interface *interface
 }
 
 struct network_destination * create_unicast_destination(struct socket_address *addr, struct overlay_interface *interface){
-  if (!interface && addr->addr.sa_family == AF_INET)
-    interface = overlay_interface_find(addr->inet.sin_addr, 1);
-  if (!interface){
-    WHY("I don't know which interface to use");
-    return NULL;
-  }
-  if (interface->state!=INTERFACE_STATE_UP){
-    WHY("The interface is down.");
-    return NULL;
-  }
+  assert(interface && interface->state==INTERFACE_STATE_UP);
   if (addr->addr.sa_family == AF_INET && (addr->inet.sin_addr.s_addr==0 || addr->inet.sin_port==0))
     return NULL;
   if (!interface->ifconfig.unicast.send)

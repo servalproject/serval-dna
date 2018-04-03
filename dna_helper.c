@@ -62,6 +62,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_address.h"
 #include "server.h"
 #include "debug.h"
+#include "mdp_services.h"
+#include "feature.h"
+
+
+DEFINE_FEATURE(dna_helper);
 
 static void dna_helper_shutdown();
 
@@ -83,38 +88,6 @@ static void dna_helper_shutdown();
   requires.  Then the helper will just be another file descriptor to poll in the
   main loop.
  */
-
-int
-parseDnaReply(const char *buf, size_t len, char *token, char *did, char *name, char *uri, const char **bufp)
-{
-  /* Replies look like: TOKEN|URI|DID|NAME| where TOKEN is usually a hex SID */
-  const char *b = buf;
-  const char *e = buf + len;
-  char *p, *q;
-  for (p = token, q = token + SID_STRLEN; b != e && *b != '|' && p != q; ++p, ++b)
-    *p = *b;
-  *p = '\0';
-  if (b == e || *b++ != '|')
-    return 0;
-  for (p = uri, q = uri + 511; b != e && *b != '|' && p != q; ++p, ++b)
-    *p = *b;
-  *p = '\0';
-  if (b == e || *b++ != '|')
-    return 0;
-  for (p = did, q = did + DID_MAXSIZE; b != e && *b != '|' && p != q; ++p, ++b)
-    *p = *b;
-  *p = '\0';
-  if (b == e || *b++ != '|')
-    return 0;
-  for (p = name, q = name + ID_NAME_MAXSIZE; b != e && *b != '|' && p != q; ++p, ++b)
-    *p = *b;
-  *p = '\0';
-  if (b == e || *b++ != '|')
-    return 0;
-  if (bufp)
-    *bufp = b;
-  return 1;
-}
 
 static pid_t dna_helper_pid = -1;
 static int dna_helper_stdin = -1;
@@ -179,25 +152,29 @@ dna_helper_close_pipes()
   }
 }
 
-int
-dna_helper_start()
+static void dna_helper_start()
 {
   dna_helper_shutdown();
+  if (!serverMode)
+    return;
+
   if (!config.dna.helper.executable[0]) {
     INFO("DNAHELPER none configured");
-    return 0;
+    return;
   }
   
   const char *mysid = alloca_tohex_sid_t(get_my_subscriber(1)->sid);
   
   int stdin_fds[2], stdout_fds[2], stderr_fds[2];
-  if (pipe(stdin_fds) == -1)
-    return WHY_perror("pipe");
+  if (pipe(stdin_fds) == -1){
+    WHY_perror("pipe");
+    return;
+  }
   if (pipe(stdout_fds) == -1) {
     WHY_perror("pipe");
     close(stdin_fds[0]);
     close(stdin_fds[1]);
-    return -1;
+    return;
   }
   if (pipe(stderr_fds) == -1) {
     WHY_perror("pipe");
@@ -205,7 +182,7 @@ dna_helper_start()
     close(stdin_fds[1]);
     close(stdout_fds[0]);
     close(stdout_fds[1]);
-    return -1;
+    return;
   }
   // Construct argv[] for execv() and log messages.
   const char *argv[config.dna.helper.argv.ac + 2];
@@ -246,7 +223,8 @@ dna_helper_start()
     close(stdout_fds[1]);
     close(stderr_fds[0]);
     close(stderr_fds[1]);
-    return -1;
+    return;
+
   default:
     /* Parent, should put file descriptors into place for use */
     close(stdin_fds[0]);
@@ -279,10 +257,9 @@ dna_helper_start()
     watch(&sched_replies);
     watch(&sched_errors);
     schedule(&sched_harvester);
-    return 0;
   }
-  return -1;
 }
+DEFINE_TRIGGER(conf_change, dna_helper_start);
 
 static int
 dna_helper_kill()
@@ -581,17 +558,21 @@ static void reply_timeout(struct sched_ent *alarm)
   }
 }
 
-int
-dna_helper_enqueue(struct subscriber *source, mdp_port_t source_port, const char *did)
+static void dna_helper_enqueue(struct internal_mdp_header *header, const char *did)
 {
+  struct subscriber *source = header->source;
+  mdp_port_t source_port = header->source_port;
+
   DEBUGF(dnahelper, "DNAHELPER request did=%s sid=%s", did, alloca_tohex_sid_t(source->sid));
   if (dna_helper_pid == 0)
-    return 0;
+    return;
   // Only try to restart a DNA helper process if the previous one is well and truly gone.
   if (dna_helper_pid == -1 && dna_helper_stdin == -1 && dna_helper_stdout == -1 && dna_helper_stderr == -1) {
-    if (dna_helper_start() == -1) {
+    dna_helper_start();
+    if (dna_helper_pid == -1 && dna_helper_stdin == -1 && dna_helper_stdout == -1 && dna_helper_stderr == -1) {
       /* Something broke, bail out */
-      return WHY("DNAHELPER start failed");
+      WHY("DNAHELPER start failed");
+      return;
     }
   }
   /* Write request to dna helper.
@@ -601,14 +582,14 @@ dna_helper_enqueue(struct subscriber *source, mdp_port_t source_port, const char
      which will include the requestor's SID.
   */
   if (dna_helper_stdin == -1)
-    return 0;
+    return;
   if (request_bufptr && request_bufptr != request_buffer) {
     WARNF("DNAHELPER currently sending request %s -- dropping new request", request_buffer);
-    return 0;
+    return;
   }
   if (awaiting_reply) {
     WARN("DNAHELPER currently awaiting reply -- dropping new request");
-    return 0;
+    return;
   }
   char buffer[sizeof request_buffer];
   strbuf b = request_bufptr == request_buffer ? strbuf_local_buf(buffer) : strbuf_local_buf(request_buffer);
@@ -636,5 +617,6 @@ dna_helper_enqueue(struct subscriber *source, mdp_port_t source_port, const char
     sched_requests.poll.fd = dna_helper_stdin;
     watch(&sched_requests);
   }
-  return 1;
 }
+DEFINE_TRIGGER(dna_lookup, dna_helper_enqueue);
+

@@ -72,6 +72,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "server.h"
 #include "route_link.h"
 #include "debug.h"
+#include "mdp_services.h"
 
 #ifdef HAVE_UCRED_H
 #include <ucred.h>
@@ -117,8 +118,11 @@ struct sched_ent named_socket;
 struct profile_total named_stats;
 struct profile_total client_stats;
 
-int monitor_setup_sockets()
+static void monitor_setup_sockets()
 {
+  if (serverMode==0)
+    return;
+
   int sock = -1;
   if ((sock = esocket(AF_UNIX, SOCK_STREAM, 0)) == -1)
     goto error;
@@ -139,13 +143,14 @@ int monitor_setup_sockets()
   named_socket.poll.events=POLLIN;
   watch(&named_socket);
   INFOF("Monitor socket: fd=%d %s", sock, alloca_socket_address(&addr));
-  return 0;
+  return;
   
 error:
   if (sock != -1)
     close(sock);
-  return -1;
+  serverMode=0;
 }
+DEFINE_TRIGGER(startup, monitor_setup_sockets);
 
 #define monitor_write_error(C,E) _monitor_write_error(__WHENCE__, C, E)
 static int _monitor_write_error(struct __sourceloc __whence, struct monitor_context *c, const char *error){
@@ -452,7 +457,11 @@ static int monitor_set(const struct cli_parsed *parsed, struct cli_context *cont
     c->flags|=MONITOR_QUIT_ON_DISCONNECT;
   }else if (strcase_startswith(parsed->args[1],"interface", NULL)){
     c->flags|=MONITOR_INTERFACE;
-    overlay_interface_monitor_up();
+    unsigned i;
+    for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+      if (overlay_interfaces[i].state == INTERFACE_STATE_UP)
+	monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%u:%s:UP\n", i, overlay_interfaces[i].name);
+    }
   }else
     return monitor_write_error(c,"Unknown monitor type");
 
@@ -693,6 +702,15 @@ int monitor_tell_formatted(int mask, char *fmt, ...){
   va_end(ap);
   return monitor_tell_clients(msg, n, mask);
 }
+
+static void monitor_dna_helper(struct internal_mdp_header *header, const char *did)
+{
+    monitor_tell_formatted(MONITOR_DNAHELPER, "LOOKUP:%s:%d:%s\n",
+			   alloca_tohex_sid_t(header->source->sid), header->source_port,
+			   did);
+}
+DEFINE_TRIGGER(dna_lookup, monitor_dna_helper);
+
 
 static void monitor_interface_change(struct overlay_interface *interface, unsigned UNUSED(count)){
   unsigned i = interface - overlay_interfaces;

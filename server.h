@@ -54,6 +54,7 @@ int server_unlink_proc_state(const char *path);
 
 void server_rhizome_add_bundle(uint64_t rowid);
 
+DECLARE_TRIGGER(startup);
 DECLARE_TRIGGER(shutdown);
 
 #endif // __SERVAL_DNA__SERVER_H

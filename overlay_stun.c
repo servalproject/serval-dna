@@ -50,7 +50,12 @@ static int overlay_mdp_service_stun(struct internal_mdp_header *header, struct o
     
     // only trust stun responses from our directory service or about the packet sender.
     if (directory_service == header->source || subscriber == header->source){
-      struct network_destination *destination = create_unicast_destination(&addr, NULL);
+      overlay_interface *interface = overlay_interface_find(addr.inet.sin_addr, 1);
+      if (!interface){
+	WARNF("Can't find interface for %s", alloca_socket_address(&addr));
+	return 0;
+      }
+      struct network_destination *destination = create_unicast_destination(&addr, interface);
       if (destination){
 	overlay_send_probe(subscriber, destination, OQ_MESH_MANAGEMENT);
 	release_destination_ref(destination);

@@ -108,7 +108,6 @@ struct network_destination * create_unicast_destination(struct socket_address *a
 struct network_destination * add_destination_ref(struct network_destination *ref);
 void release_destination_ref(struct network_destination *ref);
 int set_destination_ref(struct network_destination **ptr, struct network_destination *ref);
-void overlay_interface_config_change();
 
 struct config_mdp_iftype;
 int overlay_destination_configure(struct network_destination *dest, const struct config_mdp_iftype *ifconfig);

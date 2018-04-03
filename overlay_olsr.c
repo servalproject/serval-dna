@@ -83,15 +83,15 @@ static struct sched_ent read_watch={
   .poll={.fd=-1,.events=POLLIN},
 };
 
-int olsr_init_socket(void){
+static void olsr_init_socket(void){
   int fd;
   int reuseP = 1;
   
   if (read_watch.poll.fd>=0)
-    return 0;
+    return;
   
   if (!config.olsr.enable)
-    return 0;
+    return;
   
   INFOF("Initialising olsr broadcast forwarding via ports %d-%d", config.olsr.local_port, config.olsr.remote_port);
   struct sockaddr_in addr = {
@@ -103,20 +103,21 @@ int olsr_init_socket(void){
   
   fd = socket(AF_INET,SOCK_DGRAM,0);
   if (fd < 0) {
-    return WHY_perror("Error creating socket");
+    WHY_perror("Error creating socket");
+    return;
   } 
   
   if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) < 0) {
     WHY_perror("setsockopt(SO_REUSEADR)");
     close(fd);
-    return -1;
+    return;
   }
   
 #ifdef SO_REUSEPORT
   if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &reuseP, sizeof(reuseP)) < 0) {
     WHY_perror("setsockopt(SO_REUSEPORT)");
     close(fd);
-    return -1;
+    return;
   }
 #endif
   
@@ -134,14 +135,15 @@ int olsr_init_socket(void){
   if (bind(fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_in))) {
     WHY_perror("Bind failed");
     close(fd);
-    return -1;
+    return;
   }
   
   read_watch.poll.fd = fd;
   
   watch(&read_watch);
-  return 0;
 }
+DEFINE_TRIGGER(conf_change, olsr_init_socket);
+
 
 static void parse_frame(struct overlay_buffer *buff){
   struct overlay_frame frame;

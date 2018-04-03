@@ -41,6 +41,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "keyring.h"
 #include "serval.h" // for overlay_send_frame()
 #include "route_link.h"
+#include "server.h"
+#include "feature.h"
+
+DEFINE_FEATURE(directory_client);
 
 __thread struct subscriber *directory_service;
 
@@ -112,7 +116,7 @@ static void directory_update(struct sched_ent *alarm){
   }
 }
 
-int directory_service_init(){
+static void directory_service_init(){
   if (is_sid_t_any(config.directory.service)) {
     directory_service = NULL;
   }else{
@@ -126,8 +130,8 @@ int directory_service_init(){
   }
   unschedule(&directory_alarm);
   directory_update(&directory_alarm);
-  return 0;
 }
+DEFINE_TRIGGER(conf_change, directory_service_init);
 
 // called when we discover a route to the directory service SID
 int directory_registration(){
@@ -140,10 +144,9 @@ int directory_registration(){
 }
 
 static void interface_change(struct overlay_interface *UNUSED(interface), unsigned count){
+  unschedule(&directory_alarm);
   if (count)
-    directory_registration();
-  else
-    unschedule(&directory_alarm);
+    directory_update(&directory_alarm);
 }
 
 DEFINE_TRIGGER(iupdown, interface_change);

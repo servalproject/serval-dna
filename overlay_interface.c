@@ -116,15 +116,6 @@ static void overlay_interface_close_all()
 }
 DEFINE_TRIGGER(shutdown, overlay_interface_close_all);
 
-void overlay_interface_monitor_up()
-{
-  unsigned i;
-  for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
-    if (overlay_interfaces[i].state == INTERFACE_STATE_UP)
-      monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%u:%s:UP\n", i, overlay_interfaces[i].name);
-  }
-}
-
 void interface_state_html(struct strbuf *b, struct overlay_interface *interface)
 {
   switch(interface->state){
@@ -307,7 +298,7 @@ overlay_interface * overlay_interface_find_name_addr(const char *name, struct so
   int i;
   assert(name || addr);
   for(i = 0; i < OVERLAY_MAX_INTERFACES; i++){
-    if (overlay_interfaces[i].state==INTERFACE_STATE_DOWN)
+    if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
       continue;
     
     if ((!addr || cmp_sockaddr(addr, &overlay_interfaces[i].address)==0)
@@ -1475,8 +1466,11 @@ static void rescan_soon(time_ms_t run_at){
   RESCHEDULE(alarm, run_at, run_at, run_at);
 }
 
-void overlay_interface_config_change()
+static void overlay_interface_config_change()
 {
+  if (!serverMode)
+    return;
+
   unsigned i;
   int real_interface = 0;
   
@@ -1522,6 +1516,7 @@ void overlay_interface_config_change()
   if (real_interface)
     rescan_soon(gettime_ms());
 }
+DEFINE_TRIGGER(conf_change, overlay_interface_config_change);
 
 void logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len) {
   struct mallocbuf mb = STRUCT_MALLOCBUF_NULL;

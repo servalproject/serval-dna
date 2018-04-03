@@ -50,6 +50,9 @@ void servald_features()
   USE_FEATURE(mdp_binding_MDP_PORT_RHIZOME_RESPONSE);
   USE_FEATURE(mdp_binding_MDP_PORT_RHIZOME_MANIFEST_REQUEST);
 
+  USE_FEATURE(dna_helper);
+  USE_FEATURE(directory_client);
+
   USE_FEATURE(http_server);
   USE_FEATURE(http_rhizome);
   USE_FEATURE(http_rhizome_direct);

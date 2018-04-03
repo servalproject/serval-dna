@@ -88,19 +88,6 @@ int commandline_main(struct cli_context *context, const char *argv0, int argc, c
 // undefined reference to `__start_tr_cmd_cleanup'
 // undefined reference to `__stop_tr_cmd_cleanup'
 
-static void __dummy_on_cmd_cleanup();
-DEFINE_TRIGGER(cmd_cleanup, __dummy_on_cmd_cleanup);
 static void __dummy_on_cmd_cleanup() {}
+DEFINE_TRIGGER(cmd_cleanup, __dummy_on_cmd_cleanup);
 
-int commandline_main_stdio(FILE *output, const char *argv0, int argc, const char *const *args)
-{
-  struct cli_context_stdio cli_context_stdio = {
-    .fp = output
-  };
-  struct cli_context cli_context = {
-    .vtable = &cli_vtable_stdio,
-    .context = &cli_context_stdio
-  };
-
-  return commandline_main(&cli_context, argv0, argc, args);
-}

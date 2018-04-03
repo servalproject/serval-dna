@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <signal.h>
 #include "servald_main.h"
 #include "commandline.h"
+#include "cli_stdio.h"
 #include "sighandlers.h"
 #include "conf.h"
 
@@ -47,7 +48,15 @@ int servald_main(int argc, char **argv)
   signal(SIGPIPE, sigPipeHandler);
   signal(SIGIO, sigIoHandler);
 
-  int status = commandline_main_stdio(stdout, argv[0], argc - 1, (const char*const*)&argv[1]);
+  struct cli_context_stdio cli_context_stdio = {
+    .fp = stdout
+  };
+  struct cli_context cli_context = {
+    .vtable = &cli_vtable_stdio,
+    .context = &cli_context_stdio
+  };
+
+  int status = commandline_main(&cli_context, argv[0], argc - 1, (const char*const*)&argv[1]);
 
 #if defined WIN32
   WSACleanup();
@@ -55,12 +64,9 @@ int servald_main(int argc, char **argv)
   return status;
 }
 
-char crash_handler_clue[1024] = "no clue";
-
 static void crash_handler(int signum)
 {
   LOGF(LOG_LEVEL_FATAL, "Caught signal %s", alloca_signal_name(signum));
-  LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s", crash_handler_clue);
   dump_stack(LOG_LEVEL_FATAL);
   BACKTRACE;
   // Exit with a status code indicating the caught signal.  This involves removing the signal

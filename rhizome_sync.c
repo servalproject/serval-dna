@@ -98,11 +98,6 @@ static int sync_status(void **record, void *UNUSED(context))
   return 0;
 }
 
-void rhizome_sync_status()
-{
-  enum_subscribers(NULL, sync_status, NULL);
-}
-
 static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, unsigned char forwards)
 {
   struct internal_mdp_header header;
@@ -516,14 +511,22 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
 
 void rhizome_sync_announce(struct sched_ent *alarm)
 {
-  if (!is_rhizome_advertise_enabled())
+  if (!(is_rhizome_advertise_enabled() && link_has_neighbours()))
     return;
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
   sync_send_response(NULL, 0, HEAD_FLAG, 5);
   sqlite_set_tracefunc(oldfunc);
-  alarm->alarm = gettime_ms()+config.rhizome.advertise.interval;
+  time_ms_t now = gettime_ms();
+  alarm->alarm = now+config.rhizome.advertise.interval;
   alarm->deadline = alarm->alarm+10000;
   schedule(alarm);
+  if (IF_DEBUG(rhizome)){
+    static time_ms_t next_debug = TIME_MS_NEVER_HAS;
+    if (next_debug < now){
+      enum_subscribers(NULL, sync_status, NULL);
+      next_debug = now + 3000;
+    }
+  }
 }
 
 static void neighbour_changed(struct subscriber *UNUSED(neighbour), uint8_t UNUSED(found), unsigned count)

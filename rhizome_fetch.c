@@ -160,6 +160,7 @@ void rhizome_fetch_status(struct sched_ent *alarm)
     return;
     
   unsigned i;
+  unsigned total=0;
   for(i=0;i<NQUEUES;i++){
     struct rhizome_fetch_queue *q=&rhizome_fetch_queues[i];
     unsigned candidates=0;
@@ -174,6 +175,7 @@ void rhizome_fetch_status(struct sched_ent *alarm)
     }
     if (candidates == 0 && q->active.state==RHIZOME_FETCH_FREE)
       continue;
+    total+=candidates;
     DEBUGF(rhizome_rx, "Fetch slot %d, candidates %u of %u %"PRIu64" bytes, %s %"PRIu64" of %"PRIu64,
 	   i, candidates, q->candidate_queue_size, candidate_size,
 	   fetch_state(q->active.state),
@@ -181,9 +183,10 @@ void rhizome_fetch_status(struct sched_ent *alarm)
 	   q->active.manifest?q->active.manifest->filesize:0
 	  );
   }
-  rhizome_sync_status();
-  time_ms_t now = gettime_ms();
-  RESCHEDULE(alarm, now + 3000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
+  if (total){
+    time_ms_t now = gettime_ms();
+    RESCHEDULE(alarm, now + 3000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
+  }
 }
 
 int rhizome_fetch_status_html(strbuf b)
@@ -951,6 +954,8 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
     sched_activate.deadline = sched_activate.alarm + config.rhizome.idle_timeout;
     schedule(&sched_activate);
   }
+  if (IF_DEBUG(rhizome) && !is_scheduled(&ALARM_STRUCT(rhizome_fetch_status)))
+      RESCHEDULE(&ALARM_STRUCT(rhizome_fetch_status), gettime_ms() + 3000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
 
   RETURN(0);
   OUT();

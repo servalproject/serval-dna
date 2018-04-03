@@ -246,23 +246,30 @@ static void overlay_mdp_shutdown()
 }
 DEFINE_TRIGGER(shutdown, overlay_mdp_shutdown);
 
-int overlay_mdp_setup_sockets()
+static void overlay_mdp_setup_sockets()
 {
+  if (serverMode==0)
+    return;
+
   /* Delete stale socket files from instance directory. */
   overlay_mdp_clean_socket_files();
 
   if (mdp_sock.poll.fd == -1) {
     mdp_sock.poll.fd = mdp_bind_socket("mdp.socket");
-    if (mdp_sock.poll.fd == -1)
-      return -1;
+    if (mdp_sock.poll.fd == -1){
+      serverMode=0;
+      return;
+    }
     mdp_sock.poll.events = POLLIN;
     watch(&mdp_sock);
   }
   
   if (mdp_sock2.poll.fd == -1) {
     mdp_sock2.poll.fd = mdp_bind_socket("mdp.2.socket");
-    if (mdp_sock2.poll.fd == -1)
-      return -1;
+    if (mdp_sock2.poll.fd == -1){
+      serverMode=0;
+      return;
+    }
     mdp_sock2.poll.events = POLLIN;
     watch(&mdp_sock2);
   }
@@ -304,12 +311,13 @@ int overlay_mdp_setup_sockets()
       
       if (fd!=-1){
 	close(fd);
-	return -1;
+	serverMode=0;
+	return;
       }
     }
   }
-  return 0;
 }
+DEFINE_TRIGGER(startup, overlay_mdp_setup_sockets);
 
 #define MDP_MAX_SOCKET_NAME_LEN 110
 

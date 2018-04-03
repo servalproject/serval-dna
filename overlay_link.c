@@ -113,6 +113,15 @@ struct network_destination *load_subscriber_address(struct subscriber *subscribe
     addr.inet.sin_addr = hostc->address;
   }
   addr.inet.sin_port = htons(hostc->port);
+
+  if (!interface && addr.addr.sa_family == AF_INET)
+    interface = overlay_interface_find(addr.inet.sin_addr, 1);
+
+  if (!interface){
+    WARNF("Can't find interface for %s", alloca_socket_address(&addr));
+    return NULL;
+  }
+
   DEBUGF(overlayrouting, "Loaded address %s for %s", alloca_socket_address(&addr), alloca_tohex_sid_t(subscriber->sid));
   return create_unicast_destination(&addr, interface);
 }

@@ -253,22 +253,15 @@ int server_bind()
   sigaction(SIGINT, &sig, NULL);
   sigaction(SIGIO, &sig, NULL);
 
-  /* Setup up client API sockets before writing our PID file
-     We want clients to be able to connect to our sockets as soon 
-     as servald start has returned. But we don't want servald start
-     to take very long. 
-     Try to perform only minimal CPU or IO processing here.
-  */
-  if (overlay_mdp_setup_sockets()==-1){
-    serverMode = 0;
+  // Perform additional startup, which should be limited to tasks like binding sockets
+  // So that clients can initiate a connection once servald start has returned.
+  // serverMode should be cleared to indicate failures
+  // Any CPU or IO heavy initialisation should be performed in a config changed trigger
+
+  CALL_TRIGGER(startup);
+  if (serverMode == 0)
     return -1;
-  }
-  
-  if (monitor_setup_sockets()==-1){
-    serverMode = 0;
-    return -1;
-  }
-  
+
   // start the HTTP server if enabled
   if (httpd_server_start(config.rhizome.http.port, config.rhizome.http.port + HTTPD_PORT_RANGE)==-1) {
     serverMode = 0;
@@ -294,8 +287,6 @@ int server_bind()
   overlay_queue_init();
 
   time_ms_t now = gettime_ms();
-
-  olsr_init_socket();
 
   /* Calculate (and possibly show) CPU usage stats periodically */
   RESCHEDULE(&ALARM_STRUCT(fd_periodicstats), now+3000, TIME_MS_NEVER_WILL, now+3500);
@@ -639,17 +630,6 @@ static void server_on_config_change()
   
   time_ms_t now = gettime_ms();
 
-  // TODO move to their own trigger
-  dna_helper_start();
-  directory_service_init();
-  
-  overlay_interface_config_change();
-  
-  if (link_has_neighbours())
-    // send rhizome sync periodically
-    RESCHEDULE(&ALARM_STRUCT(rhizome_sync_announce), 
-      now+1000, now+1000, TIME_MS_NEVER_WILL);
-
   if (config.server.watchdog.executable[0])
     RESCHEDULE(&ALARM_STRUCT(server_watchdog), 
       now+config.server.watchdog.interval_ms, 
@@ -667,8 +647,6 @@ static void server_on_config_change()
   if (config.rhizome.enable){
     rhizome_opendb();
     RESCHEDULE(&ALARM_STRUCT(rhizome_clean_db), now + 30*60*1000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
-    if (IF_DEBUG(rhizome))
-      RESCHEDULE(&ALARM_STRUCT(rhizome_fetch_status), now + 3000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
   }else if(rhizome_db){
     rhizome_close_db();
   }
@@ -721,7 +699,6 @@ static void server_stop_alarms()
   unschedule(&ALARM_STRUCT(server_watchdog));
   unschedule(&ALARM_STRUCT(server_config_reload));
   unschedule(&ALARM_STRUCT(rhizome_clean_db));
-  unschedule(&ALARM_STRUCT(rhizome_fetch_status));
 }
 DEFINE_TRIGGER(shutdown, server_stop_alarms);
 
@@ -771,7 +748,6 @@ static void signal_handler(int signum)
       // fall through...
     default:
       LOGF(LOG_LEVEL_FATAL, "Caught signal %s", alloca_signal_name(signum));
-      LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s", crash_handler_clue); 
       dump_stack(LOG_LEVEL_FATAL);
       break;
   }

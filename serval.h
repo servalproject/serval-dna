@@ -233,11 +233,9 @@ int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time,
 void monitor_get_all_supported_codecs(unsigned char *codecs);
 
 int directory_registration();
-int directory_service_init();
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 
-int monitor_setup_sockets();
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int monitor_tell_clients(char *msg, int msglen, int mask);
 int monitor_tell_formatted(int mask, char *fmt, ...);
@@ -247,12 +245,9 @@ int scrapeProcNetRoute();
 int lsif();
 int doifaddrs();
 
-int dna_helper_start();
-int dna_helper_enqueue(struct subscriber *source, mdp_port_t source_port, const char *did);
 int parseDnaReply(const char *buf, size_t len, char *token, char *did, char *name, char *uri, const char **bufp);
 
 extern uint16_t mdp_loopback_port;
-int overlay_mdp_setup_sockets();
 
 int overlay_packetradio_setup_port(struct overlay_interface *interface);
 int overlay_send_probe(struct subscriber *peer, struct network_destination *destination, int queue);
@@ -266,7 +261,6 @@ void monitor_poll(struct sched_ent *alarm);
 void rhizome_fetch_poll(struct sched_ent *alarm);
 void rhizome_server_poll(struct sched_ent *alarm);
 
-int olsr_init_socket(void);
 int olsr_send(struct overlay_frame *frame);
 
 int pack_uint(unsigned char *buffer, uint64_t v);
@@ -274,6 +268,5 @@ int measure_packed_uint(uint64_t v);
 int unpack_uint(unsigned char *buffer, int buff_size, uint64_t *v);
 
 void rhizome_fetch_log_short_status();
-extern char crash_handler_clue[1024];
 
 #endif // __SERVAL_DNA__SERVAL_H
