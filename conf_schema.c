@@ -788,6 +788,7 @@ int cf_fmt_socket_type(const char **textp, const short *typep)
     case SOCK_DGRAM:  t = "dgram"; break;
     case SOCK_STREAM: t = "stream"; break;
     case SOCK_FILE:   t = "file"; break;
+    case SOCK_EXT:    t = "external"; break;
   }
   if (!t)
     return CFINVALID;

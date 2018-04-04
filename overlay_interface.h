@@ -67,10 +67,24 @@ struct network_destination {
 
 typedef struct overlay_interface {
   struct sched_ent alarm;
-  
+
+  // depending on ifconfig.socket_type (and address.addr.sa_family):
+  // - for SOCK_DGRAM (AF_INET): the interface name
+  // - for SOCK_DGRAM (AF_UNIX): the configured socket path (short, usually relative)
+  // - for SOCK_FILE: not used (zero filled)
+  // - for SOCK_STREAM: not used (zero filled)
+  // - for SOCK_EXT: not used (zero filled)
   char name[256];
 
-  short detected_type;
+  // depending on ifconfig.socket_type (and address.addr.sa_family):
+  // - for SOCK_DGRAM (AF_INET): not used (zero filled)
+  // - for SOCK_DGRAM (AF_UNIX): the local socket path (absolute)
+  // - for SOCK_FILE: the absolute path of the configured dummy file
+  // - for SOCK_STREAM: the absolute path of the configured device file
+  // - for SOCK_EXT: not used (zero filled)
+  char file_path[256];
+
+  short interface_type; // OVERLAY_INTERFACE_ETHERNET etc.
   off_t recv_offset; /* file offset */
   
   int recv_count;
@@ -78,7 +92,7 @@ typedef struct overlay_interface {
   
   struct radio_link_state *radio_link_state;
 
-  struct config_network_interface ifconfig;
+  struct config_network_interface ifconfig; // copy
   
   char local_echo;
 
@@ -117,6 +131,7 @@ int overlay_interface_configure(struct overlay_interface *interface, const struc
 
 int
 overlay_interface_init(const char *name,
+                       const char *file_path,
 		       short detected_type,
 		       const struct socket_address *addr, 
 		       const struct socket_address *netmask,
@@ -130,7 +145,7 @@ int overlay_interface_register(const char *name,
 			   struct socket_address *broadcast);
 overlay_interface * overlay_interface_get_default();
 overlay_interface * overlay_interface_find(struct in_addr addr, int return_default);
-overlay_interface * overlay_interface_find_name_addr(const char *name, struct socket_address *addr);
+overlay_interface * overlay_interface_find_name_file_addr(const char *name, const char *file_path, struct socket_address *addr);
 int overlay_interface_compare(overlay_interface *one, overlay_interface *two);
 int overlay_broadcast_ensemble(struct network_destination *destination, struct overlay_buffer *buffer);
 void interface_state_html(struct strbuf *b, struct overlay_interface *interface);

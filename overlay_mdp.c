@@ -1412,9 +1412,9 @@ static void mdp_interface_packet(struct socket_address *client, struct mdp_heade
       }
       
       if (result == CFOK || result == CFEMPTY){
-	struct overlay_interface *interface=overlay_interface_find_name_addr(NULL, client);
+	struct overlay_interface *interface=overlay_interface_find_name_file_addr(NULL, NULL, client);
 	if (!interface){
-	  overlay_interface_init(ifconfig.match.patv[0], OVERLAY_INTERFACE_UNKNOWN, client, NULL, NULL, &ifconfig);
+	  overlay_interface_init(ifconfig.match.patv[0], NULL, OVERLAY_INTERFACE_UNKNOWN, client, NULL, NULL, &ifconfig);
 	}else{
 	  // reconfigure the interface with new / current settings
 	  if (overlay_interface_configure(interface, &ifconfig)==-1)
@@ -1423,12 +1423,12 @@ static void mdp_interface_packet(struct socket_address *client, struct mdp_heade
       }
     }break;
     case MDP_INTERFACE_DOWN:{
-      struct overlay_interface *interface=overlay_interface_find_name_addr(NULL, client);
+      struct overlay_interface *interface=overlay_interface_find_name_file_addr(NULL, NULL, client);
       if (interface)
 	overlay_interface_close(interface);
     }break;
     case MDP_INTERFACE_RECV:{
-      struct overlay_interface *interface=overlay_interface_find_name_addr(NULL, client);
+      struct overlay_interface *interface=overlay_interface_find_name_file_addr(NULL, NULL, client);
       if (interface){
 	struct socket_address addr;
 	addr.addrlen = ob_get(payload);

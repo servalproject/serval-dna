@@ -2,6 +2,7 @@
 Serval DNA overlay network interfaces
 Copyright (C) 2010 Paul Gardner-Stephen
 Copyright (C) 2012-2013 Serval Project Inc.
+Copyright (C) 2016-2018 Flinders University
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -95,8 +96,10 @@ void overlay_interface_close(overlay_interface *interface)
 
   interface->state=INTERFACE_STATE_DOWN;
   
-  INFOF("Interface %s addr %s is down", 
-	interface->name, alloca_socket_address(&interface->address));
+  INFOF("Interface %s is down: type %s addr %s", 
+	interface->name,
+	interface_type_name(interface->interface_type),
+	alloca_socket_address(&interface->address));
 
   unsigned i, count=0;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
@@ -164,6 +167,35 @@ void interface_state_html(struct strbuf *b, struct overlay_interface *interface)
   }
   strbuf_sprintf(b, "TX: %d<br>", interface->tx_count);
   strbuf_sprintf(b, "RX: %d<br>", interface->recv_count);
+}
+
+static int
+form_dummy_file_path(char *buf, size_t bufsiz, const char *configured_file_path) {
+  assert(configured_file_path);
+  assert(configured_file_path[0]);
+  return formf_serval_tmp_path(buf, bufsiz, "%s/%s", config.server.interface_path, configured_file_path);
+}
+
+static int
+form_dgram_file_socket_address(struct socket_address *addr, const char *file_path) {
+  assert(file_path[0]);
+  if (!FORMF_SERVAL_RUN_PATH(addr->local.sun_path, "%s/%s", config.server.interface_path, file_path))
+    return 0;
+  addr->local.sun_family = AF_UNIX;
+  addr->addrlen = offsetof(struct sockaddr_un, sun_path) + strlen(addr->local.sun_path) + 1;
+  return 1;
+}
+
+static void
+form_broadcast_file_socket_address(struct socket_address *broadcast, struct socket_address *addr) {
+  assert(addr->local.sun_family == AF_UNIX);
+  assert(addr->addrlen >= offsetof(struct sockaddr_un, sun_path) + 2);
+  assert(addr->addrlen <= sizeof(addr->local));
+  *broadcast = *addr;
+  size_t len = broadcast->addrlen - offsetof(struct sockaddr_un, sun_path) - 1;
+  while (len && broadcast->local.sun_path[len] != '/')
+    broadcast->local.sun_path[len--] = '\0';
+  broadcast->addrlen = offsetof(struct sockaddr_un, sun_path) + len + 2;
 }
 
 // create a socket with options common to all our UDP sockets
@@ -294,19 +326,19 @@ overlay_interface * overlay_interface_find(struct in_addr addr, int return_defau
 }
 
 // find an interface by name and/or exact address
-overlay_interface * overlay_interface_find_name_addr(const char *name, struct socket_address *addr){
-  int i;
-  assert(name || addr);
-  for(i = 0; i < OVERLAY_MAX_INTERFACES; i++){
-    if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
-      continue;
-    
-    if ((!addr || cmp_sockaddr(addr, &overlay_interfaces[i].address)==0)
-      && (!name || strcasecmp(overlay_interfaces[i].name, name)==0)){
-      return &overlay_interfaces[i];
-    }
+overlay_interface * overlay_interface_find_name_file_addr(const char *name, const char *file_path, struct socket_address *addr) {
+  assert(name || file_path || addr);
+  assert(!name || name[0]); // name is non-empty if given
+  assert(!file_path || file_path[0]); // file_path is non-empty if given
+  unsigned i;
+  for (i = 0; i < OVERLAY_MAX_INTERFACES; ++i) {
+    struct overlay_interface *interface = &overlay_interfaces[i];
+    if (interface->state == INTERFACE_STATE_UP
+	&& (!addr || cmp_sockaddr(addr, &interface->address) == 0)
+	&& (!file_path || strcasecmp(file_path, interface->file_path) == 0)
+	&& (!name || strcasecmp(name, interface->name) == 0))
+      return interface;
   }
-  
   return NULL;
 }
 
@@ -531,7 +563,8 @@ int overlay_interface_configure(struct overlay_interface *interface, const struc
  */
 int
 overlay_interface_init(const char *name,
-		       short detected_type,
+		       const char *file_path,
+		       short interface_type,
 		       const struct socket_address *addr, 
 		       const struct socket_address *netmask,
 		       const struct socket_address *broadcast,
@@ -557,7 +590,9 @@ overlay_interface_init(const char *name,
   
   buf_strncpy_nul(interface->name, name);
 
-  interface->detected_type = detected_type;
+  buf_strncpy_nul(interface->file_path, file_path);
+
+  interface->interface_type = interface_type;
   interface->destination = new_destination(interface);
   
   interface->alarm.poll.fd=-1;
@@ -578,7 +613,6 @@ overlay_interface_init(const char *name,
 	FATALF("Invalid interface definition. We only support dropping packets on dummy file interfaces");
       interface->netmask = netmask->inet.sin_addr;
       interface->local_echo = 1;
-      
       overlay_bind_interface(interface);
       break;
       
@@ -589,16 +623,14 @@ overlay_interface_init(const char *name,
     case SOCK_STREAM:
     case SOCK_FILE:
     {
-      char read_file[1024];
+      assert(interface->file_path[0]);
       interface->local_echo = ifconfig->point_to_point?0:1;
-      if (!FORMF_SERVAL_TMP_PATH(read_file, "%s/%s", config.server.interface_path, ifconfig->file))
-	return -1;
-      if ((interface->alarm.poll.fd = open(read_file, O_APPEND|O_RDWR)) == -1) {
+      if ((interface->alarm.poll.fd = open(interface->file_path, O_APPEND|O_RDWR)) == -1) {
 	if (errno == ENOENT && ifconfig->socket_type == SOCK_FILE) {
 	  cleanup_ret = 1;
-	  WARNF("dummy interface not enabled: %s does not exist", alloca_str_toprint(read_file));
+	  WARNF("dummy interface %s not enabled: %s does not exist", interface->name, alloca_str_toprint(interface->file_path));
 	} else {
-	  cleanup_ret = WHYF_perror("file interface not enabled: open(%s, O_APPEND|O_RDWR)", alloca_str_toprint(read_file));
+	  cleanup_ret = WHYF_perror("dummy interface %s not enabled: open(%s, O_APPEND|O_RDWR)", interface->name, alloca_str_toprint(interface->file_path));
 	}
 	goto cleanup;
       }
@@ -612,7 +644,6 @@ overlay_interface_init(const char *name,
 	interface->alarm.poll.events=POLLIN|POLLOUT;
 	watch(&interface->alarm);
 	break;
-	
       case SOCK_FILE:
 	/* Seek to end of file as initial reading point */
 	interface->recv_offset = lseek(interface->alarm.poll.fd,0,SEEK_END);
@@ -625,9 +656,9 @@ overlay_interface_init(const char *name,
     return -1;
   
   interface->state=INTERFACE_STATE_UP;
-  INFOF("Interface %s type %s addr %s, is up",
+  INFOF("Interface %s is up: type %s addr %s",
 	interface->name,
-	interface_type_name(interface->detected_type),
+	interface_type_name(interface->interface_type),
 	alloca_socket_address(addr));
   INFOF("Allowing a maximum of %d packets every %"PRId64"ms",
         interface->destination->transfer_limit.burst_size,
@@ -1072,23 +1103,64 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
   }
 }
 
-static const struct config_network_interface *find_interface_config(const char *name, short detected_type, int socket_type)
+static int match_interface_config(const struct config_network_interface *ifconfig,
+				  int socket_type,
+				  short interface_type,
+				  const char *name,
+				  const char *file_path)
 {
-  // Find a matching non-dummy interface rule.
+  assert (name || file_path);
+  if (ifconfig->socket_type != socket_type)
+    return 0;
+  if (ifconfig->match_type != OVERLAY_INTERFACE_ANY
+      && ifconfig->match_type != interface_type
+      && interface_type != OVERLAY_INTERFACE_UNKNOWN)
+    return 0;
+  if (name) {
+    unsigned i;
+    for (i = 0; i < ifconfig->match.patc && fnmatch(ifconfig->match.patv[i], name, 0) != 0; ++i)
+      ;
+    if (i && i == ifconfig->match.patc)
+	return 0;
+  }
+  if (file_path && ifconfig->file[0]) {
+    switch (ifconfig->socket_type) {
+    case SOCK_DGRAM:
+      {
+	struct socket_address addr;
+	if (!form_dgram_file_socket_address(&addr, ifconfig->file))
+	  return 0;
+	if (strcmp(addr.local.sun_path, file_path) != 0)
+	  return 0;
+      }
+      break;
+    case SOCK_STREAM:
+    case SOCK_FILE:
+      {
+	char ifconfig_file_path[256];
+	if (!form_dummy_file_path(ifconfig_file_path, sizeof ifconfig_file_path, ifconfig->file))
+	  return 0;
+	if (strcmp(ifconfig_file_path, file_path) != 0)
+	  return 0;
+      }
+      break;
+    case SOCK_EXT:
+      return 0;
+    default:
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static const struct config_network_interface *
+find_first_matching_interface_config(int socket_type, short interface_type, const char *name, const char *file_path)
+{
   unsigned i;
   for (i = 0; i < config.interfaces.ac; ++i) {
     const struct config_network_interface *ifconfig = &config.interfaces.av[i].value;
-    if (ifconfig->socket_type==socket_type && (
-         detected_type == ifconfig->match_type
-      || detected_type == OVERLAY_INTERFACE_UNKNOWN
-      || ifconfig->match_type == OVERLAY_INTERFACE_ANY
-    )) {
-      unsigned j;
-      for (j = 0; j < ifconfig->match.patc; ++j){
-	if (fnmatch(ifconfig->match.patv[j], name, 0) == 0)
-	  return ifconfig;
-      }
-    }
+    if (match_interface_config(ifconfig, socket_type, interface_type, name, file_path))
+      return ifconfig;
   }
   return NULL;
 }
@@ -1100,9 +1172,12 @@ overlay_interface_register(const char *name,
 			   const struct socket_address *netmask,
 			   struct socket_address *broadcast)
 {
-  short detected_type = OVERLAY_INTERFACE_UNKNOWN;
+  assert(name);
+  assert(name[0]);
+
+  short detected_interface_type = OVERLAY_INTERFACE_UNKNOWN;
 #ifdef linux
-  detected_type = OVERLAY_INTERFACE_OTHER;
+  detected_interface_type = OVERLAY_INTERFACE_OTHER;
   // Try to determine the interface type from /sys/class/net/<name>/
   char path[256];
   struct stat file_stat;
@@ -1110,7 +1185,7 @@ overlay_interface_register(const char *name,
   strbuf_sprintf(sb, "/sys/class/net/%s/phy80211", name);
   if (stat(path, &file_stat)==0){
     // This interface has a symlink to a physical wifi device
-    detected_type = OVERLAY_INTERFACE_WIFI;
+    detected_interface_type = OVERLAY_INTERFACE_WIFI;
   }else{
     WARNF_perror("stat(%s)", path);
     strbuf_reset(sb);
@@ -1119,15 +1194,16 @@ overlay_interface_register(const char *name,
     if (fd >= 0){
       // this interface implements the ethtool get_settings method
       // we *could* read this file to set config based on link speed
-      detected_type = OVERLAY_INTERFACE_ETHERNET;
+      detected_interface_type = OVERLAY_INTERFACE_ETHERNET;
       close(fd);
     }else{
       WARNF_perror("open(%s)", path);
     }
   }
 #endif
-  // Find the matching non-dummy interface rule.
-  const struct config_network_interface *ifconfig = find_interface_config(name, detected_type, SOCK_DGRAM);
+  // find the first socket interface config rule that matches the name and detected interface type
+  const struct config_network_interface *ifconfig =
+    find_first_matching_interface_config(SOCK_DGRAM, detected_interface_type, name, NULL);
   if (!ifconfig) {
     DEBUGF(overlayinterfaces, "Interface %s does not match any rule", name);
     return 0;
@@ -1136,46 +1212,43 @@ overlay_interface_register(const char *name,
     DEBUGF(overlayinterfaces, "Interface %s is explicitly excluded", name);
     return 0;
   }
-  
+
+  // fill in the configured port number
   if (addr->addr.sa_family==AF_INET)
     addr->inet.sin_port = htons(ifconfig->port);
   if (broadcast->addr.sa_family==AF_INET)
     broadcast->inet.sin_port = htons(ifconfig->port);
 
-  struct overlay_interface *interface = overlay_interface_find_name_addr(name, addr);
   // nothing to do if a matching interface is already up
-  if (interface)
+  if (overlay_interface_find_name_file_addr(name, NULL, addr))
     return 0;
-    
-  /* New interface, so register it */
-  if (overlay_interface_init(name, detected_type, addr, netmask, broadcast, ifconfig))
+
+  // new interface, so register it
+  if (overlay_interface_init(name, NULL, detected_interface_type, addr, netmask, broadcast, ifconfig))
     return WHYF("Could not initialise newly seen interface %s", name);
 
   overlay_interface_init_any(ifconfig->port);
   inet_up_count++;
-  
+
   return 0;
 }
 
 #ifdef HAVE_LINUX_NETLINK_H
 
-static int interface_unregister(const char *name, 
-			   struct socket_address *addr
-)
+static void interface_unregister(const char *name, struct socket_address *addr)
 {
-  // Find the matching non-dummy interface rule.
-  const struct config_network_interface *ifconfig = find_interface_config(name, OVERLAY_INTERFACE_UNKNOWN, SOCK_DGRAM);
-  if (!ifconfig)
-    return 0;
-    
-  if (addr->addr.sa_family==AF_INET)
-    addr->inet.sin_port = htons(ifconfig->port);
-  
-  struct overlay_interface *interface = overlay_interface_find_name_addr(name, addr);
-  if (interface)
-    overlay_interface_close(interface);
-    
-  return 0;
+  // close all socket interfaces whose names and addresses both match
+  unsigned i;
+  for (i = 0; i < OVERLAY_MAX_INTERFACES; i++) {
+    struct overlay_interface *interface = &overlay_interfaces[i];
+    if (interface->state == INTERFACE_STATE_UP
+        && match_interface_config(&interface->ifconfig, SOCK_DGRAM, OVERLAY_INTERFACE_UNKNOWN, name, NULL)) {
+      if (addr->addr.sa_family == AF_INET)
+	addr->inet.sin_port = htons(interface->ifconfig.port);
+      if (cmp_sockaddr(addr, &interface->address) == 0)
+	overlay_interface_close(interface);
+    }
+  }
 }
 
 DEFINE_ALARM(netlink_poll);
@@ -1393,11 +1466,15 @@ void overlay_interface_discover(struct sched_ent *alarm)
 
 static void file_interface_init(const struct config_network_interface *ifconfig)
 {
+  assert(ifconfig->file[0]);
+
+  char file_path[256];
+
   struct socket_address addr, netmask, broadcast;
   bzero(&addr, sizeof addr);
   bzero(&netmask, sizeof addr);
   bzero(&broadcast, sizeof broadcast);
-  
+
   switch(ifconfig->socket_type){
   case SOCK_FILE:
     // use a fake inet address
@@ -1415,37 +1492,35 @@ static void file_interface_init(const struct config_network_interface *ifconfig)
     broadcast.inet.sin_family=AF_INET;
     broadcast.inet.sin_port=htons(ifconfig->port);
     broadcast.inet.sin_addr.s_addr=ifconfig->dummy_address.s_addr | ~ifconfig->dummy_netmask.s_addr;
-    break;
-    
+
+    FALLTHROUGH;
   case SOCK_STREAM:
+    if (!form_dummy_file_path(file_path, sizeof file_path, ifconfig->file))
+      return; // ignore if path is too long
     break;
     
   case SOCK_DGRAM:
     {
       // use a local dgram socket
       // no abstract sockets for now
-      if (!FORMF_SERVAL_RUN_PATH(addr.local.sun_path, "%s/%s", config.server.interface_path, ifconfig->file))
+      if (!form_dgram_file_socket_address(&addr, ifconfig->file))
 	return;
-      
+      form_broadcast_file_socket_address(&broadcast, &addr);
+      assert(strlen(addr.local.sun_path) + 1 <= sizeof file_path);
+      strcpy(file_path, addr.local.sun_path);
       unlink(addr.local.sun_path);
-      addr.local.sun_family=AF_UNIX;
-      size_t len = strlen(addr.local.sun_path);
-      
-      addr.addrlen = offsetof(struct sockaddr_un, sun_path) + len + 1;
-      
-      broadcast = addr;
-      while(len && broadcast.local.sun_path[len]!='/')
-	broadcast.local.sun_path[len--]='\0';
-      broadcast.addrlen = offsetof(struct sockaddr_un, sun_path) + len + 2;
       break;
     }
     
   default:
-    // ignore
-    return;
+    return; // ignore
   }
-  
-  overlay_interface_init(ifconfig->file, OVERLAY_INTERFACE_UNKNOWN, &addr, &netmask, &broadcast, ifconfig);
+
+  // nothing to do if a matching interface is already up
+  if (overlay_interface_find_name_file_addr(ifconfig->file, file_path, &addr))
+    return;
+
+  overlay_interface_init(ifconfig->file, file_path, OVERLAY_INTERFACE_UNKNOWN, &addr, &netmask, &broadcast, ifconfig);
 }
 
 static void rescan_soon(time_ms_t run_at){
@@ -1471,35 +1546,85 @@ static void overlay_interface_config_change()
   if (!serverMode)
     return;
 
+  // bring down all interfaces that no longer match any configuration
   unsigned i;
-  int real_interface = 0;
-  
-  // bring down any interface that no longer matches configuration
-  for (i = 0; i < OVERLAY_MAX_INTERFACES; i++){
-    if (overlay_interfaces[i].state!=INTERFACE_STATE_UP ||
-      overlay_interfaces[i].ifconfig.socket_type == SOCK_EXT)
-      continue;
-	
-    const struct config_network_interface *ifconfig = find_interface_config(
-      overlay_interfaces[i].name,
-      OVERLAY_INTERFACE_UNKNOWN,
-      overlay_interfaces[i].ifconfig.socket_type
-    );
-    
-    if (!ifconfig || ifconfig->exclude){
-      overlay_interface_close(&overlay_interfaces[i]);
-      continue;
+  for (i = 0; i < OVERLAY_MAX_INTERFACES; i++) {
+    struct overlay_interface *interface = &overlay_interfaces[i];
+    if (interface->state == INTERFACE_STATE_UP) {
+      switch (interface->ifconfig.socket_type) {
+      case SOCK_EXT:
+	// leave external interfaces alone... they do not get configured from the config file, but
+	// from packets received from MDP clients
+	INFOF("Interface %s remains up: external %s", interface->name, alloca_socket_address(&interface->address));
+	break;
+
+      case SOCK_DGRAM:
+	{
+	  const struct config_network_interface *ifconfig = NULL;
+	  int remain = 0;
+	  switch (interface->address.local.sun_family) {
+	  case AF_UNIX:
+	    ifconfig = find_first_matching_interface_config(SOCK_DGRAM, interface->interface_type, NULL, interface->address.local.sun_path);
+	    remain = ifconfig && !ifconfig->exclude;
+	    break;
+	  case AF_INET:
+	    ifconfig = find_first_matching_interface_config(SOCK_DGRAM, interface->interface_type, interface->name, NULL);
+	    remain = ifconfig && !ifconfig->exclude;
+	    break;
+	  default:
+	    remain = 1; // leave interfaces with unknown addresses alone
+	    break;
+	  }
+	  if (remain)
+	    INFOF("Interface %s remains up: type %s addr %s",
+		interface->name,
+		interface_type_name(interface->interface_type),
+		alloca_socket_address(&interface->address));
+	  else
+	    overlay_interface_close(interface);
+	}
+	break;
+
+      case SOCK_STREAM:
+      case SOCK_FILE:
+	// find a config interface rule whose absolute path matches the current interface's absolute
+	// file path
+	{
+	  assert(interface->file_path[0]);
+	  const struct config_network_interface *ifconfig = find_first_matching_interface_config(
+	      interface->ifconfig.socket_type,
+	      interface->interface_type,
+	      NULL,
+	      interface->file_path);
+	  if (ifconfig && !ifconfig->exclude)
+	    INFOF("Interface %s remains up: type %s path %s",
+		interface->name,
+		interface_type_name(interface->interface_type),
+		interface->file_path);
+	  else
+	    overlay_interface_close(interface);
+	}
+	break;
+
+      default:
+	// leave interfaces with an unrecognised socket type alone
+	INFOF("Interface %s remains up: unrecognised socket_type=%#02x",
+	    interface->name,
+	    interface->ifconfig.socket_type);
+	break;
+      }
     }
   }
-  
+
   // create dummy file or AF_UNIX interfaces
+  int real_interface = 0;
   for (i = 0; i < config.interfaces.ac; ++i) {
     const struct config_network_interface *ifconfig = &config.interfaces.av[i].value;
     if (ifconfig->exclude)
       continue;
     
     // ignore real interfaces, we'll deal with them later
-    if (!*ifconfig->file) {
+    if (!ifconfig->file[0]) {
       real_interface = 1;
       continue;
     }

@@ -94,7 +94,7 @@ struct network_destination *load_subscriber_address(struct subscriber *subscribe
   const struct config_host *hostc = &config.hosts.av[i].value;
   overlay_interface *interface = NULL;
   if (*hostc->interface){
-    interface = overlay_interface_find_name_addr(hostc->interface, NULL);
+    interface = overlay_interface_find_name_file_addr(hostc->interface, NULL, NULL);
     if (!interface){
       WARNF("Can't find configured interface %s", hostc->interface);
       return NULL;
