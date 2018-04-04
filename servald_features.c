@@ -35,6 +35,8 @@ void servald_features()
   USE_FEATURE(cli_msp_proxy);
   USE_FEATURE(cli_rhizome_direct);
 
+  USE_FEATURE(log_output_file);
+
   USE_FEATURE(mdp_binding_MDP_PORT_ECHO);
   USE_FEATURE(mdp_binding_MDP_PORT_TRACE);
   USE_FEATURE(mdp_binding_MDP_PORT_KEYMAPREQUEST);
@@ -52,7 +54,6 @@ void servald_features()
 
   USE_FEATURE(dna_helper);
   USE_FEATURE(directory_client);
-  USE_FEATURE(log_output_file);
 
   USE_FEATURE(http_server);
   USE_FEATURE(http_rhizome);

@@ -45,7 +45,6 @@ DECLARE_SECTION(struct cli_schema, commands);
 #define CMD_COUNT (SECTION_START(commands) - SECTION_END(commands))
 
 int commandline_main(struct cli_context *context, const char *argv0, int argc, const char *const *args);
-int commandline_main_stdio(FILE *output, const char *argv0, int argc, const char *const *args);
 
 // Trigger that is called after every command has finished.  Different
 // sub-systems (eg, keyring, Rhizome) use this to reset their global state
