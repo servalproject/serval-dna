@@ -3,7 +3,7 @@
 # Aggregation of all Java tests.
 #
 # Copyright 2012-2014 Serval Project Inc.
-# Copyright 2017 Flinders University
+# Copyright 2017-2018 Flinders University
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -24,6 +24,7 @@ source "${0%/*}/../testdefs.sh"
 
 includeTests jni
 includeTests keyringjava
+includeTests routejava
 includeTests rhizomejava
 includeTests meshmsjava
 

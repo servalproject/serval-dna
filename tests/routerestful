@@ -87,6 +87,10 @@ test_AuthBasicWrong() {
 doc_RouteListAll="REST API list entire routing table"
 setup_RouteListAll() {
    setup
+   DIDA1=565656
+   NAMEA1="Neddy Seagoon"
+   DIDA2=3020304
+   NAMEA2="Spike Milligan"
    foreach_instance +A +B create_identities 2
    foreach_instance +A +B add_servald_interface 1
    foreach_instance +A +B start_servald_server
@@ -100,20 +104,24 @@ test_RouteListAll() {
    rest_request GET "/restful/route/all.json"
    transform_list_json response.json routes.json
    assert [ "$(jq 'length' routes.json)" = 4 ]
-   assertJq routes.json 'contains([{"sid": "'$SIDA1'",
+   assertJq routes.json 'contains([{"sid": "'"$SIDA1"'",
+                                    "did": "'"$DIDA1"'",
+                                    "name": "'"$NAMEA1"'",
                                     "is_self": true,
                                     "hop_count": 0}])'
-   assertJq routes.json 'contains([{"sid": "'$SIDA2'",
+   assertJq routes.json 'contains([{"sid": "'"$SIDA2"'",
+                                    "did": "'"$DIDA2"'",
+                                    "name": "'"$NAMEA2"'",
                                     "is_self": true,
                                     "hop_count": 0}])'
-   assertJq routes.json 'contains([{"sid": "'$PRIMARY_SIDB'",
+   assertJq routes.json 'contains([{"sid": "'"$PRIMARY_SIDB"'",
                                     "is_self": false,
                                     "reachable_unicast": true,
                                     "reachable_indirect": false,
                                     "hop_count": 1}])'
    for SID in "${SIDB[@]}"; do
       if [ "$SID" != "$PRIMARY_SIDB" ]; then
-         assertJq routes.json 'contains([{"sid": "'$SID'",
+         assertJq routes.json 'contains([{"sid": "'"$SID"'",
                                           "is_self": false,
                                           "reachable_unicast": false,
                                           "reachable_indirect": true,

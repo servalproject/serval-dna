@@ -24,6 +24,7 @@ import org.servalproject.codec.Base64;
 import org.servalproject.servaldna.keyring.KeyringCommon;
 import org.servalproject.servaldna.keyring.KeyringIdentity;
 import org.servalproject.servaldna.keyring.KeyringIdentityList;
+import org.servalproject.servaldna.route.RouteIdentityList;
 import org.servalproject.servaldna.meshmb.MeshMBActivityList;
 import org.servalproject.servaldna.meshmb.MeshMBCommon;
 import org.servalproject.servaldna.meshmb.MeshMBSubscriptionList;
@@ -112,6 +113,12 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 	public KeyringIdentity keyringRemove(SubscriberId sid, String pin) throws ServalDInterfaceException, IOException
 	{
 		return KeyringCommon.removeIdentity(this, sid, pin);
+	}
+
+	public RouteIdentityList routeListIdentities() throws ServalDInterfaceException, IOException {
+		RouteIdentityList list = new RouteIdentityList(this);
+		list.connect();
+		return list;
 	}
 
 	public RhizomeBundleList rhizomeListBundles() throws ServalDInterfaceException, IOException

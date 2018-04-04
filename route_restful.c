@@ -146,13 +146,13 @@ static int restful_route_list_json_content_chunk(struct http_request *hr, strbuf
       strbuf_json_integer(b, subscriber->hop_count);
       // first_hop
       strbuf_puts(b, ",");
-      if (subscriber->hop_count > 1)
+      if (subscriber->next_hop)
 	strbuf_json_string(b, alloca_tohex_sid_t(subscriber->next_hop->sid));
       else
 	strbuf_json_null(b);
       // penultimate_hop
       strbuf_puts(b, ",");
-      if (subscriber->hop_count > 2)
+      if (subscriber->prior_hop)
 	strbuf_json_string(b, alloca_tohex_sid_t(subscriber->prior_hop->sid));
       else
 	strbuf_json_null(b);
