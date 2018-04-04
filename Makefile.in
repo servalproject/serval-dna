@@ -391,9 +391,9 @@ ifneq ($(SWIFTC),) # Only provide Swift targets if the Swift compiler is availab
 # package.
 servaldswift: $(srcdir)/servaldswift.swift \
 	      $(OBJSDIR_SERVALD)/servald_features.o \
-	      libservaldaemon.a \
 	      $(SWIFT_MODULE_NAME).swiftmodule \
-	      libServalDNA.a
+	      libServalDNA.a \
+	      libservaldaemon.a
 	@echo SWIFT $@
 	@$(SWIFTC) -emit-executable -o $@ \
 		$(SWIFTCFLAGS) $(SWIFTDEFS) \
