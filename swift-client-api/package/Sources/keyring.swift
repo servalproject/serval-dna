@@ -1,6 +1,6 @@
 /*
 Serval DNA Swift API
-Copyright (C) 2016 Flinders University
+Copyright (C) 2016-2018 Flinders University
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -35,7 +35,8 @@ public class ServalKeyring {
     {
         var param = [String: String]()
         if pin != nil { param["pin"] = pin }
-        return client.createRequest(path: "restful/keyring/identities.json",
+        return client.createRequest(verb: "GET",
+                                    path: "restful/keyring/identities.json",
                                     query: param) { (statusCode, json, error) in
             if let error = error {
                 completionHandler(nil, error)
@@ -125,7 +126,7 @@ public class ServalKeyring {
                             return
                         }
                         if !text.isEmpty {
-                            did = text 
+                            did = text
                         }
                     }
                 }
@@ -148,13 +149,14 @@ public class ServalKeyring {
     }
 
     private static func singleIdentityRequest(client: ServalRestfulClient = ServalRestfulClient(),
+                                              verb: String,
                                               path: String,
                                               query: [String: String] = [:],
                                               successStatusCodes: Set<Int> = [200],
                                               completionHandler: @escaping (Identity?, Error?) -> Void)
         -> ServalRestfulClient.Request
     {
-        return client.createRequest(path: path, query: query) { (statusCode, json, error) in
+        return client.createRequest(verb:verb, path: path, query: query) { (statusCode, json, error) in
             if let error = error {
                 completionHandler(nil, error)
                 return
@@ -205,9 +207,25 @@ public class ServalKeyring {
         if name != nil { param["name"] = name }
         if pin != nil { param["pin"] = pin }
         return self.singleIdentityRequest(client: client,
+                                          verb: "POST",
                                           path: "restful/keyring/add",
                                           query: param,
                                           successStatusCodes: [201],
+                                          completionHandler: completionHandler)
+    }
+
+    public static func getIdentity(client: ServalRestfulClient = ServalRestfulClient(),
+                                   sid: SubscriberId,
+                                   pin: String? = nil,
+                                   completionHandler: @escaping (Identity?, Error?) -> Void)
+        -> ServalRestfulClient.Request
+    {
+        var param = [String: String]()
+        if pin != nil { param["pin"] = pin }
+        return self.singleIdentityRequest(client: client,
+                                          verb: "GET",
+                                          path: "restful/keyring/\(sid.hexUpper)",
+                                          query: param,
                                           completionHandler: completionHandler)
     }
 
@@ -219,7 +237,11 @@ public class ServalKeyring {
     {
         var param = [String: String]()
         if pin != nil { param["pin"] = pin }
-        return self.singleIdentityRequest(client: client, path: "restful/keyring/\(sid.hexUpper)/remove", query: param, completionHandler: completionHandler)
+        return self.singleIdentityRequest(client: client,
+                                          verb: "DELETE",
+                                          path: "restful/keyring/\(sid.hexUpper)",
+                                          query: param,
+                                          completionHandler: completionHandler)
     }
 
     public static func setIdentity(client: ServalRestfulClient = ServalRestfulClient(),
@@ -234,7 +256,11 @@ public class ServalKeyring {
         if did != nil { param["did"] = did }
         if name != nil { param["name"] = name }
         if pin != nil { param["pin"] = pin }
-        return self.singleIdentityRequest(client: client, path: "restful/keyring/\(sid.hexUpper)/set", query: param, completionHandler: completionHandler)
+        return self.singleIdentityRequest(client: client,
+                                          verb: "PATCH",
+                                          path: "restful/keyring/\(sid.hexUpper)",
+                                          query: param,
+                                          completionHandler: completionHandler)
     }
 
 }

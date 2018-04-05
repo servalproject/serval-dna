@@ -1,6 +1,6 @@
 /*
 Serval DNA Swift API
-Copyright (C) 2016 Flinders University
+Copyright (C) 2016-2018 Flinders University
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -64,7 +64,8 @@ public class ServalRestfulClient {
         self.configuration = configuration
     }
 
-    public func createRequest(path: String,
+    public func createRequest(verb: String,
+                              path: String,
                               query: [String: String] = [:],
                               completionHandler: @escaping (Int?, Any?, Error?) -> Void)
         -> Request?
@@ -86,7 +87,7 @@ public class ServalRestfulClient {
         let session = URLSession(configuration: URLSessionConfiguration.default)
         debugPrint(url, to: &debugStream)
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        request.httpMethod = verb
         if !self.configuration.username.isEmpty {
             let data = (self.configuration.username + ":" + self.configuration.password).data(using: String.Encoding.utf8)
             if let base64 = data?.base64EncodedString() {

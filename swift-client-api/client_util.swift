@@ -1,6 +1,6 @@
 /*
 Serval DNA Client Swift test program
-Copyright (C) 2016-2017 Flinders University
+Copyright (C) 2016-2018 Flinders University
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -28,6 +28,7 @@ var arg0 : String = ""
 func usage() {
     // Once no longer supporting Swift 3, change this to a multi-line string literal.
     print("Usage: \(arg0) [options] keyring --pin PIN list")
+    print("       \(arg0) [options] keyring --pin PIN get SID")
     print("       \(arg0) [options] keyring --pin PIN add [ did DID ] [ name NAME ]")
     print("       \(arg0) [options] keyring --pin PIN remove SID")
     print("       \(arg0) [options] keyring --pin PIN set SID [ did DID ] [ name NAME ]")
@@ -118,6 +119,27 @@ func keyring(_ args: inout [String], configuration: ServalRestfulClient.Configur
                 for identity in identities {
                     print("\(identity.sid.hexUpper):\(identity.identity.hexUpper):\(identity.did ?? ""):\(identity.name ?? "")")
                 }
+            }
+            semaphore.signal()
+        }
+        print("Waiting...", to: &debugStream)
+        semaphore.wait()
+        print("Done", to: &debugStream)
+        request.close()
+
+    case "get":
+        let sid = SubscriberId(fromHex: args.remove(at: 0))!
+        precondition(args.isEmpty)
+        print("Getting (sid=\(sid.hexUpper))...")
+        let semaphore = DispatchSemaphore(value: 0)
+        let client = ServalRestfulClient(configuration: configuration)
+        let request = ServalKeyring.getIdentity(client: client, sid: sid, pin: pin) { (identity, error) in
+            if let error = error {
+                print(error, to: &errorStream)
+                status = 2
+            }
+            else if let identity = identity {
+                printIdentity(identity: identity)
             }
             semaphore.signal()
         }
