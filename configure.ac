@@ -263,6 +263,7 @@ AX_APPEND_COMPILE_FLAGS([ \
     -Wno-unused-but-set-variable \
     -Wno-missing-field-initializers \
     -Wno-deprecated-declarations \
+    -Wno-implicit-fallthrough \
     '-Wno-#warnings' \
     ],
     [CFLAGS_SQLITE], [-Werror])
