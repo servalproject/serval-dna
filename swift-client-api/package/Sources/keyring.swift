@@ -28,6 +28,47 @@ public class ServalKeyring {
         public let name : String?
     }
 
+    private static func unpackIdentity(fromJsonDict json: [String: Any?]) throws -> Identity
+    {
+        guard let sidany = json["sid"] else {
+            throw ServalRestfulClient.Exception.invalidJson(reason: "missing \"sid\" element")
+        }
+        guard let sidhex = sidany as? String else {
+            throw ServalRestfulClient.Exception.invalidJson(reason: "sid value is not String")
+        }
+        guard let sid = SubscriberId(fromHex: sidhex) else {
+            throw ServalRestfulClient.Exception.invalidJson(reason: "sid value is not hex: \(sidhex)")
+        }
+        guard let idany = json["identity"] else {
+            throw ServalRestfulClient.Exception.invalidJson(reason: "missing \"identity\" element")
+        }
+        guard let idhex = idany as? String else {
+            throw ServalRestfulClient.Exception.invalidJson(reason: "identity value is not String")
+        }
+        guard let identity = SubscriberId(fromHex: idhex) else {
+            throw ServalRestfulClient.Exception.invalidJson(reason: "identity value is not hex: \(idhex)")
+        }
+        var did: String?
+        if let value = json["did"], value != nil {
+            guard let text = value! as? String else {
+                throw ServalRestfulClient.Exception.invalidJson(reason: "did value is not String")
+            }
+            if !text.isEmpty {
+                did = text
+            }
+        }
+        var name: String?
+        if let value = json["name"], value != nil {
+            guard let text = value! as? String else {
+                throw ServalRestfulClient.Exception.invalidJson(reason: "name value is not String")
+            }
+            if !text.isEmpty {
+                name = text
+            }
+        }
+        return Identity(sid: sid, identity: identity, did: did, name: name)
+    }
+
     public static func listIdentities(client: ServalRestfulClient = ServalRestfulClient(),
                                       pin: String? = nil,
                                       completionHandler: @escaping ([Identity]?, Error?) -> Void)
@@ -46,103 +87,15 @@ public class ServalKeyring {
                 completionHandler(nil, ServalRestfulClient.Exception.requestFailed(statusCode: statusCode!))
                 return
             }
-            guard let json_top = json as? [String: Any] else {
-                completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "root is not JSON object"))
-                return
-            }
-            var column_count = 0
-            var sid_index = -1
-            var identity_index = -1
-            var did_index = -1
-            var name_index = -1
-            guard let header = json_top["header"] as? [String] else {
-                completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "missing 'header' element"))
-                return
-            }
-            for text in header {
-                if text == "sid" {
-                    sid_index = column_count
-                }
-                else if text == "identity" {
-                    identity_index = column_count
-                }
-                else if text == "did" {
-                    did_index = column_count
-                }
-                else if text == "name" {
-                    name_index = column_count
-                }
-                column_count += 1
-            }
-            guard sid_index != -1 else {
-                completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "missing 'sid' column"))
-                return
-            }
-            guard identity_index != -1 else {
-                completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "missing 'identity' column"))
-                return
-            }
-            guard let rows = json_top["rows"] as? [[Any]] else {
-                completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "missing 'rows' element"))
-                return
-            }
             var identities : [Identity] = []
-            for row in rows {
-                guard row.count == column_count else {
-                    completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "row has \(row.count) elements; should be \(column_count)"))
-                    return
+            do {
+                for row in try ServalRestfulClient.transformJsonTable(json: json) {
+                    identities.append(try unpackIdentity(fromJsonDict: row))
                 }
-                var opt_sid : SubscriberId?
-                var opt_identity : SubscriberId?
-                var did : String?
-                var name : String?
-                if sid_index != -1 {
-                    guard let hex = row[sid_index] as? String else {
-                        completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "sid value is not String"))
-                        return
-                    }
-                    opt_sid = SubscriberId(fromHex: hex)
-                    guard opt_sid != nil else {
-                        completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "sid value is not hex: \(hex)"))
-                        return
-                    }
-                }
-                if identity_index != -1 {
-                    guard let hex = row[identity_index] as? String else {
-                        completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "identity value is not String"))
-                        return
-                    }
-                    opt_identity = SubscriberId(fromHex: hex)
-                    guard opt_sid != nil else {
-                        completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "identity value is not hex: \(hex)"))
-                        return
-                    }
-                }
-                if did_index != -1 {
-                    let value = row[did_index]
-                    if value as? NSNull == nil {
-                        guard let text = value as? String else {
-                            completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "did value is not String: \(value)"))
-                            return
-                        }
-                        if !text.isEmpty {
-                            did = text
-                        }
-                    }
-                }
-                if name_index != -1 {
-                    let value = row[name_index]
-                    if value as? NSNull == nil {
-                        guard let text = value as? String else {
-                            completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "name value is not String: \(value)"))
-                            return
-                        }
-                        if !text.isEmpty {
-                            name = text
-                        }
-                    }
-                }
-                identities.append(Identity(sid: opt_sid!, identity: opt_identity!, did: did, name: name))
+            }
+            catch let e {
+                completionHandler(nil, e)
+                return
             }
             completionHandler(identities, nil)
         }!
@@ -161,37 +114,22 @@ public class ServalKeyring {
                 completionHandler(nil, error)
                 return
             }
-            guard successStatusCodes.contains(statusCode!) else {
-                completionHandler(nil, ServalRestfulClient.Exception.requestFailed(statusCode: statusCode!))
-                return
+            do {
+                guard successStatusCodes.contains(statusCode!) else {
+                    throw ServalRestfulClient.Exception.requestFailed(statusCode: statusCode!)
+                }
+                guard let json_top = json as? [String: Any] else {
+                    throw ServalRestfulClient.Exception.invalidJson(reason: "root is not JSON object")
+                }
+                guard let json_identity = json_top["identity"] as? [String: Any] else {
+                    completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "'identity' is not JSON object"))
+                    return
+                }
+                completionHandler(try unpackIdentity(fromJsonDict: json_identity), nil)
             }
-            guard let json_top = json as? [String: Any] else {
-                completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "root is not JSON object"))
-                return
+            catch let e {
+                completionHandler(nil, e)
             }
-            guard let json_identity = json_top["identity"] as? [String: Any] else {
-                completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "'identity' is not JSON object"))
-                return
-            }
-            guard let sid_hex = json_identity["sid"] as? String else {
-                completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "'sid' is not String"))
-                return
-            }
-            guard let identity_hex = json_identity["identity"] as? String else {
-                completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "'identity' is not String"))
-                return
-            }
-            guard let sid = SubscriberId(fromHex: sid_hex) else {
-                completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "invalid 'sid': \(sid_hex)"))
-                return
-            }
-            guard let identity = SubscriberId(fromHex: identity_hex) else {
-                completionHandler(nil, ServalRestfulClient.Exception.invalidJson(reason: "invalid 'identity': \(identity_hex)"))
-                return
-            }
-            let did = json_identity["did"] as? String ?? ""
-            let name = json_identity["name"] as? String ?? ""
-            completionHandler(Identity(sid: sid, identity: identity, did: did, name: name), nil)
         }!
     }
 

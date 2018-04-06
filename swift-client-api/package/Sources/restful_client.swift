@@ -117,4 +117,26 @@ public class ServalRestfulClient {
         dataTask.resume()
         return Request(urlSession: session, dataTask: dataTask)
     }
+
+    public static func transformJsonTable(json: Any?) throws -> [[String: Any?]]
+    {
+        guard let json_top = json as? [String: Any] else {
+            throw ServalRestfulClient.Exception.invalidJson(reason: "root is not JSON object")
+        }
+        guard let header = json_top["header"] as? [String] else {
+            throw ServalRestfulClient.Exception.invalidJson(reason: "missing 'header' element")
+        }
+        guard let rows = json_top["rows"] as? [[Any]] else {
+            throw ServalRestfulClient.Exception.invalidJson(reason: "missing 'rows' element")
+        }
+        var ret : [[String: Any?]] = []
+        for row in rows {
+            guard row.count == header.count else {
+                throw ServalRestfulClient.Exception.invalidJson(reason: "row has \(row.count) elements; should be \(header.count)")
+            }
+            ret.append(Dictionary(uniqueKeysWithValues: zip(header, row.map { $0 as? NSNull == nil ? $0 : nil })))
+        }
+        return ret
+    }
+
 }

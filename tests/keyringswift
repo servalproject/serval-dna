@@ -148,7 +148,6 @@ test_keyringSetDidName() {
    assert_stdout_keyvalue sid "$SIDA1"
    assert_stdout_keyvalue identity "$IDA1"
    assert_stdout_keyvalue did "123456"
-   assert_stdout_keyvalue name ""
    executeOk_servald keyring list
    assert_keyring_list 1
    assertStdoutGrep --stderr --matches=1 "^$SIDA1:$IDA1:123456:\$"
