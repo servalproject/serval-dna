@@ -17,6 +17,23 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+# Setup function:
+# - configure log diagnostics that are useful for debugging routing
+# - disable Rhizome to speed up tests
+setup_route_config() {
+   executeOk_servald config \
+      set log.console.level debug \
+      set log.console.show_pid on \
+      set log.console.show_time on \
+      set debug.mdprequests yes \
+      set debug.linkstate yes \
+      set debug.subscriber yes \
+      set debug.verbose yes \
+      set debug.overlayrouting yes \
+      set debug.overlayinterfaces yes \
+      set rhizome.enable no
+}
+
 interface_is_up() {
    $GREP "Interface .* is up" $instance_servald_log || return 1
    return 0

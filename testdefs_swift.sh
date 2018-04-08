@@ -24,11 +24,47 @@ assert_swift_executable_exists() {
    executeSwiftOk help
 }
 
+# Setup function:
+# - configure log diagnostics that are useful for debugging a Swift API
+# - configure REST API credentials to support the Swift client
+setup_swift_config() {
+   local _instance="$1"
+   [ -z "$_instance" ] || push_and_set_instance $_instance || return $?
+   executeOk_servald config \
+      set log.console.level debug \
+      set log.console.show_pid on \
+      set log.console.show_time on \
+      set debug.http_server on \
+      set debug.httpd on \
+      set "api.restful.users.$SWIFT_TEST_USER.password" "$SWIFT_TEST_PASSWORD"
+   [ -z "$_instance" ] || pop_instance
+   return 0
+}
+
+# Setup function:
+# - wait for the current instance's server to start processing REST requests
+# - initialise the SWIFT_PORT_{I} shell variable with the port number of the REST
+#   server running in instance {I}
+# - zero the request count for the rest_request() function
+wait_until_swift_server_ready() {
+   local _instance
+   case $1 in
+   '') _instance=$instance_name;;
+   +[A-Z]) _instance=${1#+};;
+   *) error "invalid instance arg: $1";;
+   esac
+   wait_until servald_restful_http_server_started +$_instance
+   local _portvar=SWIFT_TEST_PORT_$_instance
+   get_servald_restful_http_server_port $_portvar +$_instance
+}
+
 executeSwiftOk() {
+   local _portvar=SWIFT_TEST_PORT_$instance_name
+   [ -n "${!_portvar}" ] || error "\$$_portvar is not set"
    executeOk --stdout --stderr --core-backtrace \
              --executable="$swift_client_util" \
              -- \
-             --port "${SWIFT_TEST_PORT?}" \
+             --port "${!_portvar}" \
              ${SWIFT_TEST_USER:+--user "$SWIFT_TEST_USER" --password "$SWIFT_TEST_PASSWORD"} \
              "$@"
 }

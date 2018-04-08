@@ -28,7 +28,7 @@ setup() {
    setup_servald_so
    assert_java_classes_exist
    set_instance +A
-   set_keyring_config
+   setup_keyring_config
    set_extra_config
    if [ -z "$IDENTITY_COUNT" ]; then
       create_single_identity
@@ -48,7 +48,7 @@ teardown() {
    report_all_servald_servers
 }
 
-set_keyring_config() {
+setup_keyring_config() {
    executeOk_servald config \
       set log.console.level debug \
       set debug.httpd on \

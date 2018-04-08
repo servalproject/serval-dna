@@ -25,12 +25,15 @@ setup_rest_utilities() {
 }
 
 # Setup function:
-# - configure the given (or current) instance with helpful debug options and
-#   some standard REST API usernames/passwords
+# - configure log diagnostics that are useful for debugging REST requests
+# - configure some standard REST API usernames/passwords
 setup_rest_config() {
    local _instance="$1"
    [ -z "$_instance" ] || push_and_set_instance $_instance || return $?
    executeOk_servald config \
+      set log.console.level debug \
+      set log.console.show_pid on \
+      set log.console.show_time on \
       set debug.http_server on \
       set debug.httpd on \
       set api.restful.users.harry.password potter \

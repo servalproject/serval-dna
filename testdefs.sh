@@ -884,7 +884,7 @@ add_servald_interface() {
 #  - set variables LOGx to the full path of server log file for instance x: LOGA,
 #    LOGB, etc,
 #  - wait for all instances to detect each other
-#  - assert that all instances are in each others' peer lists
+#  - TODO: assert that all instances are in each others' peer lists
 start_servald_instances() {
    push_instance
    tfw_log "# start servald instances $*"

@@ -25,11 +25,9 @@ source "${0%/*}/../testdefs_swift.sh"
 
 setup() {
    setup_servald
+   setup_swift_config +A
    set_instance +A
-   set_keyring_config
-   set_extra_config
-   executeOk_servald config \
-      set "api.restful.users.$SWIFT_TEST_USER.password" "$SWIFT_TEST_PASSWORD"
+   setup_keyring_config
    if [ -z "$IDENTITY_COUNT" ]; then
       create_single_identity
    else
@@ -37,8 +35,7 @@ setup() {
    fi
    export SERVALD_RHIZOME_DB_RETRY_LIMIT_MS=60000
    start_servald_server
-   wait_until servald_restful_http_server_started +A
-   get_servald_restful_http_server_port SWIFT_TEST_PORT +A
+   wait_until_swift_server_ready +A
 }
 
 teardown() {
@@ -48,16 +45,13 @@ teardown() {
    report_all_servald_servers
 }
 
-set_keyring_config() {
+setup_keyring_config() {
    executeOk_servald config \
       set log.console.level debug \
-      set debug.httpd on \
+      set log.console.show_pid on \
+      set log.console.show_time on \
       set debug.keyring on \
       set debug.verbose on
-}
-
-set_extra_config() {
-   :
 }
 
 doc_keyringList="Swift API list keyring identities"

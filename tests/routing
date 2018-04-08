@@ -24,16 +24,7 @@ source "${0%/*}/../testdefs.sh"
 source "${0%/*}/../testdefs_routing.sh"
 
 configure_servald_server() {
-   executeOk_servald config \
-      set debug.mdprequests yes \
-      set debug.linkstate yes \
-      set debug.subscriber yes \
-      set debug.verbose yes \
-      set debug.overlayrouting yes \
-      set log.console.level debug \
-      set log.console.show_pid on \
-      set log.console.show_time on \
-      set rhizome.enable no
+   setup_route_config
 }
 
 teardown() {
