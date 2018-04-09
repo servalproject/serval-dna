@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# Tests for Route Swift API.
+#
+# Copyright 2018 Flinders University
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_routing.sh"
+source "${0%/*}/../testdefs_swift.sh"
+
+setup() {
+   setup_servald
+   setup_swift_config +A
+   set_instance +A
+   setup_route_config
+   export SERVALD_RHIZOME_DB_RETRY_LIMIT_MS=60000
+}
+
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
+doc_RouteListAll="Swift API list entire routing table"
+setup_RouteListAll() {
+   setup
+   DIDA1=565656
+   NAMEA1="Neddy Seagoon"
+   DIDA2=3020304
+   NAMEA2="Spike Milligan"
+   foreach_instance +A +B create_identities 2
+   foreach_instance +A +B add_servald_interface 1
+   foreach_instance +A +B start_servald_server
+   wait_until_swift_server_ready +A
+   get_servald_primary_sid +B PRIMARY_SIDB
+   wait_until --timeout=20 path_exists +A +B
+   wait_until --timeout=10 path_exists +B +A
+   set_instance +A
+}
+test_RouteListAll() {
+   executeSwiftOk route list
+   tfw_cat --stdout --stderr
+   assertStdoutLineCount == 6
+   assertStdoutGrep --line=2 "^sid:did:name:is_self:hop_count:reachable_broadcast:reachable_unicast:reachable_indirect$"
+   assertStdoutGrep --matches=1 "^$SIDA1:$DIDA1:$NAMEA1:1:0:[01]:[01]:[01]$"
+   assertStdoutGrep --matches=1 "^$SIDA2:$DIDA2:$NAMEA2:1:0:[01]:[01]:[01]$"
+   assertStdoutGrep --matches=1 "^$PRIMARY_SIDB:::0:1:[01]:1:0$"
+   for SID in "${SIDB[@]}"; do
+      if [ "$SID" != "$PRIMARY_SIDB" ]; then
+         assertStdoutGrep --matches=1 "^$SID:::0:2:[01]:0:1$"
+      fi
+   done
+}
+
+runTests "$@"

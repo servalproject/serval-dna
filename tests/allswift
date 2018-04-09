@@ -1,9 +1,8 @@
 #!/bin/bash
 
-# Aggregation of all tests except high-load stress tests.
+# Aggregation of all Swift API tests.
 #
-# Copyright 2012-2014 Serval Project Inc.
-# Copyright 2017-2018 Flinders University
+# Copyright 2018 Flinders University
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -22,29 +21,7 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
-includeTests logging
-includeTests config
-includeTests keyring
-includeTests server
-includeTests routing
-includeTests mdp
-includeTests msp
-includeTests dnahelper
-includeTests dnaprotocol
-includeTests rhizomeops
-includeTests rhizomeprotocol
-includeTests meshms
-includeTests meshmb
-includeTests directory_service
-includeTests vomp
-
-includeTests allrestful
-
-if type -p "$JAVAC" >/dev/null; then
-   includeTests alljava
-fi
-if type -p "$SWIFTC" >/dev/null; then
-   includeTests allswift
-fi
+includeTests keyringswift
+includeTests routeswift
 
 runTests "$@"

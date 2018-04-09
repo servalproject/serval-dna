@@ -27,11 +27,12 @@ var arg0 : String = ""
 
 func usage() {
     // Once no longer supporting Swift 3, change this to a multi-line string literal.
-    print("Usage: \(arg0) [options] keyring --pin PIN list")
-    print("       \(arg0) [options] keyring --pin PIN get SID")
-    print("       \(arg0) [options] keyring --pin PIN add [ did DID ] [ name NAME ]")
-    print("       \(arg0) [options] keyring --pin PIN remove SID")
-    print("       \(arg0) [options] keyring --pin PIN set SID [ did DID ] [ name NAME ]")
+    print("Usage: \(arg0) [options] keyring [ --pin PIN ] list")
+    print("       \(arg0) [options] keyring [ --pin PIN ] get SID")
+    print("       \(arg0) [options] keyring [ --pin PIN ] add [ did DID ] [ name NAME ]")
+    print("       \(arg0) [options] keyring [ --pin PIN ] remove SID")
+    print("       \(arg0) [options] keyring [ --pin PIN ] set SID [ did DID ] [ name NAME ]")
+    print("       \(arg0) [options] route list")
     print("Options:")
     print("    --pin PIN")
     print("    --user USER")
@@ -54,6 +55,8 @@ func main() {
     switch (cmd) {
     case "keyring":
         exit(keyring(&args, configuration: restful_config))
+    case "route":
+        exit(route(&args, configuration: restful_config))
     default:
         usage()
         exit(1)
@@ -222,6 +225,40 @@ func keyring(_ args: inout [String], configuration: ServalRestfulClient.Configur
             }
             else if let identity = identity {
                 printIdentity(identity: identity)
+            }
+            semaphore.signal()
+        }
+        print("Waiting...", to: &debugStream)
+        semaphore.wait()
+        print("Done", to: &debugStream)
+        request.close()
+
+    default:
+        usage()
+        status = 1
+    }
+    return status
+}
+
+func route(_ args: inout [String], configuration: ServalRestfulClient.Configuration) -> Int32 {
+    let cmd = args.isEmpty ? "" : args.remove(at: 0)
+    var status : Int32 = 0
+    switch (cmd) {
+    case "list":
+        precondition(args.isEmpty)
+        print("8")
+        print("sid:did:name:is_self:hop_count:reachable_broadcast:reachable_unicast:reachable_indirect")
+        let semaphore = DispatchSemaphore(value: 0)
+        let client = ServalRestfulClient(configuration: configuration)
+        let request = ServalRoute.listIdentities(client: client) { (identities, error) in
+            if let error = error {
+                print(error, to: &errorStream)
+                status = 2
+            }
+            else if let identities = identities {
+                for identity in identities {
+                    print("\(identity.sid.hexUpper):\(identity.did ?? ""):\(identity.name ?? ""):\(identity.is_self ? 1 : 0):\(identity.hop_count):\(identity.reachable_broadcast ? 1 : 0):\(identity.reachable_unicast ? 1 : 0):\(identity.reachable_indirect ? 1 : 0)")
+                }
             }
             semaphore.signal()
         }
