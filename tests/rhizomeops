@@ -481,8 +481,9 @@ setup_CorruptExternalBlob() {
    executeOk_servald rhizome add file "$SIDA" file1 file1.manifest
    extract_manifest_id manifestid file1.manifest
    extract_manifest_filehash filehash file1.manifest
-   assert cmp file1 "$SERVALINSTANCE_PATH/blob/$filehash"
-   echo "Replacement" >"$SERVALINSTANCE_PATH/blob/$filehash"
+   get_external_blob_path blob_file "$filehash"
+   assert cmp file1 "$blob_file"
+   echo "Replacement" >"$blob_file"
 }
 test_CorruptExternalBlob() {
    execute --exit-status=255 "$servald" rhizome extract file "$manifestid" file1a
@@ -1111,10 +1112,10 @@ test_JournalAppendNoHash() {
    assert_stdout_add_file file1
    extract_stdout_manifestid BID
    extract_stdout_filehash HASH
-   assert [ $(ls "$SERVALINSTANCE_PATH/hash" | wc -l) -eq 1 ]
+   assert [ $(find "$SERVALINSTANCE_PATH/hash" -type f| wc -l) -eq 1 ]
    executeOk_servald rhizome journal append "$SIDA" "$BID" file2
    tfw_cat --stdout --stderr
-   assert [ $(ls "$SERVALINSTANCE_PATH/hash" | wc -l) -eq 2 ]
+   assert [ $(find "$SERVALINSTANCE_PATH/hash" -type f| wc -l) -eq 2 ]
    assertStderrGrep 'Reusing journal'
    executeOk_servald rhizome extract file "$BID" filex
    tfw_cat --stdout --stderr
@@ -1136,11 +1137,13 @@ setup_JournalAppendSharedPayload() {
    cat file1 file2 >file12
    executeOk_servald rhizome add file '' file1
    extract_stdout_filehash HASH1
-   assert cmp file1 "$SERVALINSTANCE_PATH/blob/$HASH1"
+   get_external_blob_path blob_file1 "$HASH1"
+   assert cmp file1 "$blob_file1"
    executeOk_servald rhizome add file '' file12
    extract_stdout_filehash HASH12
-   assert cmp file12 "$SERVALINSTANCE_PATH/blob/$HASH12"
-   assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
+   get_external_blob_path blob_file12 "$HASH12"
+   assert cmp file12 "$blob_file12"
+   assert [ $(find "$SERVALINSTANCE_PATH/blob" -type f| wc -l) -eq 2 ]
 }
 test_JournalAppendSharedPayload() {
    executeOk_servald rhizome journal append "$SIDA" "" file1
@@ -1148,14 +1151,14 @@ test_JournalAppendSharedPayload() {
    assert_stdout_add_file file1
    extract_stdout_filehash addedhash
    assert [ "$addedhash" = "$HASH1" ]
-   assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
+   assert [ $(find "$SERVALINSTANCE_PATH/blob" -type f| wc -l) -eq 2 ]
    extract_stdout_manifestid BID
    executeOk_servald rhizome journal append "$SIDA" "$BID" file2
    tfw_cat --stdout --stderr
    assert_stdout_add_file file12 !name
    extract_stdout_filehash addedhash
    assert [ "$addedhash" = "$HASH12" ]
-   assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
+   assert [ $(find "$SERVALINSTANCE_PATH/blob" -type f| wc -l) -eq 2 ]
 }
 
 doc_JournalAddCreate="Cannot create a journal using file add"

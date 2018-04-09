@@ -42,6 +42,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 uint64_t rhizome_copy_file_to_blob(int fd, uint64_t id, size_t size);
 
+static int form_store_blob_path(char *buff, size_t buff_size, const char *subdir, const rhizome_filehash_t *hash){
+  return formf_rhizome_store_path(buff, buff_size, "%s/%02X/%02X/%s", subdir, hash->binary[0], hash->binary[1], alloca_tohex(&hash->binary[2], sizeof(hash->binary)-2));
+}
+#define FORM_BLOB_PATH(BUFF,SUBDIR,HASH) form_store_blob_path((BUFF),sizeof(BUFF),(SUBDIR),(HASH))
+
 enum rhizome_payload_status rhizome_exists(const rhizome_filehash_t *hashp)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
@@ -56,9 +61,19 @@ enum rhizome_payload_status rhizome_exists(const rhizome_filehash_t *hashp)
     return RHIZOME_PAYLOAD_STATUS_NEW;
 
   char blob_path[1024];
-  if (FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(*hashp))){
+  if (FORM_BLOB_PATH(blob_path, RHIZOME_BLOB_SUBDIR, hashp)){
     struct stat st;
     if (stat(blob_path, &st) == 0)
+      return RHIZOME_PAYLOAD_STATUS_STORED;
+  }
+
+  char legacy_path[1024];
+  // migrate from flat folder to sub-tree's
+  if (FORMF_RHIZOME_STORE_PATH(legacy_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(*hashp))){
+    struct stat st;
+    if (stat(legacy_path, &st) == 0
+      && emkdirsn(legacy_path, strrchr(legacy_path,'/') - legacy_path, 0700)!=-1
+      && rename(legacy_path, blob_path) != -1)
       return RHIZOME_PAYLOAD_STATUS_STORED;
   }
 
@@ -97,13 +112,13 @@ static uint64_t rhizome_create_fileblob(sqlite_retry_state *retry, uint64_t id, 
   return rowid;
 }
 
-static int rhizome_delete_external(const char *id)
+static int rhizome_delete_external(const rhizome_filehash_t *id)
 {
   // attempt to remove any external blob & partial hash file
   char blob_path[1024];
-  if (FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_HASH_SUBDIR, id))
+  if (FORM_BLOB_PATH(blob_path, RHIZOME_HASH_SUBDIR, id))
     unlink(blob_path);
-  if (!FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, id))
+  if (!FORM_BLOB_PATH(blob_path, RHIZOME_BLOB_SUBDIR, id))
     return -1;
   if (unlink(blob_path) == -1) {
     if (errno != ENOENT)
@@ -114,14 +129,14 @@ static int rhizome_delete_external(const char *id)
   return 0;
 }
 
-static int rhizome_delete_file_id_retry(sqlite_retry_state *retry, const char *id)
+static int rhizome_delete_file_retry(sqlite_retry_state *retry, const rhizome_filehash_t *filehash)
 {
   int ret = 0;
-  rhizome_delete_external(id);
-  sqlite3_stmt *statement = sqlite_prepare_bind(retry, "DELETE FROM fileblobs WHERE id = ?", STATIC_TEXT, id, END);
+  rhizome_delete_external(filehash);
+  sqlite3_stmt *statement = sqlite_prepare_bind(retry, "DELETE FROM fileblobs WHERE id = ?", RHIZOME_FILEHASH_T, filehash, END);
   if (!statement || sqlite_exec_retry(retry, statement) == -1)
     ret = -1;
-  statement = sqlite_prepare_bind(retry, "DELETE FROM files WHERE id = ?", STATIC_TEXT, id, END);
+  statement = sqlite_prepare_bind(retry, "DELETE FROM files WHERE id = ?", RHIZOME_FILEHASH_T, filehash, END);
   if (!statement || sqlite_exec_retry(retry, statement) == -1)
     ret = -1;
   return ret == -1 ? -1 : sqlite3_changes(rhizome_db) ? 0 : 1;
@@ -133,8 +148,13 @@ static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const rhizome
   int rows = sqlite_exec_strbuf_retry(retry, fh, "SELECT filehash FROM manifests WHERE id = ?", RHIZOME_BID_T, bidp, END);
   if (rows == -1)
     return -1;
-  if (rows && rhizome_delete_file_id_retry(retry, strbuf_str(fh)) == -1)
-    return -1;
+  if (rows){
+    rhizome_filehash_t hash;
+    if (str_to_rhizome_filehash_t(&hash, strbuf_str(fh))==-1)
+      return -1;
+    if (rhizome_delete_file_retry(retry, &hash) == -1)
+      return -1;
+  }
   return 0;
 }
 
@@ -153,12 +173,6 @@ int rhizome_delete_payload(const rhizome_bid_t *bidp)
   return rhizome_delete_payload_retry(&retry, bidp);
 }
 
-int rhizome_delete_file_id(const char *id)
-{
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  return rhizome_delete_file_id_retry(&retry, id);
-}
-
 /* Remove a file from the database, given its file hash.
  *
  * Returns 0 if file is found and removed
@@ -167,9 +181,10 @@ int rhizome_delete_file_id(const char *id)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_delete_file(const rhizome_filehash_t *hashp)
+int rhizome_delete_file(const rhizome_filehash_t *filehash)
 {
-  return rhizome_delete_file_id(alloca_tohex_rhizome_filehash_t(*hashp));
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  return rhizome_delete_file_retry(&retry, filehash);
 }
 
 static uint64_t store_get_free_space()
@@ -293,7 +308,9 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizo
       break;
     
     // drop the existing content and recalculate used space
-    if (rhizome_delete_external(id)==0)
+    rhizome_filehash_t hash;
+    if (str_to_rhizome_filehash_t(&hash, id)!=-1
+        && rhizome_delete_external(&hash)==0)
       external_bytes -= length;
 
     int rowcount=0;
@@ -718,8 +735,10 @@ static int keep_hash(struct rhizome_write *write_state, struct crypto_hash_sha51
 {
   char dest_path[1024];
   // capture the state of writing the file hash
-  if (!FORMF_RHIZOME_STORE_PATH(dest_path, "%s/%s", RHIZOME_HASH_SUBDIR, alloca_tohex_rhizome_filehash_t(write_state->id)))
+  if (!FORM_BLOB_PATH(dest_path, RHIZOME_HASH_SUBDIR, &write_state->id))
     return WHYF("Path too long?");
+  if (emkdirsn(dest_path, strrchr(dest_path,'/') - dest_path, 0700)<0)
+    return -1;
   int fd = open(dest_path, O_WRONLY | O_CREAT | O_TRUNC, 0664);
   if (fd < 0)
     return WHYF_perror("Failed to create %s", dest_path);
@@ -861,7 +880,9 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
 
     if (external) {
       char dest_path[1024];
-      if (!FORMF_RHIZOME_STORE_PATH(dest_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(write->id)))
+      if (!FORM_BLOB_PATH(dest_path, RHIZOME_BLOB_SUBDIR, &write->id))
+	goto dbfailure;
+      if (emkdirsn(dest_path, strrchr(dest_path,'/') - dest_path, 0700)<0)
 	goto dbfailure;
       if (rename(blob_path, dest_path) == -1) {
 	WHYF_perror("rename(%s, %s)", blob_path, dest_path);
@@ -1093,9 +1114,22 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
   crypto_hash_sha512_init(&read->sha512_context);
 
   char blob_path[1024];
-  if (FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(read->id))){
+  if (FORM_BLOB_PATH(blob_path, RHIZOME_BLOB_SUBDIR, &read->id)){
     int fd = open(blob_path, O_RDONLY);
     DEBUGF(rhizome_store, "open(%s) = %d", alloca_str_toprint(blob_path), fd);
+
+    if (fd == -1 && errno == ENOENT){
+      char legacy_path[1024];
+      // migrate from flat folder to sub-tree's
+      if (FORMF_RHIZOME_STORE_PATH(legacy_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(*hashp))){
+	struct stat st;
+	if (stat(legacy_path, &st) == 0
+	  && emkdirsn(legacy_path, strrchr(legacy_path,'/') - legacy_path, 0700)!=-1
+	  && rename(legacy_path, blob_path) != -1)
+	    fd = open(blob_path, O_RDONLY);
+      }
+    }
+
     if (fd == -1){
       if (errno!=ENOENT)
 	WHYF_perror("open(%s)", alloca_str_toprint(blob_path));
@@ -1670,9 +1704,8 @@ static int append_existing_journal_file(struct rhizome_write *write, const rhizo
   // Try to append directly into the previous journal file, linking them together
   DEBUGF(rhizome, "Attempting to append into journal blob");
   // First, we need to read a previous partial hash state
-  char *filehash = alloca_tohex_rhizome_filehash_t(*hashp);
   char existing_path[1024];
-  if (!FORMF_RHIZOME_STORE_PATH(existing_path, "%s/%s", RHIZOME_BLOB_SUBDIR, filehash))
+  if (!FORM_BLOB_PATH(existing_path, RHIZOME_BLOB_SUBDIR, hashp))
     return WHYF("existing path too long?");
 
   int payloadfd = open(existing_path, O_RDWR, 0664);
@@ -1692,7 +1725,7 @@ static int append_existing_journal_file(struct rhizome_write *write, const rhizo
   }
 
   char hash_path[1024];
-  if (!FORMF_RHIZOME_STORE_PATH(hash_path, "%s/%s", RHIZOME_HASH_SUBDIR, filehash)){
+  if (!FORM_BLOB_PATH(hash_path, RHIZOME_HASH_SUBDIR, hashp)){
     close(payloadfd);
     return WHYF("hash path too long?");
   }

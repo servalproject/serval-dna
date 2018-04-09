@@ -1304,7 +1304,9 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
       "SELECT id FROM FILES WHERE datavalid = 0;", END);
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     const char *id = (const char *) sqlite3_column_text(statement, 0);
-    if (rhizome_delete_file_id(id)==0 && report)
+    rhizome_filehash_t filehash;
+    if (str_to_rhizome_filehash_t(&filehash, id) != -1
+        && rhizome_delete_file(&filehash)==0 && report)
       ++report->deleted_stale_incoming_files;
   }
   sqlite3_finalize(statement);
@@ -1315,7 +1317,9 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
       INT64, insert_horizon_no_manifest, END);
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     const char *id = (const char *) sqlite3_column_text(statement, 0);
-    if (rhizome_delete_file_id(id)==0 && report)
+    rhizome_filehash_t filehash;
+    if (str_to_rhizome_filehash_t(&filehash, id) != -1
+        && rhizome_delete_file(&filehash)==0 && report)
       ++report->deleted_orphan_files;
   }
   sqlite3_finalize(statement);

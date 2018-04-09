@@ -232,6 +232,15 @@ strip_signatures() {
    done
 }
 
+get_external_blob_path(){
+   local _var="$1"
+   local _hash="$2"
+   local _filepath="$SERVALINSTANCE_PATH/blob/${_hash:0:2}/${_hash:2:2}/${_hash:4}"
+   if [ -n "$_var" ]; then
+      eval "$_var=\$_filepath"
+   fi
+}
+
 extract_stdout_manifestid() {
    extract_stdout_keyvalue "$1" manifestid "$rexp_manifestid"
 }
@@ -617,7 +626,8 @@ rhizome_add_bundles() {
 rhizome_delete_payload_blobs() {
    local filehash
    for filehash; do
-      assert --message="Rhizome external blob file exists, filehash=$filehash" [ -e "$SERVALINSTANCE_PATH/blob/$filehash" ]
-      rm -f "$SERVALINSTANCE_PATH/blob/$filehash"
+      get_external_blob_path blob_path "$filehash"
+      assert --message="Rhizome external blob file exists, filehash=$filehash" [ -e "$blob_path" ]
+      rm -f "$blob_path"
    done
 }

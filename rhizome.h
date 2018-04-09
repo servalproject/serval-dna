@@ -632,7 +632,6 @@ int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m);
 int rhizome_delete_bundle(const rhizome_bid_t *bidp);
 int rhizome_delete_manifest(const rhizome_bid_t *bidp);
 int rhizome_delete_payload(const rhizome_bid_t *bidp);
-int rhizome_delete_file_id(const char *id);
 int rhizome_delete_file(const rhizome_filehash_t *hashp);
 
 #define RHIZOME_DONTVERIFY 0

@@ -1097,11 +1097,13 @@ setup_RhizomeJournalAppendSharedPayload() {
    cat file1 file2 >file12
    executeOk_servald rhizome add file '' file1
    extract_stdout_filehash HASH1
-   assert cmp file1 "$SERVALINSTANCE_PATH/blob/$HASH1"
+   get_external_blob_path blob_path1 "$HASH1"
+   assert cmp file1 "$blob_path1"
    executeOk_servald rhizome add file '' file12
    extract_stdout_filehash HASH12
-   assert cmp file12 "$SERVALINSTANCE_PATH/blob/$HASH12"
-   assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
+   get_external_blob_path blob_path12 "$HASH12"
+   assert cmp file12 "$blob_path12"
+   assert [ $(find "$SERVALINSTANCE_PATH/blob" -type f | wc -l) -eq 2 ]
 }
 test_RhizomeJournalAppendSharedPayload() {
    rest_request POST "/restful/rhizome/append" 201 \
@@ -1115,7 +1117,7 @@ test_RhizomeJournalAppendSharedPayload() {
    assertGrep --matches=1 --ignore-case response.headers "^Serval-Rhizome-Result-Payload-Status-Code: 2$CR\$"
    assertGrep --matches=1 --ignore-case response.headers "^Serval-Rhizome-Result-Payload-Status-Message: .*payload already in store.*$CR\$"
    assertGrep --matches=1 --ignore-case response.headers "^Serval-Rhizome-Result-Payload-Status-Message: .*payload already in store.*$CR\$"
-   assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
+   assert [ $(find "$SERVALINSTANCE_PATH/blob" -type f | wc -l) -eq 2 ]
    extract_http_header BID response.headers Serval-Rhizome-Bundle-Id "$rexp_manifestid"
    rest_request POST "/restful/rhizome/append" 201 \
          --form-part="bundle-id=$BID;type=rhizome/bid;format=hex" \
@@ -1127,7 +1129,7 @@ test_RhizomeJournalAppendSharedPayload() {
    assertGrep --matches=1 --ignore-case response.headers "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
    assertGrep --matches=1 --ignore-case response.headers "^Serval-Rhizome-Result-Payload-Status-Code: 2$CR\$"
    assertGrep --matches=1 --ignore-case response.headers "^Serval-Rhizome-Result-Payload-Status-Message: .*payload already in store.*$CR\$"
-   assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
+   assert [ $(find "$SERVALINSTANCE_PATH/blob" -type f | wc -l) -eq 2 ]
 }
 
 doc_RhizomeAppendNonJournalForbidden="REST API Rhizome cannot append to non-journal"
