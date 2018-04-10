@@ -431,6 +431,8 @@ static int write_get_lock(struct rhizome_write *write_state)
     if (!FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%"PRIu64, RHIZOME_BLOB_SUBDIR, write_state->temp_id))
       return -1;
     DEBUGF(rhizome_store, "Attempting to put blob for id='%"PRIu64"' in %s", write_state->temp_id, blob_path);
+    if (emkdirsn(blob_path, strrchr(blob_path,'/') - blob_path, 0700) == -1)
+      return -1;
     if ((write_state->blob_fd = open(blob_path, O_CREAT | O_TRUNC | O_RDWR, 0664)) == -1) {
       WHYF("Failed to create payload file, id='%"PRIu64"'", write_state->temp_id);
       return -1;

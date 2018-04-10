@@ -244,30 +244,55 @@ int rhizome_opendb()
   if (emkdirs_info(rhizome_database.folder, 0700)==-1)
     RETURN (-1);
   char dbpath[1024];
-  if (!FORMF_RHIZOME_STORE_PATH(dbpath, RHIZOME_BLOB_SUBDIR))
-    RETURN(-1);
-  if (emkdirs_info(dbpath, 0700) == -1)
-    RETURN(-1);
-  if (!FORMF_RHIZOME_STORE_PATH(dbpath, RHIZOME_HASH_SUBDIR))
-    RETURN(-1);
-  if (emkdirs_info(dbpath, 0700) == -1)
-    RETURN(-1);
-  if (!sqlite3_temp_directory) {
-    if (!FORMF_RHIZOME_STORE_PATH(dbpath, "sqlite3tmp"))
-      RETURN(-1);
-    if (emkdirs_info(dbpath, 0700) == -1)
-      RETURN(-1);
-    sqlite3_temp_directory = sqlite3_mprintf("%s", dbpath);
-  }
-  sqlite3_config(SQLITE_CONFIG_LOG,sqlite_log,NULL);
-  
+
   if (!FORMF_RHIZOME_STORE_PATH(dbpath, "rhizome.db"))
     RETURN(-1);
   
   struct file_meta meta;
   if (get_file_meta(dbpath, &meta) == -1)
     RETURN(-1);
-  
+
+  if (meta.mtime.tv_sec == -1 && config.rhizome.datastore_path[0]){
+    // Move the database after datastore path is set for the first time
+    // This is mostly here to transparently fix a bug where we were ignoring the config value
+    char src[1024];
+    char dest[1024];
+    if (formf_rhizome_store_path(src, sizeof src, "rhizome.db")
+      && strcmp(dbpath, src)!=0
+      && get_file_meta(src, &meta)==0
+      && meta.mtime.tv_sec != -1){
+
+      INFOF("Moving rhizome store from %s to %s", src, dbpath);
+      if (rename(src, dbpath))
+	WHYF_perror("rename(%s, %s)", src, dbpath);
+
+      if (formf_rhizome_store_path(src, sizeof src, RHIZOME_BLOB_SUBDIR)
+          && FORMF_RHIZOME_STORE_PATH(dest, RHIZOME_BLOB_SUBDIR)
+	  && rename(src, dest)
+	  && errno!=ENOENT){
+	  WHYF_perror("rename(%s, %s)", src, dest);
+      }
+
+      if (formf_rhizome_store_path(src, sizeof src, RHIZOME_HASH_SUBDIR)
+          && FORMF_RHIZOME_STORE_PATH(dest, RHIZOME_HASH_SUBDIR)
+	  && rename(src, dest)
+	  && errno!=ENOENT){
+	  WHYF_perror("rename(%s, %s)", src, dest);
+      }
+    }
+  }
+
+  if (!sqlite3_temp_directory){
+    char tmp[1024];
+    if (!FORMF_RHIZOME_STORE_PATH(tmp, "sqlite3tmp"))
+      RETURN(-1);
+    if (emkdirs_info(tmp, 0700) == -1)
+      RETURN(-1);
+    sqlite3_temp_directory = sqlite3_mprintf("%s", tmp);
+  }
+
+  sqlite3_config(SQLITE_CONFIG_LOG,sqlite_log,NULL);
+
   if (sqlite3_open(dbpath,&rhizome_database.db)){
     RETURN(WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_database.db)));
   }
@@ -285,7 +310,7 @@ int rhizome_opendb()
   uint64_t version;
   if (sqlite_exec_uint64_retry(&retry, &version, "PRAGMA user_version;", END) != SQLITE_ROW)
     RETURN(-1);
-  
+
   if (version<1){
     /* Create tables as required */
     // Note that this will create the current schema
@@ -438,6 +463,9 @@ int rhizome_close_db()
       RETURN(WHYF("Failed to close sqlite database, %s",sqlite3_errmsg(rhizome_database.db)));
   }
   rhizome_database.db=NULL;
+  if (sqlite3_temp_directory)
+    sqlite3_free(sqlite3_temp_directory);
+  sqlite3_temp_directory=NULL;
   RETURN(0);
   OUT();
 }

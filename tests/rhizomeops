@@ -69,15 +69,14 @@ setup_DatabaseFolder() {
          set debug.rhizome_manifest on \
          set debug.verbose on \
          set log.console.level debug \
-         set rhizome.datastore_path "$instance_dir/moved_rhizome"
+         set rhizome.datastore_path "$instance_dir/rhizome"
    }
    setup_servald
    setup_rhizome
-   executeOk_servald rhizome list
 }
 test_DatabaseFolder() {
-   executeOk find "$instance_dir"
-   assert [ -e "$instance_dir/moved_rhizome/rhizome.db" ]
+   executeOk_servald rhizome list
+   assert [ -e "$instance_dir/rhizome/rhizome.db" ]
 }
 
 doc_InitialEmptyList="Initial list is empty"
@@ -302,6 +301,23 @@ test_AddThenList() {
    executeOk_servald rhizome add file "$SIDA" file2 file2.manifest
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author="$SIDA" file1 file2
+}
+
+doc_MoveDatabaseFolder="Database is moved after config change"
+setup_MoveDatabaseFolder() {
+   setup_servald
+   setup_rhizome
+   executeOk_servald config set rhizome.max_blob_size 0
+   echo "A test file" >file1
+   executeOk_servald rhizome add file "$SIDA" file1 file1.manifest
+}
+test_MoveDatabaseFolder() {
+   executeOk_servald config \
+      set rhizome.datastore_path "$instance_dir/moved_rhizome"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author="$SIDA" file1
+   assert [ ! -e "$instance_dir/rhizome.db" ]
+   assert [ -e "$instance_dir/moved_rhizome/rhizome.db" ]
 }
 
 doc_CleanVerify="Verify all bundles"
