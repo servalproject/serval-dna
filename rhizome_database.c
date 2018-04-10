@@ -37,17 +37,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 
-static int create_rhizome_store_dir()
-{
-  char rdpath[1024];
-  if (!formf_rhizome_store_path(rdpath, sizeof rdpath, "%s", config.rhizome.datastore_path))
-    return -1;
-  DEBUGF(rhizome, "Rhizome datastore path = %s", alloca_str_toprint(rdpath));
-  return emkdirs_info(rdpath, 0700);
-}
-
-__thread sqlite3 *rhizome_db = NULL;
-serval_uuid_t rhizome_db_uuid;
+__thread struct rhizome_database rhizome_database = {NULL,{{{0}}},{0}};
 static time_ms_t rhizomeRetryLimit = -1;
 
 int is_debug_rhizome()
@@ -238,8 +228,8 @@ void verify_bundles()
 
 int rhizome_opendb()
 {
-  if (rhizome_db) {
-    assert(serval_uuid_is_valid(&rhizome_db_uuid));
+  if (rhizome_database.db) {
+    assert(serval_uuid_is_valid(&rhizome_database.uuid));
     return 0;
   }
 
@@ -248,8 +238,11 @@ int rhizome_opendb()
   if (sodium_init()==-1)
     RETURN(WHY("Failed to initialise libsodium"));
 
-  if (create_rhizome_store_dir() == -1)
-    RETURN(-1);
+  if (!formf_rhizome_store_path(rhizome_database.folder, sizeof rhizome_database.folder, "%s", config.rhizome.datastore_path))
+    RETURN (-1);
+  DEBUGF(rhizome, "Rhizome datastore path = %s", alloca_str_toprint(rhizome_database.folder));
+  if (emkdirs_info(rhizome_database.folder, 0700)==-1)
+    RETURN (-1);
   char dbpath[1024];
   if (!FORMF_RHIZOME_STORE_PATH(dbpath, RHIZOME_BLOB_SUBDIR))
     RETURN(-1);
@@ -275,13 +268,13 @@ int rhizome_opendb()
   if (get_file_meta(dbpath, &meta) == -1)
     RETURN(-1);
   
-  if (sqlite3_open(dbpath,&rhizome_db)){
-    RETURN(WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_db)));
+  if (sqlite3_open(dbpath,&rhizome_database.db)){
+    RETURN(WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_database.db)));
   }
-  sqlite3_trace_v2(rhizome_db, SQLITE_TRACE_STMT, sqlite_trace_callback, NULL);
+  sqlite3_trace_v2(rhizome_database.db, SQLITE_TRACE_STMT, sqlite_trace_callback, NULL);
   int loglevel = IF_DEBUG(rhizome) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
 
-  const char *env = getenv("SERVALD_RHIZOME_DB_RETRY_LIMIT_MS");
+  const char *env = getenv("SERVALD_rhizome_database.db_RETRY_LIMIT_MS");
   rhizomeRetryLimit = env ? atoi(env) : -1;
 
   /* Read Rhizome configuration */
@@ -394,20 +387,20 @@ int rhizome_opendb()
   if (r == -1)
     RETURN(-1);
   if (r) {
-    if (!str_to_serval_uuid(buf, &rhizome_db_uuid, NULL)) {
+    if (!str_to_serval_uuid(buf, &rhizome_database.uuid, NULL)) {
       WHYF("IDENTITY table contains malformed UUID %s -- overwriting", alloca_str_toprint(buf));
-      if (serval_uuid_generate_random(&rhizome_db_uuid) == -1)
+      if (serval_uuid_generate_random(&rhizome_database.uuid) == -1)
 	RETURN(WHY("Cannot generate new UUID for Rhizome database"));
-      if (sqlite_exec_void_retry(&retry, "UPDATE IDENTITY SET uuid = ? LIMIT 1;", SERVAL_UUID_T, &rhizome_db_uuid, END) == -1)
+      if (sqlite_exec_void_retry(&retry, "UPDATE IDENTITY SET uuid = ? LIMIT 1;", SERVAL_UUID_T, &rhizome_database.uuid, END) == -1)
 	RETURN(WHY("Failed to update new UUID in Rhizome database"));
-      DEBUGF(rhizome, "Updated Rhizome database UUID to %s", alloca_uuid_str(rhizome_db_uuid));
+      DEBUGF(rhizome, "Updated Rhizome database UUID to %s", alloca_uuid_str(rhizome_database.uuid));
     }
   } else if (r == 0) {
-    if (serval_uuid_generate_random(&rhizome_db_uuid) == -1)
+    if (serval_uuid_generate_random(&rhizome_database.uuid) == -1)
       RETURN(WHY("Cannot generate UUID for Rhizome database"));
-    if (sqlite_exec_void_retry(&retry, "INSERT INTO IDENTITY (uuid) VALUES (?);", SERVAL_UUID_T, &rhizome_db_uuid, END) == -1)
+    if (sqlite_exec_void_retry(&retry, "INSERT INTO IDENTITY (uuid) VALUES (?);", SERVAL_UUID_T, &rhizome_database.uuid, END) == -1)
       RETURN(WHY("Failed to insert UUID into Rhizome database"));
-    DEBUGF(rhizome, "Set Rhizome database UUID to %s", alloca_uuid_str(rhizome_db_uuid));
+    DEBUGF(rhizome, "Set Rhizome database UUID to %s", alloca_uuid_str(rhizome_database.uuid));
   }
 
   // We can't delete a file that is being transferred in another process at this very moment...
@@ -420,7 +413,7 @@ int rhizome_opendb()
 	"FROM manifests", END);
   }
 
-  INFOF("Opened Rhizome database %s, UUID=%s", dbpath, alloca_uuid_str(rhizome_db_uuid));
+  INFOF("Opened Rhizome database %s, UUID=%s", dbpath, alloca_uuid_str(rhizome_database.uuid));
   RETURN(0);
   OUT();
 }
@@ -428,23 +421,23 @@ int rhizome_opendb()
 int rhizome_close_db()
 {
   IN();
-  if (rhizome_db) {
+  if (rhizome_database.db) {
     rhizome_cache_close();
     
-    if (!sqlite3_get_autocommit(rhizome_db)){
+    if (!sqlite3_get_autocommit(rhizome_database.db)){
       WHY("Uncommitted transaction!");
       sqlite_exec_void("ROLLBACK;", END);
     }
     sqlite3_stmt *stmt = NULL;
-    while ((stmt = sqlite3_next_stmt(rhizome_db, stmt))) {
+    while ((stmt = sqlite3_next_stmt(rhizome_database.db, stmt))) {
       const char *sql = sqlite3_sql(stmt);
       WARNF("closing Rhizome db with unfinalised statement: %s", sql ? sql : "BLOB");
     }
-    int r = sqlite3_close(rhizome_db);
+    int r = sqlite3_close(rhizome_database.db);
     if (r != SQLITE_OK)
-      RETURN(WHYF("Failed to close sqlite database, %s",sqlite3_errmsg(rhizome_db)));
+      RETURN(WHYF("Failed to close sqlite database, %s",sqlite3_errmsg(rhizome_database.db)));
   }
-  rhizome_db=NULL;
+  rhizome_database.db=NULL;
   RETURN(0);
   OUT();
 }
@@ -519,7 +512,7 @@ int _sqlite_retry(struct __sourceloc __whence, sqlite_retry_state *retry, const 
   retry->elapsed = now - retry->start;
   
   INFOF("%s on try %u after %.3f seconds (limit %.3f): %s",
-      sqlite3_errmsg(rhizome_db),
+      sqlite3_errmsg(rhizome_database.db),
       retry->busytries,
       (retry->elapsed) / 1e3,
       (retry->limit) / 1e3,
@@ -576,9 +569,9 @@ sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, int log_level, sqlite
 {
   IN();
   sqlite3_stmt *statement = NULL;
-  assert(rhizome_db);
+  assert(rhizome_database.db);
   while (1) {
-    switch (sqlite3_prepare_v2(rhizome_db, sqltext, -1, &statement, NULL)) {
+    switch (sqlite3_prepare_v2(rhizome_database.db, sqltext, -1, &statement, NULL)) {
       case SQLITE_OK:
 	sqlite_trace_done = 0;
 	RETURN(statement);
@@ -589,7 +582,7 @@ sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, int log_level, sqlite
 	}
 	// fall through...
       default:
-	LOGF(log_level, "query invalid, %s: %s", sqlite3_errmsg(rhizome_db), sqltext);
+	LOGF(log_level, "query invalid, %s: %s", sqlite3_errmsg(rhizome_database.db), sqltext);
 	sqlite3_finalize(statement);
 	RETURN(NULL);
     }
@@ -605,7 +598,7 @@ sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, int log_level, sqlite
  */
 int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement, va_list ap)
 {
-  const int index_limit = sqlite3_limit(rhizome_db, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
+  const int index_limit = sqlite3_limit(rhizome_database.db, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
   unsigned argnum = 0;
   int index_counter = 0;
   enum sqlbind_type typ;
@@ -657,7 +650,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 		continue; \
 	      FALLTHROUGH; \
 	    default: \
-	      LOGF(log_level, #FUNC "(%d) failed, %s: %s", index, sqlite3_errmsg(rhizome_db), sqlite3_sql(statement)); \
+	      LOGF(log_level, #FUNC "(%d) failed, %s: %s", index, sqlite3_errmsg(rhizome_database.db), sqlite3_sql(statement)); \
 	      sqlite3_finalize(statement); \
 	      return -1; \
 	  } \
@@ -962,7 +955,7 @@ int _sqlite_step(struct __sourceloc __whence, int log_level, sqlite_retry_state 
 	}
 	// fall through...
       default:
-	LOGF(log_level, "query failed (%d), %s: %s", ret, sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
+	LOGF(log_level, "query failed (%d), %s: %s", ret, sqlite3_errmsg(rhizome_database.db), sqlite3_sql(statement));
 	statement = NULL;
 	break;
     }
@@ -982,7 +975,7 @@ int _sqlite_exec_code(struct __sourceloc __whence, int log_level, sqlite_retry_s
     ++(*rowcount);
   sqlite3_finalize(statement);
   if (sqlite_trace_func())
-    _DEBUGF("rowcount=%d changes=%d", *rowcount, sqlite3_changes(rhizome_db));
+    _DEBUGF("rowcount=%d changes=%d", *rowcount, sqlite3_changes(rhizome_database.db));
   return stepcode;
 }
 
@@ -1019,7 +1012,7 @@ static int _sqlite_vexec_void_code(struct __sourceloc __whence, int log_level, s
     return SQLITE_ERROR;
   int stepcode = _sqlite_exec_code(__whence, log_level, retry, statement, rowcount);
   if (sqlite_code_ok(stepcode)){
-    *changes = sqlite3_changes(rhizome_db);
+    *changes = sqlite3_changes(rhizome_database.db);
   }
   return stepcode;
 }
@@ -1095,7 +1088,7 @@ static int _sqlite_vexec_uint64(struct __sourceloc __whence, sqlite_retry_state 
     FATALF("query unexpectedly returned %d rows", rows);
   sqlite3_finalize(statement);
   if (sqlite_trace_func())
-    _DEBUGF("rowcount=%d changes=%d result=%"PRIu64, rows, sqlite3_changes(rhizome_db), *result);
+    _DEBUGF("rowcount=%d changes=%d result=%"PRIu64, rows, sqlite3_changes(rhizome_database.db), *result);
   if (sqlite_code_ok(stepcode) && rows>0)
     return SQLITE_ROW;
   return stepcode;
@@ -1189,7 +1182,7 @@ int _sqlite_blob_open_retry(
 {
   IN();
   while (1) {
-    int code = sqlite3_blob_open(rhizome_db, dbname, tablename, colname, rowid, flags, blobp);
+    int code = sqlite3_blob_open(rhizome_database.db, dbname, tablename, colname, rowid, flags, blobp);
     switch (code) {
       case SQLITE_OK:
 	if (retry)
@@ -1205,7 +1198,7 @@ int _sqlite_blob_open_retry(
 	  break; // back to sqlite3_blob_open()
 	// fall through...
       default:
-	LOGF(log_level, "sqlite3_blob_open() failed (%d), %s", code, sqlite3_errmsg(rhizome_db));
+	LOGF(log_level, "sqlite3_blob_open() failed (%d), %s", code, sqlite3_errmsg(rhizome_database.db));
 	RETURN(-1);
     }
   }
@@ -1241,7 +1234,7 @@ int _sqlite_blob_write_retry(
 	  break; // back to sqlite3_blob_open()
 	// fall through...
       default:
-	LOGF(log_level, "sqlite3_blob_write() failed (%d), %s", code, sqlite3_errmsg(rhizome_db));
+	LOGF(log_level, "sqlite3_blob_write() failed (%d), %s", code, sqlite3_errmsg(rhizome_database.db));
 	RETURN(-1);
     }
   }
@@ -1253,7 +1246,7 @@ int _sqlite_blob_close(struct __sourceloc __whence, int log_level, sqlite3_blob 
 {
   int code = sqlite3_blob_close(blob);
   if (code != SQLITE_OK)
-    LOGF(log_level, "sqlite3_blob_close() failed: %s", sqlite3_errmsg(rhizome_db));
+    LOGF(log_level, "sqlite3_blob_close() failed: %s", sqlite3_errmsg(rhizome_database.db));
   return 0;
 }
 
@@ -1504,7 +1497,7 @@ enum rhizome_bundle_status rhizome_add_manifest_to_store(rhizome_manifest *m, rh
     goto rollback;
   sqlite3_finalize(stmt);
   stmt = NULL;
-  rhizome_manifest_set_rowid(m, sqlite3_last_insert_rowid(rhizome_db));
+  rhizome_manifest_set_rowid(m, sqlite3_last_insert_rowid(rhizome_database.db));
   rhizome_manifest_set_inserttime(m, now);
 
   if (sqlite_exec_void_retry(&retry, "COMMIT;", END) != -1){
@@ -2019,7 +2012,7 @@ static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizom
     return -1;
   if (_sqlite_exec(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
     return -1;
-  return sqlite3_changes(rhizome_db) ? 0 : 1;
+  return sqlite3_changes(rhizome_database.db) ? 0 : 1;
 }
 
 /* Remove a manifest and its bundle from the database, given its manifest ID.

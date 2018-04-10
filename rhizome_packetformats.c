@@ -182,7 +182,7 @@ int overlay_rhizome_saw_advertisements(struct decode_context *context, struct ov
   if (!f)
     RETURN(-1);
   
-  if (!(rhizome_db && config.rhizome.fetch)) 
+  if (!(rhizome_database.db && config.rhizome.fetch))
     RETURN(0);
   
   int ad_frame_type=ob_get(f->payload);

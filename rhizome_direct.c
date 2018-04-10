@@ -616,11 +616,11 @@ int rhizome_direct_get_bars(const rhizome_bid_t *bidp_low,
 	  break;
 	} 
 	int64_t rowid = sqlite3_column_int64(statement, 1);
-	do ret = sqlite3_blob_open(rhizome_db, "main", "manifests", "bar",
+	do ret = sqlite3_blob_open(rhizome_database.db, "main", "manifests", "bar",
 				   rowid, 0 /* read only */, &blob);
 	while (sqlite_code_busy(ret) && sqlite_retry(&retry, "sqlite3_blob_open"));
 	if (!sqlite_code_ok(ret)) {
-	  WHYF("sqlite3_blob_open() failed, %s", sqlite3_errmsg(rhizome_db));
+	  WHYF("sqlite3_blob_open() failed, %s", sqlite3_errmsg(rhizome_database.db));
 	  continue;
 	}
 	sqlite_retry_done(&retry, "sqlite3_blob_open");

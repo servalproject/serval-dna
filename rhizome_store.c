@@ -42,10 +42,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 uint64_t rhizome_copy_file_to_blob(int fd, uint64_t id, size_t size);
 
-static int form_store_blob_path(char *buff, size_t buff_size, const char *subdir, const rhizome_filehash_t *hash){
-  return formf_rhizome_store_path(buff, buff_size, "%s/%02X/%02X/%s", subdir, hash->binary[0], hash->binary[1], alloca_tohex(&hash->binary[2], sizeof(hash->binary)-2));
-}
-#define FORM_BLOB_PATH(BUFF,SUBDIR,HASH) form_store_blob_path((BUFF),sizeof(BUFF),(SUBDIR),(HASH))
+#define FORM_BLOB_PATH(BUFF,SUBDIR,HASH) FORMF_RHIZOME_STORE_PATH((BUFF),"%s/%02X/%02X/%s", (SUBDIR), (HASH)->binary[0], (HASH)->binary[1], alloca_tohex(&(HASH)->binary[2], sizeof((HASH)->binary)-2))
 
 enum rhizome_payload_status rhizome_exists(const rhizome_filehash_t *hashp)
 {
@@ -73,8 +70,10 @@ enum rhizome_payload_status rhizome_exists(const rhizome_filehash_t *hashp)
     struct stat st;
     if (stat(legacy_path, &st) == 0
       && emkdirsn(legacy_path, strrchr(legacy_path,'/') - legacy_path, 0700)!=-1
-      && rename(legacy_path, blob_path) != -1)
+      && rename(legacy_path, blob_path) != -1){
+      INFOF("Moved %s to %s", legacy_path, blob_path);
       return RHIZOME_PAYLOAD_STATUS_STORED;
+    }
   }
 
   uint64_t blob_rowid = 0;
@@ -107,7 +106,7 @@ static uint64_t rhizome_create_fileblob(sqlite_retry_state *retry, uint64_t id, 
     WHYF("Failed to create blob, size=%zu, id=%"PRIu64, size, id);
     return 0;
   }
-  uint64_t rowid = sqlite3_last_insert_rowid(rhizome_db);
+  uint64_t rowid = sqlite3_last_insert_rowid(rhizome_database.db);
   DEBUGF(rhizome_store, "Inserted fileblob rowid=%"PRId64" for id='%"PRIu64"'", rowid, id);
   return rowid;
 }
@@ -139,7 +138,7 @@ static int rhizome_delete_file_retry(sqlite_retry_state *retry, const rhizome_fi
   statement = sqlite_prepare_bind(retry, "DELETE FROM files WHERE id = ?", RHIZOME_FILEHASH_T, filehash, END);
   if (!statement || sqlite_exec_retry(retry, statement) == -1)
     ret = -1;
-  return ret == -1 ? -1 : sqlite3_changes(rhizome_db) ? 0 : 1;
+  return ret == -1 ? -1 : sqlite3_changes(rhizome_database.db) ? 0 : 1;
 }
 
 static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
@@ -195,14 +194,11 @@ static uint64_t store_get_free_space()
     space = atol(fake_space);
 #if defined(HAVE_SYS_STATVFS_H) || (defined(HAVE_SYS_STAT_H) && defined(HAVE_SYS_VFS_H))
   else {
-    char store_path[1024];
-    if (FORMF_RHIZOME_STORE_PATH(store_path, "rhizome.db")) {
-      struct statvfs stats;
-      if (statvfs(store_path, &stats)==-1)
-	WARNF_perror("statvfs(%s)", store_path);
-      else
-	space = stats.f_frsize * (uint64_t)stats.f_bavail;
-    }
+    struct statvfs stats;
+    if (statvfs(rhizome_database.folder, &stats)==-1)
+      WARNF_perror("statvfs(%s)", rhizome_database.folder);
+    else
+      space = stats.f_frsize * (uint64_t)stats.f_bavail;
   }
 #endif
   if (IF_DEBUG(rhizome)) {
@@ -1125,8 +1121,10 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
 	struct stat st;
 	if (stat(legacy_path, &st) == 0
 	  && emkdirsn(legacy_path, strrchr(legacy_path,'/') - legacy_path, 0700)!=-1
-	  && rename(legacy_path, blob_path) != -1)
+	  && rename(legacy_path, blob_path) != -1){
+	    INFOF("Moved %s to %s", legacy_path, blob_path);
 	    fd = open(blob_path, O_RDONLY);
+	  }
       }
     }
 
@@ -1204,7 +1202,7 @@ static ssize_t rhizome_read_retry(sqlite_retry_state *retry, struct rhizome_read
       ret = sqlite3_blob_read(blob, buffer, (int) bytes_read, read_state->offset);
     } while (sqlite_code_busy(ret) && sqlite_retry(retry, "sqlite3_blob_read"));
     if (ret != SQLITE_OK) {
-      WHYF("sqlite3_blob_read() failed: %s", sqlite3_errmsg(rhizome_db));
+      WHYF("sqlite3_blob_read() failed: %s", sqlite3_errmsg(rhizome_database.db));
       sqlite_blob_close(blob);
       RETURN(-1);
     }

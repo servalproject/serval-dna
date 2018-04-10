@@ -61,6 +61,25 @@ set_rhizome_config() {
       set log.console.level debug
 }
 
+doc_DatabaseFolder="Database is created based on config"
+setup_DatabaseFolder() {
+   set_rhizome_config() {
+      executeOk_servald config \
+         set debug.rhizome on \
+         set debug.rhizome_manifest on \
+         set debug.verbose on \
+         set log.console.level debug \
+         set rhizome.datastore_path "$instance_dir/moved_rhizome"
+   }
+   setup_servald
+   setup_rhizome
+   executeOk_servald rhizome list
+}
+test_DatabaseFolder() {
+   executeOk find "$instance_dir"
+   assert [ -e "$instance_dir/moved_rhizome/rhizome.db" ]
+}
+
 doc_InitialEmptyList="Initial list is empty"
 setup_InitialEmptyList() {
    setup_servald

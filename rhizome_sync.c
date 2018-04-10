@@ -546,7 +546,7 @@ DEFINE_TRIGGER(nbr_change, neighbour_changed);
 DEFINE_BINDING(MDP_PORT_RHIZOME_SYNC, overlay_mdp_service_rhizome_sync);
 static int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
-  if (!config.rhizome.enable || !rhizome_db)
+  if (!config.rhizome.enable || !rhizome_database.db)
     return 0;
     
   struct rhizome_sync *state = header->source->sync_state;

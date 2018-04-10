@@ -614,7 +614,7 @@ void server_watchdog(struct sched_ent *alarm)
 DEFINE_ALARM(rhizome_clean_db);
 void rhizome_clean_db(struct sched_ent *alarm)
 {
-  if (!config.rhizome.enable || !rhizome_db)
+  if (!config.rhizome.enable || !rhizome_database.db)
     return;
     
   time_ms_t now = gettime_ms();
@@ -647,7 +647,7 @@ static void server_on_config_change()
   if (config.rhizome.enable){
     rhizome_opendb();
     RESCHEDULE(&ALARM_STRUCT(rhizome_clean_db), now + 30*60*1000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
-  }else if(rhizome_db){
+  }else if(rhizome_database.db){
     rhizome_close_db();
   }
 }

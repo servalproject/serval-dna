@@ -31,6 +31,8 @@ void set_instance_path(const char *path);
 
 int create_serval_instance_dir();
 
+int _formf_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *basepath, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf,5,6)));
+
 int _formf_serval_etc_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf,4,5)));
 int _formf_serval_run_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf,4,5)));
 int _vformf_serval_run_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, va_list);
@@ -38,6 +40,8 @@ int _formf_serval_cache_path(struct __sourceloc, char *buf, size_t bufsiz, const
 int _formf_serval_tmp_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf,4,5)));
 int _formf_servald_proc_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf,4,5)));
 int _formf_rhizome_store_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf,4,5)));
+
+#define formf_path(buf,bufsz,basepath,fmt,...)     _formf_path(__WHENCE__, buf, bufsz, basepath, fmt, ##__VA_ARGS__)
 
 #define formf_serval_etc_path(buf,bufsz,fmt,...)     _formf_serval_etc_path(__WHENCE__, buf, bufsz, fmt, ##__VA_ARGS__)
 #define formf_serval_run_path(buf,bufsz,fmt,...)     _formf_serval_run_path(__WHENCE__, buf, bufsz, fmt, ##__VA_ARGS__)
@@ -57,7 +61,6 @@ int _formf_rhizome_store_path(struct __sourceloc, char *buf, size_t bufsiz, cons
 #define FORMF_SERVAL_CACHE_PATH(buf,fmt,...)  formf_serval_cache_path(buf, sizeof(buf), fmt, ##__VA_ARGS__)
 #define FORMF_SERVAL_TMP_PATH(buf,fmt,...)    formf_serval_tmp_path(buf, sizeof(buf), fmt, ##__VA_ARGS__)
 #define FORMF_SERVALD_PROC_PATH(buf,fmt,...)  formf_servald_proc_path(buf, sizeof(buf), fmt, ##__VA_ARGS__)
-#define FORMF_RHIZOME_STORE_PATH(buf,fmt,...) formf_rhizome_store_path((buf), sizeof(buf), (fmt), ##__VA_ARGS__)
 
 strbuf strbuf_system_log_path(strbuf sb);
 strbuf strbuf_serval_log_path(strbuf sb);

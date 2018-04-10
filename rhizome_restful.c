@@ -69,8 +69,8 @@ static void finalise_union_rhizome_list(httpd_request *r)
 static char *list_token_to_str(char *buf, uint64_t rowid)
 {
   struct iovec iov[2];
-  iov[0].iov_base = rhizome_db_uuid.u.binary;
-  iov[0].iov_len = sizeof rhizome_db_uuid.u.binary;
+  iov[0].iov_base = rhizome_database.uuid.u.binary;
+  iov[0].iov_len = sizeof rhizome_database.uuid.u.binary;
   iov[1].iov_base = &rowid;
   iov[1].iov_len = sizeof rowid;
   size_t n = base64url_encodev(buf, iov, 2);
@@ -81,11 +81,11 @@ static char *list_token_to_str(char *buf, uint64_t rowid)
 
 static int strn_to_list_token(const char *str, uint64_t *rowidp, const char **afterp)
 {
-  unsigned char token[sizeof rhizome_db_uuid.u.binary + sizeof *rowidp];
+  unsigned char token[sizeof rhizome_database.uuid.u.binary + sizeof *rowidp];
   if (base64url_decode(token, sizeof token, str, 0, afterp, 0, NULL) == sizeof token
-    && cmp_serval_uuid_t(&rhizome_db_uuid, (serval_uuid_t *) &token) == 0
+    && cmp_serval_uuid_t(&rhizome_database.uuid, (serval_uuid_t *) &token) == 0
     && **afterp=='/'){
-    memcpy(rowidp, token + sizeof rhizome_db_uuid.u.binary, sizeof *rowidp);
+    memcpy(rowidp, token + sizeof rhizome_database.uuid.u.binary, sizeof *rowidp);
     (*afterp)++;
   }else{
     // don't skip the token

@@ -69,14 +69,14 @@ int is_rhizome_http_enabled()
 {
   return config.rhizome.enable
     &&   config.rhizome.http.enable
-    &&   rhizome_db;
+    &&   rhizome_database.db;
 }
 
 int is_rhizome_mdp_enabled()
 {
   return config.rhizome.enable
     &&   config.rhizome.mdp.enable
-    &&   rhizome_db;
+    &&   rhizome_database.db;
 }
 
 int is_rhizome_mdp_server_running()
@@ -88,7 +88,7 @@ int is_rhizome_advertise_enabled()
 {
   return config.rhizome.enable
     &&   config.rhizome.advertise.enable
-    &&   rhizome_db
+    &&   rhizome_database.db
     &&   (is_httpd_server_running() || is_rhizome_mdp_server_running());
 }
 

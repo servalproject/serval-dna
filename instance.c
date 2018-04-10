@@ -105,17 +105,13 @@ void set_instance_path(const char *path)
   know_instancepath = 1;
 }
 
-static int vformf_path(struct __sourceloc __whence, strbuf b, const char *syspath, const char *fmt, va_list ap)
+static int vformf_basepath(struct __sourceloc __whence, strbuf b, const char *basepath, const char *fmt, va_list ap)
 {
   if (fmt)
     strbuf_va_vprintf(b, fmt, ap);
   if (!strbuf_overrun(b) && (strbuf_len(b) == 0 || strbuf_str(b)[0] != '/')) {
     strbuf_reset(b);
-    const char *ipath = instance_path();
-#ifdef ANDROID
-    assert(ipath != NULL);
-#endif
-    strbuf_puts(b, ipath ? ipath : syspath);
+    strbuf_puts(b, basepath);
     if (fmt) {
       if (strbuf_substr(b, -1)[0] != '/')
 	strbuf_putc(b, '/');
@@ -129,6 +125,23 @@ static int vformf_path(struct __sourceloc __whence, strbuf b, const char *syspat
       (unsigned long)strbuf_size(b),
       alloca_str_toprint(strbuf_str(b)));
   return 0;
+}
+
+int _formf_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *basepath, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  int ret = vformf_basepath(__whence, strbuf_local(buf, bufsiz), basepath, fmt, ap);
+  va_end(ap);
+  return ret;
+}
+
+static int vformf_path(struct __sourceloc __whence, strbuf b, const char *syspath, const char *fmt, va_list ap)
+{
+  const char *ipath = instance_path();
+  if (!ipath)
+    ipath=syspath;
+  return vformf_basepath(__whence, b, ipath, fmt, ap);
 }
 
 int _formf_serval_etc_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, ...)
@@ -230,8 +243,6 @@ int create_serval_instance_dir()
   if (FORMF_SERVAL_TMP_PATH(path, NULL) && emkdirs_info(path, 0700) == -1)
     ret = -1;
   if (FORMF_SERVALD_PROC_PATH(path, NULL) && emkdirs_info(path, 0755) == -1)
-    ret = -1;
-  if (FORMF_RHIZOME_STORE_PATH(path, NULL) && emkdirs_info(path, 0700) == -1)
     ret = -1;
   return ret;
 }

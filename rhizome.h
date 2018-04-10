@@ -340,8 +340,15 @@ int rhizome_fetch_delay_ms();
 #define RHIZOME_BLOB_SUBDIR "blob"
 #define RHIZOME_HASH_SUBDIR "hash"
 
-extern __thread sqlite3 *rhizome_db;
-extern serval_uuid_t rhizome_db_uuid;
+struct rhizome_database{
+  sqlite3 *db;
+  serval_uuid_t uuid;
+  char folder[1024];
+};
+
+extern __thread struct rhizome_database rhizome_database;
+
+#define FORMF_RHIZOME_STORE_PATH(buf,fmt,...) formf_path((buf), sizeof(buf), rhizome_database.folder, (fmt), ##__VA_ARGS__)
 
 int rhizome_opendb();
 int rhizome_close_db();
