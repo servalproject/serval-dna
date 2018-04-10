@@ -189,8 +189,8 @@ form_dgram_file_socket_address(struct socket_address *addr, const char *file_pat
 static void
 form_broadcast_file_socket_address(struct socket_address *broadcast, struct socket_address *addr) {
   assert(addr->local.sun_family == AF_UNIX);
-  assert(addr->addrlen >= offsetof(struct sockaddr_un, sun_path) + 2);
-  assert(addr->addrlen <= sizeof(addr->local));
+  assert((size_t)addr->addrlen >= offsetof(struct sockaddr_un, sun_path) + 2);
+  assert((size_t)addr->addrlen <= sizeof(addr->local));
   *broadcast = *addr;
   size_t len = broadcast->addrlen - offsetof(struct sockaddr_un, sun_path) - 1;
   while (len && broadcast->local.sun_path[len] != '/')
@@ -590,7 +590,10 @@ overlay_interface_init(const char *name,
   
   buf_strncpy_nul(interface->name, name);
 
-  buf_strncpy_nul(interface->file_path, file_path);
+  if (file_path)
+    buf_strncpy_nul(interface->file_path, file_path);
+  else
+    interface->file_path[0]=0;
 
   interface->interface_type = interface_type;
   interface->destination = new_destination(interface);
