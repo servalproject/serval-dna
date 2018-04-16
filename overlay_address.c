@@ -143,16 +143,6 @@ void free_subscribers()
   tree_walk(&root, NULL, 0, free_node, NULL);
 }
 
-/* Free the subscribers tree after every CLI command.
- */
-
-static void subscriber_on_cmd_cleanup();
-DEFINE_TRIGGER(cmd_cleanup, subscriber_on_cmd_cleanup);
-static void subscriber_on_cmd_cleanup()
-{
-  free_subscribers();
-}
-
 static void *create_subscriber(void *UNUSED(context), const uint8_t *binary, size_t bin_length)
 {
   assert(bin_length == SID_SIZE);

@@ -2247,4 +2247,5 @@ static void keyring_on_cmd_cleanup()
 {
   keyring_free(keyring);
   keyring = NULL;
+  free_subscribers();
 }
