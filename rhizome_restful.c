@@ -34,6 +34,7 @@ DECLARE_HANDLER("/restful/rhizome/newsince/", restful_rhizome_newsince);
 DECLARE_HANDLER("/restful/rhizome/insert", restful_rhizome_insert);
 DECLARE_HANDLER("/restful/rhizome/import", restful_rhizome_import);
 DECLARE_HANDLER("/restful/rhizome/append", restful_rhizome_append);
+DECLARE_HANDLER("/restful/rhizome/storestatus.json", restful_rhizome_disk_status);
 DECLARE_HANDLER("/restful/rhizome/", restful_rhizome_);
 
 static HTTP_RENDERER render_status_and_manifest_headers;
@@ -1243,3 +1244,60 @@ static void render_status_and_import_headers(const struct http_request *hr, strb
     render_import_headers(r, sb);
   }
 }
+
+static int rhizome_disk_status_content_chunk(struct http_request *hr, strbuf b)
+{
+  httpd_request *r = (httpd_request *) hr;
+  strbuf_puts(b, "{\n");
+
+  strbuf_puts(b, "\"rhizome_dir\":");
+  strbuf_json_string(b, rhizome_database.dir_path);
+  strbuf_puts(b, ",\n");
+
+  strbuf_puts(b, "\"rhizome_uuid\":");
+  strbuf_json_string(b, alloca_uuid_str(rhizome_database.uuid));
+  strbuf_puts(b, ",\n");
+
+  strbuf_sprintf(b, "\"external_bytes\":%"PRIu64",\n", r->u.status.rhizome_space.external_bytes);
+  strbuf_sprintf(b, "\"db_page_size\":%"PRIu64",\n", r->u.status.rhizome_space.db_page_size);
+  strbuf_sprintf(b, "\"db_total_pages\":%"PRIu64",\n", r->u.status.rhizome_space.db_total_pages);
+  strbuf_sprintf(b, "\"db_available_pages\":%"PRIu64",\n", r->u.status.rhizome_space.db_available_pages);
+  strbuf_sprintf(b, "\"content_bytes\":%"PRIu64",\n", r->u.status.rhizome_space.content_bytes);
+  strbuf_sprintf(b, "\"content_limit_bytes\":%"PRIu64",\n", r->u.status.rhizome_space.content_limit_bytes);
+  strbuf_sprintf(b, "\"filesystem_bytes\":%"PRIu64",\n", r->u.status.rhizome_space.filesystem_bytes);
+  strbuf_sprintf(b, "\"filesystem_free_bytes\":%"PRIu64"\n}", r->u.status.rhizome_space.filesystem_free_bytes);
+  return 0;
+}
+
+static int rhizome_disk_status_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
+{
+  return generate_http_content_from_strbuf_chunks(hr, (char *)buf, bufsz, result, rhizome_disk_status_content_chunk);
+}
+
+static int restful_rhizome_disk_status(httpd_request *r, const char *remainder)
+{
+  if (*remainder || !is_rhizome_http_enabled())
+    return 404;
+  int ret = authorize_restful(&r->http);
+  if (ret)
+    return ret;
+
+  enum rhizome_payload_status p = rhizome_store_space_usage(&r->u.status.rhizome_space);
+  switch (p) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+      break;
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+    case RHIZOME_PAYLOAD_STATUS_BUSY:
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+    case RHIZOME_PAYLOAD_STATUS_EVICTED:
+      return http_request_rhizome_response(r, 500, "Failed to measure storage space");
+  }
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_JSON, rhizome_disk_status_content);
+  return 1;
+}
+

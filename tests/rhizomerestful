@@ -1155,4 +1155,16 @@ test_RhizomeAppendNonJournalForbidden() {
    assert_rhizome_list file1
 }
 
+doc_RhizomeStatus="REST API Rhizome storage status"
+setup_RhizomeStatus() {
+   export SERVALD_FAKE_SPACE_LIMIT=2M
+   setup
+}
+test_RhizomeStatus() {
+   rest_request GET "/restful/rhizome/storestatus.json"
+   assertJq response.json 'keys==(["rhizome_dir","rhizome_uuid","external_bytes","db_page_size","db_total_pages","db_available_pages","content_bytes","content_limit_bytes","filesystem_bytes","filesystem_free_bytes"]|sort)'
+   assertJq response.json 'contains({"external_bytes":2048})'
+   assertJq response.json 'contains({"filesystem_free_bytes":2041856})'
+}
+
 runTests "$@"

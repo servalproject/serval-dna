@@ -1139,6 +1139,37 @@ The import logic proceeds in the following steps:
     returns status [201 Created][201] and the [bundle status
     code](#bundle-status-code) for “new”.
 
+### GET /restful/rhizome/storestatus.json
+
+Fetch on the current disk usage of the rhizome store.
+
+The results will be a single json object with the following fields;
+
+* `external_bytes` - the total size of all payloads larger than
+  rhizome.max_blob_size, that have been stored outside of sqlite, in the
+  rhizome blob folder.
+
+* `db_page_size` - the size of disk pages returned by sqlite.
+
+* `db_total_pages` - the number of disk pages in the sqlite database file.
+
+* `db_available_pages` - the number of disk pages in the sqlite database file
+  that have been allocated but are not currently in use.
+
+* `content_bytes` - the total bytes of space used in the sqlite database, and
+  in payloads stored outside of sqlite. This should be equal to;
+  db_page_size * (db_total_pages - db_available_pages) + external_bytes
+
+* `content_limit_bytes` - the calculated storage limit that is being applied.
+  This will be the smallest of the configured rhizome.database_size or the
+  maximum we can store while keeping rhizome.min_free_space available for
+  other uses.
+
+* `filesystem_bytes` - the measured total size of the filesystem where the
+  rhizome store is located.
+
+* `filesystem_free_bytes` - the measured free space of the filesystem.
+
 -----
 **Copyright 2015-2017 Serval Project Inc.**  
 ![CC-BY-4.0](./cc-by-4.0.png)

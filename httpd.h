@@ -263,6 +263,10 @@ typedef struct httpd_request
       size_t offset;
     }
       file;
+
+    struct {
+      struct rhizome_space_report rhizome_space;
+    } status;
   } u;
 
 } httpd_request;

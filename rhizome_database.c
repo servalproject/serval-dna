@@ -1388,8 +1388,6 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   if (report && ret > 0)
     report->deleted_orphan_manifests += ret;
   
-  rhizome_vacuum_db(&retry);
-  
   if (report)
     DEBUGF(rhizome, "report deleted_stale_incoming_files=%u deleted_orphan_files=%u deleted_orphan_fileblobs=%u deleted_orphan_manifests=%u",
 	   report->deleted_stale_incoming_files,

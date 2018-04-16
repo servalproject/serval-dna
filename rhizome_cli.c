@@ -472,11 +472,15 @@ static int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_contex
 DEFINE_CMD(app_rhizome_clean, 0,
   "Remove stale and orphaned content from the Rhizome store",
   "rhizome","clean","[verify]" KEYRING_PIN_OPTIONS);
+DEFINE_CMD(app_rhizome_clean, 0,
+  "Report on the space usage of the Rhizome store",
+  "rhizome","status" KEYRING_PIN_OPTIONS);
 static int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context *context)
 {
   DEBUG_cli_parsed(verbose, parsed);
   int verify = cli_arg(parsed, "verify", NULL, NULL, NULL) == 0;
-  
+  int clean = strcasecmp(parsed->args[1], "clean")==0;
+
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -488,16 +492,36 @@ static int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context
     verify_bundles();
   }
   struct rhizome_cleanup_report report;
-  if (rhizome_cleanup(&report) == -1)
+  if (clean){
+    if (rhizome_cleanup(&report) == -1)
+      return -1;
+    cli_field_name(context, "deleted_stale_incoming_files", ":");
+    cli_put_long(context, report.deleted_stale_incoming_files, "\n");
+    cli_field_name(context, "deleted_orphan_files", ":");
+    cli_put_long(context, report.deleted_orphan_files, "\n");
+    cli_field_name(context, "deleted_orphan_fileblobs", ":");
+    cli_put_long(context, report.deleted_orphan_fileblobs, "\n");
+    cli_field_name(context, "deleted_orphan_manifests", ":");
+    cli_put_long(context, report.deleted_orphan_manifests, "\n");
+  }
+  if (rhizome_store_space_usage(&report.space_used)!=RHIZOME_PAYLOAD_STATUS_EMPTY)
     return -1;
-  cli_field_name(context, "deleted_stale_incoming_files", ":");
-  cli_put_long(context, report.deleted_stale_incoming_files, "\n");
-  cli_field_name(context, "deleted_orphan_files", ":");
-  cli_put_long(context, report.deleted_orphan_files, "\n");
-  cli_field_name(context, "deleted_orphan_fileblobs", ":");
-  cli_put_long(context, report.deleted_orphan_fileblobs, "\n");
-  cli_field_name(context, "deleted_orphan_manifests", ":");
-  cli_put_long(context, report.deleted_orphan_manifests, "\n");
+  cli_field_name(context, "file_count", ":");
+  cli_put_long(context, report.space_used.file_count, "\n");
+  cli_field_name(context, "file_size_bytes", ":");
+  int64_t used = report.space_used.internal_bytes + report.space_used.external_bytes;
+  cli_put_long(context, used, "\n");
+  cli_field_name(context, "overhead_bytes", ":");
+  cli_put_long(context, report.space_used.content_bytes - used, "\n");
+  cli_field_name(context, "used_bytes", ":");
+  cli_put_long(context, report.space_used.content_bytes, "\n");
+  cli_field_name(context, "available_space_bytes", ":");
+  cli_put_long(context, report.space_used.content_limit_bytes -
+    ((report.space_used.content_limit_bytes == UINT64_MAX) ? 0 : report.space_used.content_bytes), "\n");
+  cli_field_name(context, "reclaimable_bytes", ":");
+  cli_put_long(context, report.space_used.db_available_pages * report.space_used.db_page_size, "\n");
+  cli_field_name(context, "free_space_bytes", ":");
+  cli_put_long(context, report.space_used.filesystem_free_bytes, "\n");
   return 0;
 }
 

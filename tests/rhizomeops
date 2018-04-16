@@ -1747,12 +1747,11 @@ doc_payloadUninteresting="Fail to insert a payload that is uninteresting"
 setup_payloadUninteresting() {
    setup_servald
    setup_rhizome
-   executeOk_servald config set rhizome.clean_on_open yes
-   # Create Rhizome database, discover fixed space overhead.
-   executeOk_servald rhizome list
-   bytes_used=$($SED -n -e '/.*RHIZOME SPACE.*USED bytes=\([0-9]\+\).*/{s//\1/p;q}' "$TFWSTDERR")
-   assert [ -n "$bytes_used" ]
-   executeOk_servald config set rhizome.database_size $((bytes_used + 65535))
+   # get size of empty rhizome db
+   executeOk_servald rhizome status
+   extract_stdout_keyvalue used_bytes 'used_bytes' '[0-9]\+'
+   assert [ -n "$used_bytes" ]
+   executeOk_servald config set rhizome.database_size $((used_bytes + 65535))
 }
 test_payloadUninteresting(){
    create_file file1 32K
@@ -1802,9 +1801,12 @@ setup_evictFreeSpace() {
 test_evictFreeSpace() {
    executeOk_servald config \
       set rhizome.min_free_space 1M
+   executeOk_servald rhizome status
+   tfw_cat --stdout
    # only 640K free...
-   export SERVALD_FREE_SPACE=655360
+   export SERVALD_FAKE_SPACE_LIMIT=2M
    rhizome_clean
+   tfw_cat --stdout
    assert [ $deleted_files = 0 ]
    assert [ $deleted_fileblobs = 0 ]
    assert [ $deleted_manifests = 1 ]
