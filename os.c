@@ -1,6 +1,8 @@
-/* 
-Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2010 Paul Gardner-Stephen 
+/*
+Serval DNA operating system services
+Copyright (C) 2010 Paul Gardner-Stephen
+Copyright (C) 2012-2015 Serval Project Inc.
+Copyright (C) 2016-2018 Flinders University
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -114,6 +116,15 @@ int _mkdirsn(struct __sourceloc whence, const char *path, size_t len, mode_t mod
   return -1;
 }
 
+int _erename(struct __sourceloc __whence, const char *oldpath, const char *newpath, int log_level)
+{
+  if (log_level != LOG_LEVEL_SILENT)
+    LOGF(log_level, "rename %s -> %s", alloca_str_toprint(oldpath), alloca_str_toprint(newpath));
+  if (rename(oldpath, newpath) == -1)
+    return WHYF_perror("rename(%s,%s)", alloca_str_toprint(oldpath), alloca_str_toprint(newpath));
+  return 0;
+}
+
 time_ms_t gettime_ms()
 {
   struct timeval nowtv;
@@ -221,6 +232,7 @@ int get_file_meta(const char *path, struct file_meta *metap)
       return WHYF_perror("stat(%s)", path);
     *metap = FILE_META_NONEXIST;
   } else {
+    metap->mode = st.st_mode;
     metap->size = st.st_size;
     metap->mtime.tv_sec = st.st_mtime;
     // Truncate to whole seconds to ensure that this code will work on file systems that only have
@@ -321,6 +333,24 @@ int alter_file_meta(const char *path, const struct file_meta *origp, struct file
     ++sec;
   }
   return 1;
+}
+
+int file_exists(const char *path)
+{
+  struct file_meta meta;
+  return get_file_meta(path, &meta) != -1 && is_file_meta_exists(&meta);
+}
+
+int file_exists_is_regular(const char *path)
+{
+  struct file_meta meta;
+  return get_file_meta(path, &meta) != -1 && is_file_meta_regular(&meta);
+}
+
+int file_exists_is_directory(const char *path)
+{
+  struct file_meta meta;
+  return get_file_meta(path, &meta) != -1 && !is_file_meta_directory(&meta);
 }
 
 ssize_t get_self_executable_path(char *buf, size_t len)

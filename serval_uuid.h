@@ -69,6 +69,8 @@ typedef struct serval_uuid {
   } u;
 } serval_uuid_t;
 
+#define SERVAL_UUID_INVALID { .u = { .record = { .clock_seq_hi_and_reserved = 0 } } }
+
 enum serval_uuid_version {
   UUID_VERSION_UNSUPPORTED = 0,
   UUID_VERSION_TIME_BASED = 1,

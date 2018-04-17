@@ -1,6 +1,7 @@
 /*
 Serval DNA instance paths
 Copyright (C) 2012-2015 Serval Project Inc.
+Copyright (C) 2016-2018 Flinders University
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -23,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdlib.h>
 #include "instance.h"
+#include "conf.h"
 #include "str.h"
 #include "os.h"
 #include "strbuf.h"
@@ -105,20 +107,21 @@ void set_instance_path(const char *path)
   know_instancepath = 1;
 }
 
-static int vformf_basepath(struct __sourceloc __whence, strbuf b, const char *basepath, const char *fmt, va_list ap)
+static int vformf_path(struct __sourceloc __whence, strbuf b, const char *fhs_path, const char *configured_path, const char *fmt, va_list ap)
 {
-  if (fmt)
-    strbuf_va_vprintf(b, fmt, ap);
-  if (!strbuf_overrun(b) && (strbuf_len(b) == 0 || strbuf_str(b)[0] != '/')) {
-    strbuf_reset(b);
-    strbuf_puts(b, basepath);
-    if (fmt) {
-      if (strbuf_substr(b, -1)[0] != '/')
-	strbuf_putc(b, '/');
-      strbuf_va_vprintf(b, fmt, ap);
-    }
+  const char *ipath = instance_path();
+  strbuf_path_join(b, ipath ? ipath : fhs_path, NULL);
+  if (configured_path)
+    strbuf_path_join(b, configured_path, NULL);
+  assert(strbuf_str(b)[0] == '/');
+  int fmt_overrun = 0;
+  if (fmt) {
+    strbuf sb = strbuf_alloca(strbuf_size(b));
+    strbuf_va_vprintf(sb, fmt, ap);
+    strbuf_path_join(b, strbuf_str(sb), NULL);
+    fmt_overrun = strbuf_overrun(sb);
   }
-  if (!strbuf_overrun(b))
+  if (!strbuf_overrun(b) && !fmt_overrun)
     return 1;
   WHYF("instance path overflow (strlen %lu, sizeof buffer %lu): %s",
       (unsigned long)strbuf_count(b),
@@ -127,28 +130,11 @@ static int vformf_basepath(struct __sourceloc __whence, strbuf b, const char *ba
   return 0;
 }
 
-int _formf_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *basepath, const char *fmt, ...)
-{
-  va_list ap;
-  va_start(ap, fmt);
-  int ret = vformf_basepath(__whence, strbuf_local(buf, bufsiz), basepath, fmt, ap);
-  va_end(ap);
-  return ret;
-}
-
-static int vformf_path(struct __sourceloc __whence, strbuf b, const char *syspath, const char *fmt, va_list ap)
-{
-  const char *ipath = instance_path();
-  if (!ipath)
-    ipath=syspath;
-  return vformf_basepath(__whence, b, ipath, fmt, ap);
-}
-
 int _formf_serval_etc_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, ...)
 {
   va_list ap;
   va_start(ap, fmt);
-  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_ETC_PATH, fmt, ap);
+  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_ETC_PATH, NULL, fmt, ap);
   va_end(ap);
   return ret;
 }
@@ -164,7 +150,7 @@ int _formf_serval_run_path(struct __sourceloc __whence, char *buf, size_t bufsiz
 
 int _vformf_serval_run_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, va_list ap)
 {
-  return vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_RUN_PATH, fmt, ap);
+  return vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_RUN_PATH, NULL, fmt, ap);
 }
 
 strbuf strbuf_system_log_path(strbuf sb)
@@ -188,7 +174,7 @@ int _formf_serval_cache_path(struct __sourceloc __whence, char *buf, size_t bufs
 {
   va_list ap;
   va_start(ap, fmt);
-  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_CACHE_PATH, fmt, ap);
+  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_CACHE_PATH, NULL, fmt, ap);
   va_end(ap);
   return ret;
 }
@@ -197,7 +183,16 @@ int _formf_rhizome_store_path(struct __sourceloc __whence, char *buf, size_t buf
 {
   va_list ap;
   va_start(ap, fmt);
-  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), RHIZOME_STORE_PATH, fmt, ap);
+  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), RHIZOME_STORE_PATH, config.rhizome.datastore_path, fmt, ap);
+  va_end(ap);
+  return ret;
+}
+
+int _formf_rhizome_store_legacy_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), RHIZOME_STORE_PATH, NULL, fmt, ap);
   va_end(ap);
   return ret;
 }
@@ -206,7 +201,7 @@ int _formf_serval_tmp_path(struct __sourceloc __whence, char *buf, size_t bufsiz
 {
   va_list ap;
   va_start(ap, fmt);
-  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_TMP_PATH, fmt, ap);
+  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_TMP_PATH, NULL, fmt, ap);
   va_end(ap);
   return ret;
 }
@@ -215,7 +210,7 @@ int _formf_servald_proc_path(struct __sourceloc __whence, char *buf, size_t bufs
 {
   va_list ap;
   va_start(ap, fmt);
-  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_RUN_PATH "/proc", fmt, ap);
+  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_RUN_PATH "/proc", NULL, fmt, ap);
   va_end(ap);
   return ret;
 }

@@ -3,6 +3,7 @@
 # Tests for Serval rhizome command-line operations.
 #
 # Copyright 2012-2015 Serval Project, Inc.
+# Copyright 2016-2018 Flinders University
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -310,14 +311,17 @@ setup_MoveDatabaseFolder() {
    executeOk_servald config set rhizome.max_blob_size 0
    echo "A test file" >file1
    executeOk_servald rhizome add file "$SIDA" file1 file1.manifest
+   assert --stderr [ -e "$SERVALINSTANCE_PATH/rhizome/rhizome.db" ]
+   executeOk mv "$SERVALINSTANCE_PATH/rhizome/"* "$SERVALINSTANCE_PATH"
+   executeOk rmdir "$SERVALINSTANCE_PATH/rhizome/"
 }
 test_MoveDatabaseFolder() {
-   executeOk_servald config \
-      set rhizome.datastore_path "$instance_dir/moved_rhizome"
+   executeOk_servald config set rhizome.datastore_path "moved"
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author="$SIDA" file1
-   assert [ ! -e "$instance_dir/rhizome.db" ]
-   assert [ -e "$instance_dir/moved_rhizome/rhizome.db" ]
+   assert --stderr [ ! -e "$SERVALINSTANCE_PATH/rhizome/rhizome.db" ]
+   assert --stderr [ -e "$SERVALINSTANCE_PATH/moved/rhizome.db" ]
+   tfw_cat --stderr
 }
 
 doc_CleanVerify="Verify all bundles"
@@ -1147,10 +1151,10 @@ test_JournalAppendNoHash() {
    assert_stdout_add_file file1
    extract_stdout_manifestid BID
    extract_stdout_filehash HASH
-   assert [ $(find "$SERVALINSTANCE_PATH/hash" -type f| wc -l) -eq 1 ]
+   assert [ $(find "$SERVALINSTANCE_PATH/rhizome/hash" -type f| wc -l) -eq 1 ]
    executeOk_servald rhizome journal append "$SIDA" "$BID" file2
    tfw_cat --stdout --stderr
-   assert [ $(find "$SERVALINSTANCE_PATH/hash" -type f| wc -l) -eq 2 ]
+   assert [ $(find "$SERVALINSTANCE_PATH/rhizome/hash" -type f| wc -l) -eq 2 ]
    assertStderrGrep 'Reusing journal'
    executeOk_servald rhizome extract file "$BID" filex
    tfw_cat --stdout --stderr
@@ -1178,7 +1182,7 @@ setup_JournalAppendSharedPayload() {
    extract_stdout_filehash HASH12
    get_external_blob_path blob_file12 "$HASH12"
    assert cmp file12 "$blob_file12"
-   assert [ $(find "$SERVALINSTANCE_PATH/blob" -type f| wc -l) -eq 2 ]
+   assert [ $(find "$SERVALINSTANCE_PATH/rhizome/blob" -type f| wc -l) -eq 2 ]
 }
 test_JournalAppendSharedPayload() {
    executeOk_servald rhizome journal append "$SIDA" "" file1
@@ -1186,14 +1190,14 @@ test_JournalAppendSharedPayload() {
    assert_stdout_add_file file1
    extract_stdout_filehash addedhash
    assert [ "$addedhash" = "$HASH1" ]
-   assert [ $(find "$SERVALINSTANCE_PATH/blob" -type f| wc -l) -eq 2 ]
+   assert [ $(find "$SERVALINSTANCE_PATH/rhizome/blob" -type f| wc -l) -eq 2 ]
    extract_stdout_manifestid BID
    executeOk_servald rhizome journal append "$SIDA" "$BID" file2
    tfw_cat --stdout --stderr
    assert_stdout_add_file file12 !name
    extract_stdout_filehash addedhash
    assert [ "$addedhash" = "$HASH12" ]
-   assert [ $(find "$SERVALINSTANCE_PATH/blob" -type f| wc -l) -eq 2 ]
+   assert [ $(find "$SERVALINSTANCE_PATH/rhizome/blob" -type f| wc -l) -eq 2 ]
 }
 
 doc_JournalAddCreate="Cannot create a journal using file add"
@@ -1478,8 +1482,8 @@ setup_ImportOwnBundle() {
    extract_manifest_filehash filehash fileB.manifest
    extract_manifest_BK BK fileB.manifest
    extract_manifest_date date fileB.manifest
-   assert [ -e "$SERVALINSTANCE_PATH/rhizome.db" ]
-   rm -f "$SERVALINSTANCE_PATH/rhizome.db"
+   assert [ -e "$SERVALINSTANCE_PATH/rhizome/rhizome.db" ]
+   rm -f "$SERVALINSTANCE_PATH/rhizome/rhizome.db"
    executeOk_servald rhizome list
    assert_rhizome_list
 }

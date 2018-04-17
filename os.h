@@ -1,6 +1,7 @@
 /*
 Serval DNA native Operating System interface
-Copyright (C) 2012 Serval Project Inc.
+Copyright (C) 2012-2014 Serval Project Inc.
+Copyright (C) 2017-2018 Flinders University
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -25,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 #include <sys/types.h> // for off64_t
+#include <sys/stat.h> // for S_IFMT etc.
 #include <stdio.h> // for NULL
 #include <stdlib.h>
 #include <stdint.h> // for int64_t
@@ -106,7 +108,9 @@ __SERVAL_DNA__OS_INLINE off64_t lseek64(int fd, off64_t offset, int whence) {
 # endif
 #endif
 
-/* The "e" variants log the error before returning -1.
+/* Functions to create a directory and any missing parent directories.  The "e"
+ * variants log the error before returning -1.  The "_info" variants log all
+ * created directories at INFO level.
  */
 typedef void MKDIR_LOG_FUNC(struct __sourceloc, const char *, mode_t, void *);
 MKDIR_LOG_FUNC log_info_mkdir;
@@ -129,6 +133,12 @@ int _emkdirsn(struct __sourceloc, const char *path, size_t len, mode_t mode, MKD
 #define mkdirsn_info(path, len, mode)   mkdirsn_log((path), (len), (mode), log_info_mkdir, NULL)
 #define emkdirs_info(path, mode)        emkdirs_log((path), (mode), log_info_mkdir, NULL)
 #define emkdirsn_info(path, len, mode)  emkdirsn_log((path), (len), (mode), log_info_mkdir, NULL)
+
+/* Function to rename a file, logging any error before returning -1.
+ */
+int _erename(struct __sourceloc, const char *oldpath, const char *newpath, int log_level);
+#define erename(oldpath, newpath)       _erename(__WHENCE__, (oldpath), (newpath), LOG_LEVEL_SILENT)
+#define erename_info(oldpath, newpath)  _erename(__WHENCE__, (oldpath), (newpath), LOG_LEVEL_INFO)
 
 /* Read the symbolic link into the supplied buffer and add a terminating nul.
  * Logs an ERROR and returns -1 if the buffer is too short to hold the link
@@ -185,17 +195,30 @@ int malloc_read_whole_file(const char *path, unsigned char **bufp, size_t *sizp)
 struct file_meta {
   struct timespec mtime;
   off_t size;
+  mode_t mode;
 };
 
-#define FILE_META_UNKNOWN ((struct file_meta){ .mtime = { .tv_sec = -1, .tv_nsec = -1 }, .size = -1 })
+#define FILE_META_UNKNOWN ((struct file_meta){ .mtime = { .tv_sec = -1, .tv_nsec = -1 }, .size = -1, .mode = -1 })
 
 // A non-existent file is treated as size == 0 and an impossible modification
 // time, so that cmp_file_meta() will not compare it as equal with any existing
 // file.
-#define FILE_META_NONEXIST ((struct file_meta){ .mtime = { .tv_sec = -1, .tv_nsec = -1 }, .size = 0 })
+#define FILE_META_NONEXIST ((struct file_meta){ .mtime = { .tv_sec = -1, .tv_nsec = -1 }, .size = 0, .mode = 0 })
 
 __SERVAL_DNA__OS_INLINE int is_file_meta_nonexist(const struct file_meta *m) {
-    return m->mtime.tv_sec == -1 && m->mtime.tv_nsec == -1 && m->size == 0;
+    return m->mtime.tv_sec == -1 && m->mtime.tv_nsec == -1 && m->size == 0 && m->mode == 0;
+}
+
+__SERVAL_DNA__OS_INLINE int is_file_meta_exists(const struct file_meta *m) {
+    return m->mtime.tv_sec != -1;
+}
+
+__SERVAL_DNA__OS_INLINE int is_file_meta_regular(const struct file_meta *m) {
+    return is_file_meta_exists(m) && (m->mode & S_IFMT) == S_IFREG;
+}
+
+__SERVAL_DNA__OS_INLINE int is_file_meta_directory(const struct file_meta *m) {
+    return is_file_meta_exists(m) && (m->mode & S_IFMT) == S_IFDIR;
 }
 
 int get_file_meta(const char *path, struct file_meta *metap);
@@ -204,6 +227,11 @@ int cmp_file_meta(const struct file_meta *a, const struct file_meta *b);
 // Ensure that the metadata of a file differs from a given original metadata,
 // by bumping the file's modification time or altering its inode.
 int alter_file_meta(const char *path, const struct file_meta *origp, struct file_meta *metap);
+
+// Convenience functions based on get_file_meta().
+int file_exists(const char *path);
+int file_exists_is_regular(const char *path);
+int file_exists_is_directory(const char *path);
 
 /* Fill the given buffer with the nul-terminated absolute path of the calling
  * process's executable.  Logs an error and returns -1 if the executable cannot

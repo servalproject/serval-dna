@@ -195,8 +195,8 @@ static uint64_t store_get_free_space()
 #if defined(HAVE_SYS_STATVFS_H) || (defined(HAVE_SYS_STAT_H) && defined(HAVE_SYS_VFS_H))
   else {
     struct statvfs stats;
-    if (statvfs(rhizome_database.folder, &stats)==-1)
-      WARNF_perror("statvfs(%s)", rhizome_database.folder);
+    if (statvfs(rhizome_database.dir_path, &stats)==-1)
+      WARNF_perror("statvfs(%s)", alloca_str_toprint(rhizome_database.dir_path));
     else
       space = stats.f_frsize * (uint64_t)stats.f_bavail;
   }

@@ -235,7 +235,7 @@ strip_signatures() {
 get_external_blob_path(){
    local _var="$1"
    local _hash="$2"
-   local _filepath="$SERVALINSTANCE_PATH/blob/${_hash:0:2}/${_hash:2:2}/${_hash:4}"
+   local _filepath="$SERVALINSTANCE_PATH/rhizome/blob/${_hash:0:2}/${_hash:2:2}/${_hash:4}"
    if [ -n "$_var" ]; then
       eval "$_var=\$_filepath"
    fi

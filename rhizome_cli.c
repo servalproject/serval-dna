@@ -1,6 +1,7 @@
 /*
  Serval DNA - Rhizome command line interface
  Copyright (C) 2014 Serval Project Inc.
+ Copyright (C) 2016-2017 Flinders University
  
  This program is free software; you can redistribute it and/or
  modify it under the terms of the GNU General Public License

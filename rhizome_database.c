@@ -1,6 +1,7 @@
 /*
 Serval DNA - Rhizome database operations
 Copyright (C) 2012-2014 Serval Project Inc.
+Copyright (C) 2016-2018 Flinders University
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -37,7 +38,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 
-__thread struct rhizome_database rhizome_database = {NULL,{{{0}}},{0}};
+__thread struct rhizome_database rhizome_database = {
+    .dir_path = "",
+    .db = NULL,
+    .uuid = SERVAL_UUID_INVALID
+  };
+
 static time_ms_t rhizomeRetryLimit = -1;
 
 int is_debug_rhizome()
@@ -235,65 +241,82 @@ int rhizome_opendb()
 
   IN();
 
-  if (sodium_init()==-1)
+  if (sodium_init() == -1)
     RETURN(WHY("Failed to initialise libsodium"));
 
-  if (!formf_rhizome_store_path(rhizome_database.folder, sizeof rhizome_database.folder, "%s", config.rhizome.datastore_path))
-    RETURN (-1);
-  DEBUGF(rhizome, "Rhizome datastore path = %s", alloca_str_toprint(rhizome_database.folder));
-  if (emkdirs_info(rhizome_database.folder, 0700)==-1)
-    RETURN (-1);
-  char dbpath[1024];
-
-  if (!FORMF_RHIZOME_STORE_PATH(dbpath, "rhizome.db"))
+  // Work out the absolute path of the directory that contains all the database
+  // files/subdirectories.
+  if (!FORMF_RHIZOME_STORE_PATH(rhizome_database.dir_path, "%s", ""))
     RETURN(-1);
-  
-  struct file_meta meta;
-  if (get_file_meta(dbpath, &meta) == -1)
+  DEBUGF(rhizome, "Rhizome store directory path = %s", alloca_str_toprint(rhizome_database.dir_path));
+
+  // Work out the absolute paths of the database file and subdirectories.
+  char dbpath[sizeof rhizome_database.dir_path];
+  char blobpath[sizeof rhizome_database.dir_path];
+  char hashpath[sizeof rhizome_database.dir_path];
+  char temppath[sizeof rhizome_database.dir_path];
+  int db_exists = 0;
+  {
+    struct file_meta dbmeta;
+    if (   !FORMF_RHIZOME_STORE_PATH(dbpath, "rhizome.db")
+	|| !FORMF_RHIZOME_STORE_PATH(blobpath, RHIZOME_BLOB_SUBDIR)
+	|| !FORMF_RHIZOME_STORE_PATH(hashpath, RHIZOME_HASH_SUBDIR)
+	|| !FORMF_RHIZOME_STORE_PATH(temppath, "sqlite3tmp")
+	|| get_file_meta(dbpath, &dbmeta) == -1)
+      RETURN(-1);
+    db_exists = is_file_meta_exists(&dbmeta);
+  }
+
+  // Create missing store directory.
+  if (emkdirs_info(rhizome_database.dir_path, 0700) == -1)
     RETURN(-1);
 
-  if (meta.mtime.tv_sec == -1 && config.rhizome.datastore_path[0]){
-    // Move the database after datastore path is set for the first time
-    // This is mostly here to transparently fix a bug where we were ignoring the config value
-    char src[1024];
-    char dest[1024];
-    if (formf_rhizome_store_path(src, sizeof src, "rhizome.db")
-      && strcmp(dbpath, src)!=0
-      && get_file_meta(src, &meta)==0
-      && meta.mtime.tv_sec != -1){
-
-      INFOF("Moving rhizome store from %s to %s", src, dbpath);
-      if (rename(src, dbpath))
-	WHYF_perror("rename(%s, %s)", src, dbpath);
-
-      if (formf_rhizome_store_path(src, sizeof src, RHIZOME_BLOB_SUBDIR)
-          && FORMF_RHIZOME_STORE_PATH(dest, RHIZOME_BLOB_SUBDIR)
-	  && rename(src, dest)
-	  && errno!=ENOENT){
-	  WHYF_perror("rename(%s, %s)", src, dest);
-      }
-
-      if (formf_rhizome_store_path(src, sizeof src, RHIZOME_HASH_SUBDIR)
-          && FORMF_RHIZOME_STORE_PATH(dest, RHIZOME_HASH_SUBDIR)
-	  && rename(src, dest)
-	  && errno!=ENOENT){
-	  WHYF_perror("rename(%s, %s)", src, dest);
-      }
+  // If the database file does not exist, then SQLite will create it.  However, in 2014 a bug was
+  // introduced that always created the database file in the instance directory, regardless of the
+  // setting of the 'rhizome.datastore_path' config option.  This bug has now been fixed, so in
+  // order to preserve the Rhizome data store when upgrading from an earlier (buggy) version, if
+  // there is a database file at this "legacy" location, then move it into the correct, configured
+  // location, instead of creating a fresh (empty) database file.
+  if (!db_exists) {
+    char legacy_dbpath[sizeof rhizome_database.dir_path];
+    if (FORMF_RHIZOME_STORE_LEGACY_PATH(legacy_dbpath, "rhizome.db")
+	&& strcmp(legacy_dbpath, dbpath) != 0
+	&& file_exists(legacy_dbpath)
+    ) {
+      INFOF("Recover legacy Rhizome SQLite database");
+      // Move the legacy database file to its correct location.
+      if (erename_info(legacy_dbpath, dbpath) == -1)
+	RETURN(-1);
+      // Move any legacy "blob" and "hash" subdirectories too, if they are present.
+      char legacy_dirpath[sizeof rhizome_database.dir_path];
+      if (   !file_exists(blobpath)
+	  && FORMF_RHIZOME_STORE_LEGACY_PATH(legacy_dirpath, RHIZOME_BLOB_SUBDIR)
+	  && file_exists(legacy_dirpath))
+	erename_info(legacy_dirpath, blobpath);
+      if (   !file_exists(hashpath)
+	  && FORMF_RHIZOME_STORE_LEGACY_PATH(legacy_dirpath, RHIZOME_HASH_SUBDIR)
+	  && file_exists(legacy_dirpath))
+	erename_info(legacy_dirpath, hashpath);
     }
+    else
+      INFOF("Creating Rhizome SQLite database: %s", dbpath);
   }
 
-  if (!sqlite3_temp_directory){
-    char tmp[1024];
-    if (!FORMF_RHIZOME_STORE_PATH(tmp, "sqlite3tmp"))
-      RETURN(-1);
-    if (emkdirs_info(tmp, 0700) == -1)
-      RETURN(-1);
-    sqlite3_temp_directory = sqlite3_mprintf("%s", tmp);
-  }
+  // Create missing sub-directories.
+  if (   emkdirs_info(blobpath, 0700) == -1
+      || emkdirs_info(hashpath, 0700) == -1
+      || emkdirs_info(temppath, 0700) == -1)
+    RETURN(-1);
 
-  sqlite3_config(SQLITE_CONFIG_LOG,sqlite_log,NULL);
+  // Inform SQLite of its temporary directory.
+  assert(!sqlite3_temp_directory);
+  sqlite3_temp_directory = sqlite3_mprintf("%s", temppath);
 
-  if (sqlite3_open(dbpath,&rhizome_database.db)){
+  // Set up SQLite logging.
+  sqlite3_config(SQLITE_CONFIG_LOG, sqlite_log, NULL);
+
+  // Open the SQLite database file, creating it if necessary.
+  if (sqlite3_open(dbpath, &rhizome_database.db)){
     RETURN(WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_database.db)));
   }
   sqlite3_trace_v2(rhizome_database.db, SQLITE_TRACE_STMT, sqlite_trace_callback, NULL);
@@ -304,7 +327,7 @@ int rhizome_opendb()
 
   /* Read Rhizome configuration */
   DEBUGF(rhizome, "Rhizome will use %"PRIu64"B of storage for its database.", (uint64_t) config.rhizome.database_size);
-  
+
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
   uint64_t version;
@@ -358,7 +381,7 @@ int rhizome_opendb()
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=1;", END);
   }
-  if (version<2 && meta.mtime.tv_sec != -1){
+  if (version<2 && db_exists){
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN service text;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN name text;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN sender text collate nocase;", END);
@@ -369,28 +392,28 @@ int rhizome_opendb()
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_ID_VERSION ON MANIFESTS(id, version);", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=3;", END);
   }
-  if (version<4 && meta.mtime.tv_sec != -1){
+  if (version<4 && db_exists){
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN tail integer;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=4;", END);
   }
-  if (version<5 && meta.mtime.tv_sec != -1){
+  if (version<5 && db_exists){
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE TABLE IF NOT EXISTS IDENTITY(uuid text not null); ", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=5;", END);
   }
-  if (version<6 && meta.mtime.tv_sec != -1){
+  if (version<6 && db_exists){
     // we've always been at war with eurasia
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS GROUPLIST; ", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS GROUPMEMBERSHIPS; ", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS VERIFICATIONS; ", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS FILEMANIFESTS;", END);
   }
-  if (version<7 && meta.mtime.tv_sec != -1){
+  if (version<7 && db_exists){
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE FILES ADD COLUMN last_verified integer;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=7;", END);
   }
   
   if (version<8){
-    if (meta.mtime.tv_sec != -1)
+    if (db_exists)
       sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN manifest_hash text collate nocase;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFEST_HASH ON MANIFESTS(manifest_hash);", END);
 
@@ -448,7 +471,7 @@ int rhizome_close_db()
   IN();
   if (rhizome_database.db) {
     rhizome_cache_close();
-    
+
     if (!sqlite3_get_autocommit(rhizome_database.db)){
       WHY("Uncommitted transaction!");
       sqlite_exec_void("ROLLBACK;", END);
@@ -461,11 +484,11 @@ int rhizome_close_db()
     int r = sqlite3_close(rhizome_database.db);
     if (r != SQLITE_OK)
       RETURN(WHYF("Failed to close sqlite database, %s",sqlite3_errmsg(rhizome_database.db)));
-  }
-  rhizome_database.db=NULL;
-  if (sqlite3_temp_directory)
+    rhizome_database.db = NULL;
+    assert(sqlite3_temp_directory);
     sqlite3_free(sqlite3_temp_directory);
-  sqlite3_temp_directory=NULL;
+    sqlite3_temp_directory = NULL;
+  }
   RETURN(0);
   OUT();
 }

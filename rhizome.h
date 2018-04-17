@@ -1,5 +1,6 @@
 /*
 Serval DNA Rhizome file distribution
+Copyright (C) 2016-2018 Flinders University
 Copyright (C) 2010-2014 Serval Project Inc.
 Copyright (C) 2010 Paul Gardner-Stephen
  
@@ -337,18 +338,17 @@ int rhizome_configure();
 int rhizome_enabled();
 int rhizome_fetch_delay_ms();
 
+#define RHIZOME_DEFAULT_PATH "rhizome"
 #define RHIZOME_BLOB_SUBDIR "blob"
 #define RHIZOME_HASH_SUBDIR "hash"
 
-struct rhizome_database{
+struct rhizome_database {
+  char dir_path[1024];
   sqlite3 *db;
   serval_uuid_t uuid;
-  char folder[1024];
 };
 
 extern __thread struct rhizome_database rhizome_database;
-
-#define FORMF_RHIZOME_STORE_PATH(buf,fmt,...) formf_path((buf), sizeof(buf), rhizome_database.folder, (fmt), ##__VA_ARGS__)
 
 int rhizome_opendb();
 int rhizome_close_db();
