@@ -672,7 +672,8 @@ strbuf strbuf_append_quoted_string(strbuf sb, const char *str)
 
 strbuf strbuf_append_token_or_quoted_string(strbuf sb, const char *str)
 {
-  for (const char *s = str; *s; ++s)
+  const char *s;
+  for (s = str; *s; ++s)
     if (!is_http_token(*s))
       return strbuf_append_quoted_string(sb, str);
   strbuf_puts(sb, str);
