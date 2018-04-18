@@ -266,6 +266,8 @@ typedef struct httpd_request
 
     struct {
       struct rhizome_space_report rhizome_space;
+      subscriber_iterator neighbour_iterator;
+      enum list_phase phase;
     } status;
   } u;
 

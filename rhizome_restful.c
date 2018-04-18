@@ -35,6 +35,7 @@ DECLARE_HANDLER("/restful/rhizome/insert", restful_rhizome_insert);
 DECLARE_HANDLER("/restful/rhizome/import", restful_rhizome_import);
 DECLARE_HANDLER("/restful/rhizome/append", restful_rhizome_append);
 DECLARE_HANDLER("/restful/rhizome/storestatus.json", restful_rhizome_disk_status);
+DECLARE_HANDLER("/restful/rhizome/syncstatus.json", restful_rhizome_sync_status);
 DECLARE_HANDLER("/restful/rhizome/", restful_rhizome_);
 
 static HTTP_RENDERER render_status_and_manifest_headers;
@@ -1304,3 +1305,104 @@ static int restful_rhizome_disk_status(httpd_request *r, const char *remainder)
   return 1;
 }
 
+static int rhizome_sync_status_content_chunk(struct http_request *hr, strbuf b)
+{
+  httpd_request *r = (httpd_request *) hr;
+  const char *headers[] = {
+    "subscriber",
+    "received_bundles",
+    "sent_bytes",
+    "sending_bytes",
+    "received_bytes",
+    "requested_bytes"
+  };
+  switch(r->u.status.phase){
+    case LIST_HEADER:
+      strbuf_puts(b, "{\n\"header\":[");
+      unsigned i;
+      for (i = 0; i != NELS(headers); ++i) {
+	if (i)
+	  strbuf_putc(b, ',');
+	strbuf_json_string(b, headers[i]);
+      }
+      strbuf_puts(b, "],\n\"rows\":[");
+      if (!strbuf_overrun(b))
+	r->u.status.phase = LIST_FIRST;
+      return 1;
+
+    case LIST_FIRST:
+    case LIST_ROWS:
+
+      while(1){
+	struct subscriber **subscriberp = subscriber_iterator_get_current(&r->u.status.neighbour_iterator);
+	if (!subscriberp){
+	  r->u.status.phase = LIST_END;
+	  return 1;
+	}
+	struct rhizome_sync_state state;
+	if (rhizome_sync_status(*subscriberp, &state)!=0){
+	  subscriber_iterator_advance(&r->u.status.neighbour_iterator);
+	  continue;
+	}
+
+	if (r->u.status.phase==LIST_ROWS)
+	  strbuf_puts(b, ",");
+	strbuf_puts(b, "\n[");
+
+	strbuf_json_hex(b, (*subscriberp)->sid.binary, sizeof(sid_t));
+	strbuf_putc(b, ',');
+	strbuf_sprintf(b, "%u", state.received_bundles);
+	strbuf_putc(b, ',');
+	strbuf_sprintf(b, "%"PRIu64, state.sent_bytes);
+	strbuf_putc(b, ',');
+	strbuf_sprintf(b, "%"PRIu64, state.sending_bytes);
+	strbuf_putc(b, ',');
+	strbuf_sprintf(b, "%"PRIu64, state.received_bytes);
+	strbuf_putc(b, ',');
+	strbuf_sprintf(b, "%"PRIu64, state.requested_bytes);
+	strbuf_putc(b, ']');
+
+	if (!strbuf_overrun(b)){
+	  r->u.status.phase=LIST_ROWS;
+	  subscriber_iterator_advance(&r->u.status.neighbour_iterator);
+	}
+	return 1;
+      }
+
+    case LIST_END:
+      strbuf_puts(b, "\n]\n}\n");
+      if (!strbuf_overrun(b))
+	r->u.status.phase=LIST_DONE;
+
+      return 1;
+
+    case LIST_DONE:
+      return 0;
+  }
+  abort();
+}
+
+static int rhizome_sync_status_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
+{
+  return generate_http_content_from_strbuf_chunks(hr, (char *)buf, bufsz, result, rhizome_sync_status_content_chunk);
+}
+
+static void finalise_union_sync_status(httpd_request *r)
+{
+  subscriber_iterator_free(&r->u.status.neighbour_iterator);
+}
+
+static int restful_rhizome_sync_status(httpd_request *r, const char *remainder)
+{
+  if (*remainder || !is_rhizome_http_enabled())
+    return 404;
+  int ret = authorize_restful(&r->http);
+  if (ret)
+    return ret;
+
+  subscriber_iterator_start(&r->u.status.neighbour_iterator);
+  r->finalise_union = finalise_union_sync_status;
+
+  http_request_response_generated(&r->http, 200, &CONTENT_TYPE_JSON, rhizome_sync_status_content);
+  return 1;
+}

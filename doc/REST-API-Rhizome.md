@@ -1171,6 +1171,25 @@ The results will be a single json object with the following fields;
 
 * `filesystem_free_bytes` - the measured free space of the filesystem.
 
+### GET /restful/rhizome/syncstatus.json
+
+Fetch statistics on the current status of rhizome transfers. The list is returned in the body of
+the [response](#response) in [JSON table][] format with the following columns:
+
+* `subscriber` - the [SID][] of the neighbour we are transferring with.
+
+* `received_bundles` - count of the number of new bundles successfully received from this neighbour.
+
+* `sent_bytes` - total bytes sent, including protocol overheads.
+
+* `sending_bytes` - total size of data that has been requested by this neighbour, but not yet sent.
+
+* `received_bytes` - total bytes received and processed, including protocol overheads.
+
+* `requested_bytes` - total size of all data we will request from this neighbour.
+
+
+
 -----
 **Copyright 2015-2017 Serval Project Inc.**  
 ![CC-BY-4.0](./cc-by-4.0.png)

@@ -367,6 +367,17 @@ sqlite_retry_state sqlite_retry_state_init(int serverLimit, int serverSleep, int
 
 #define SQLITE_RETRY_STATE_DEFAULT sqlite_retry_state_init(-1,-1,-1,-1)
 
+// sync stats for a single neighbour
+struct rhizome_sync_state {
+  unsigned received_bundles;
+  uint64_t sent_bytes;
+  uint64_t sending_bytes;
+  uint64_t received_bytes;
+  uint64_t requested_bytes;
+};
+
+int rhizome_sync_status(struct subscriber *peer, struct rhizome_sync_state *state);
+
 struct rhizome_space_report {
   uint64_t file_count;
   uint64_t internal_bytes;

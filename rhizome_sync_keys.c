@@ -53,6 +53,9 @@ struct transfers{
 };
 
 struct rhizome_sync_keys{
+  unsigned received_bundles;
+  uint64_t sent_bytes;
+  uint64_t received_bytes;
   struct transfers *queue;
   struct msp_server_state *connection;
 };
@@ -85,6 +88,31 @@ static const char *get_state_name(uint8_t state)
     case STATE_LOOKUP_BAR: return "LOOKUP_BAR";
   }
   return "Unknown";
+}
+
+int rhizome_sync_status(struct subscriber *peer, struct rhizome_sync_state *state){
+  if (!peer->sync_keys_state)
+    return 1;
+  if (!(peer->reachable & REACHABLE_DIRECT))
+    return 1;
+
+  struct rhizome_sync_keys *sync_state = peer->sync_keys_state;
+  struct transfers *queue = sync_state->queue;
+
+  bzero(state, sizeof *state);
+
+  while(queue){
+    if ((queue->state&3) == STATE_SEND)
+      state->sending_bytes += queue->req_len;
+    else
+      state->requested_bytes += queue->req_len;
+    queue=queue->next;
+  }
+  state->received_bundles = sync_state->received_bundles;
+  state->sent_bytes = sync_state->sent_bytes;
+  state->received_bytes = sync_state->received_bytes;
+
+  return 0;
 }
 
 static void _clear_transfer(struct __sourceloc __whence, struct transfers *ptr)
@@ -312,6 +340,7 @@ static void sync_lookup_bar(struct subscriber *peer, struct rhizome_sync_keys *s
     struct transfers *send_bar = *find_and_update_transfer(peer, sync_state, &transfer->key, STATE_SEND_BAR, rank);
 
     if (send_bar){
+      send_bar->req_len = sizeof(send_bar->bar);
       rhizome_manifest_to_bar(m, &send_bar->bar);
       free(transfer);
     }else{
@@ -359,6 +388,7 @@ static void sync_send_peer(struct subscriber *peer, struct rhizome_sync_keys *sy
       
       if (ob_overrun(payload)){
 	ob_rewind(payload);
+	sync_state->sent_bytes+=ob_position(payload);
 	msp_send_packet(sync_state->connection, ob_ptr(payload), ob_position(payload));
 	ob_clear(payload);
 	ob_limitsize(payload, sizeof(buff));
@@ -472,6 +502,7 @@ static void sync_send_peer(struct subscriber *peer, struct rhizome_sync_keys *sy
     }
     
     if (send_payload){
+      sync_state->sent_bytes+=ob_position(payload);
       msp_send_packet(sync_state->connection, ob_ptr(payload), ob_position(payload));
       ob_clear(payload);
       ob_limitsize(payload, sizeof(buff));
@@ -489,8 +520,10 @@ static void sync_send_peer(struct subscriber *peer, struct rhizome_sync_keys *sy
   }
   
   if (payload){
-    if (ob_position(payload))
+    if (ob_position(payload)){
+      sync_state->sent_bytes+=ob_position(payload);
       msp_send_packet(sync_state->connection, ob_ptr(payload), ob_position(payload));
+    }
     ob_free(payload);
   }
 
@@ -667,20 +700,22 @@ void sync_send_keys(struct sched_ent *alarm)
 
 static int process_transfer_message(struct subscriber *peer, struct rhizome_sync_keys *sync_state, struct overlay_buffer *payload)
 {
+  unsigned length = ob_remaining(payload);
+  int ret = 0;
   while(ob_remaining(payload)){
     ob_checkpoint(payload);
     int msg_state = ob_get(payload);
     if (msg_state<0)
-      return 0;
+      goto end;
     sync_key_t key;
     if (ob_get_bytes(payload, key.key, sizeof key)<0)
-      return 0;
-    
+      goto end;
+
     int rank=-1;
     if (msg_state & STATE_REQ){
       rank = ob_get(payload);
       if (rank < 0)
-	return 0;
+	goto end;
     }
     
     DEBUGF(rhizome_sync_keys, "Processing sync message %s %s %d", 
@@ -689,7 +724,7 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
       case STATE_SEND_BAR:{
 	rhizome_bar_t bar;
 	if (ob_get_bytes(payload, bar.binary, sizeof(rhizome_bar_t))<0)
-	  return 0;
+	  goto end;
 
 	if (!config.rhizome.fetch)
 	  break;
@@ -704,7 +739,8 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
         }else if (status != RHIZOME_BUNDLE_STATUS_NEW){
 	  // don't consume the payload
 	  ob_rewind(payload);
-	  return 1;
+	  ret = 1;
+	  goto end;
 	}
 	// send a request for the manifest
 	rank = rhizome_bar_log_size(&bar);
@@ -715,7 +751,8 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
       
       case STATE_REQ_MANIFEST:{
 	// queue the transmission of the manifest
-	find_and_update_transfer(peer, sync_state, &key, STATE_SEND_MANIFEST, rank);
+	struct transfers *transfer = *find_and_update_transfer(peer, sync_state, &key, STATE_SEND_MANIFEST, rank);
+	transfer->req_len = DUMMY_MANIFEST_SIZE;
 	break;
       }
       
@@ -739,7 +776,8 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
 	if (!m){
 	  // don't consume the payload
 	  ob_rewind(payload);
-	  return 1;
+	  ret = 1;
+	  goto end;
 	}
 	
 	memcpy(m->manifestdata, data, len);
@@ -767,7 +805,8 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
 	  // don't consume the payload
 	  rhizome_manifest_free(m);
 	  ob_rewind(payload);
-	  return 1;
+	  ret = 1;
+	  goto end;
 	}
 	
 	// start writing the payload
@@ -790,8 +829,11 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
 		rhizome_fail_write(write);
 		free(write);
 		ob_rewind(payload);
-		return 1;
+		ret = 1;
+		goto end;
 	      }
+	      if (add_status == RHIZOME_BUNDLE_STATUS_NEW)
+		sync_state->received_bundles++;
 	      DEBUGF(rhizome_sync_keys, "Already have payload, imported manifest for %s, (%s)",
 		alloca_sync_key(&key), rhizome_bundle_status_message_nonnull(add_status));
 	    }
@@ -803,7 +845,8 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
 	    rhizome_fail_write(write);
 	    free(write);
 	    ob_rewind(payload);
-	    return 1;
+	    ret = 1;
+	    goto end;
 
 	  default:
 	    break;
@@ -843,7 +886,9 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
 
 	    if (status == RHIZOME_PAYLOAD_STATUS_NEW || status == RHIZOME_PAYLOAD_STATUS_STORED){
 	      enum rhizome_bundle_status add_state = rhizome_add_manifest_to_store(m, NULL);
-	      DEBUGF(rhizome_sync_keys, "Import %s = %s", 
+	      if (add_state == RHIZOME_BUNDLE_STATUS_NEW)
+		sync_state->received_bundles++;
+	      DEBUGF(rhizome_sync_keys, "Import %s = %s",
 		alloca_sync_key(&key), rhizome_bundle_status_message_nonnull(add_state));
 	    } else {
 	      WHYF("Failed to complete payload %s %s", alloca_sync_key(&key), rhizome_payload_status_message_nonnull(status));
@@ -874,7 +919,8 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
 	rhizome_manifest *m = rhizome_new_manifest();
 	if (!m){
 	  ob_rewind(payload);
-	  return 1;
+	  ret = 1;
+	  goto end;
 	}
 
 	enum rhizome_bundle_status status = rhizome_retrieve_manifest_by_hash_prefix(key.key, sizeof(sync_key_t), m);
@@ -883,7 +929,8 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
 	  // TODO Tidy up. We don't have this bundle anymore!
 	  if (status != RHIZOME_BUNDLE_STATUS_NEW){
 	    ob_rewind(payload);
-	    return 1;
+	    ret = 1;
+	    goto end;
 	  }
 	  break;
 	}
@@ -896,7 +943,8 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
 	  rhizome_manifest_free(m);
 	  if (pstatus != RHIZOME_PAYLOAD_STATUS_NEW){
 	    ob_rewind(payload);
-	    return 1;
+	    ret = 1;
+	    goto end;
 	  }
 	  break;
 	}
@@ -933,6 +981,7 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
 
 	  if (transfer->write->file_offset >= transfer->write->file_length){
 	    // move this transfer to the global completing list
+	    sync_state->received_bundles++;
 	    transfer->state = STATE_COMPLETING;
 	    *ptr = transfer->next;
 	    transfer->next = completing;
@@ -945,7 +994,12 @@ static int process_transfer_message(struct subscriber *peer, struct rhizome_sync
 	WHYF("Unknown message type %x", msg_state);
     }
   }
-  return 0;
+
+end:
+  // Don't double count bytes that we will process later
+  length -= ob_remaining(payload);
+  sync_state->received_bytes += length;
+  return ret;
 }
 
 

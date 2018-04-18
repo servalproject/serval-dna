@@ -1172,4 +1172,28 @@ test_RhizomeStatus() {
    assertJq response.json 'contains({"filesystem_free_bytes":2041856})'
 }
 
+doc_RhizomeSyncStatus="REST API Rhizome sync status"
+setup_RhizomeSyncStatus() {
+   setup
+   rhizome_add_bundles "$SIDA" 1 10
+   set_instance +B
+   create_single_identity
+   rhizome_add_bundles "$SIDB" 1 10
+   start_servald_instances +B
+}
+test_RhizomeSyncStatus() {
+   set_instance +A
+
+   while true; do
+      rest_request GET "/restful/rhizome/syncstatus.json"
+      transform_list_json response.json array_of_objects.json
+
+      tfw_log "# checking if all bundles received"
+      [ $(jq "contains([{\"subscriber\":\"$SIDB\",\"received_bundles\":10,\"sending_bytes\":0,\"requested_bytes\":0}])" array_of_objects.json) = "true" ] && break
+
+      sleep 1
+   done
+   tfw_preserve array_of_objects.json
+}
+
 runTests "$@"
