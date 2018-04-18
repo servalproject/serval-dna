@@ -233,6 +233,7 @@ $(LIBSODIUM_DEV)/.installed:
 	@touch $@.in-progress
 	@cd $(LIBSODIUM_SUBDIR) && $(MAKE) \
 	    CFLAGS+="-prefer-pic" \
+	    exec_prefix=$(abspath $(LIBSODIUM_DEV)) \
 	    prefix=$(abspath $(LIBSODIUM_DEV)) \
 	    install
 	@mv -f $@.in-progress $@
