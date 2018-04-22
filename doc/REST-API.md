@@ -636,7 +636,7 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [MeshMS send request]: ./REST-API-MeshMS.md#post-restfulmeshmssendersidrecipientsidsendmessage
 [Keyring JSON result]: ./REST-API-Keyring.md#keyring-json-result
 [bundle secret]: ./REST-API-Rhizome.md#bundle-secret
-[multipart/form-data]: https://www.ietf.org/rfc/rfc7578
+[multipart/form-data]: https://tools.ietf.org/html/rfc7578
 [Content-Disposition]: https://tools.ietf.org/html/rfc7578#section-4.2
 [Content-Type]: https://tools.ietf.org/html/rfc7578#section-4.4
 [application/x-www-form-urlencoded]: https://tools.ietf.org/html/rfc1866#section-8.2.1
