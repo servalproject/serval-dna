@@ -1,5 +1,4 @@
 # Makefile.in for Serval DNA daemon and libraries
-# nnnn
 # vim: noet ts=8 sts=0 sw=8
 prefix=@prefix@
 exec_prefix=@exec_prefix@
@@ -21,7 +20,7 @@ SWIFTCFLAGS= 		@SWIFTCFLAGS@ -I$(abs_builddir) -I$(abs_srcdir)
 SWIFTLIBS=		@LIBS@
 
 SWIFT_BUILD= 		@SWIFT_BUILD@
-SWIFT_BUILD_FLAGS= 	$(addprefix -Xswiftc , $(SWIFTCFLAGS)) 
+SWIFT_BUILD_FLAGS= 	$(addprefix -Xswiftc , $(SWIFTCFLAGS))
 
 SWIFT_MODULE_NAME=	ServalDNA
 SWIFT_PACKAGE_DIR=	$(srcdir)/swift-daemon-api
@@ -182,9 +181,10 @@ test:	servaldswift
 
 clean:	swift-daemon-api-clean swift-client-api-clean
 
-.PHONY: swift-daemon-api swift-daemon-api-clean swift-client-api swift-client-api-clean
+.PHONY: swift-daemon-api swift-daemon-api-clean \
+	swift-client-api swift-client-api-clean
 
-libServalDNA.a $(SWIFT_MODULE_NAME).swiftmodule $(SWIFT_MODULE_NAME).swiftdoc: swift-daemon-api
+lib$(SWIFT_MODULE_NAME).a $(SWIFT_MODULE_NAME).swiftmodule $(SWIFT_MODULE_NAME).swiftdoc: swift-daemon-api
 	cp $(SWIFT_BUILD_DIR)/debug/$(notdir $@) $@
 
 swift-daemon-api:
@@ -198,11 +198,10 @@ swift-daemon-api-clean:
 		 $(SWIFT_MODULE_NAME).swiftdoc
 
 swift-client-api:
-	@mkdir -p swift-client-api
-	cd swift-client-api && $(MAKE) all
+	cd $@ && $(MAKE) all
 
 swift-client-api-clean:
-	cd swift-client-api 2>/dev/null && $(MAKE) clean
+	cd $(@:-clean=) 2>/dev/null && $(MAKE) clean
 
 endif # $(SWIFTC)
 
@@ -393,7 +392,7 @@ ifneq ($(SWIFTC),) # Only provide Swift targets if the Swift compiler is availab
 servaldswift: $(srcdir)/servaldswift.swift \
 	      $(OBJSDIR_SERVALD)/servald_features.o \
 	      $(SWIFT_MODULE_NAME).swiftmodule \
-	      libServalDNA.a \
+	      lib$(SWIFT_MODULE_NAME).a \
 	      libservaldaemon.a
 	@echo SWIFT $@
 	@$(SWIFTC) -emit-executable -o $@ \

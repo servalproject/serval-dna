@@ -1,4 +1,4 @@
-# Makefile.in for Serval DNA Swift API
+# Makefile.in for Serval DNA Swift Client API
 # vim: noet ts=8 sts=0 sw=8
 prefix=@prefix@
 exec_prefix=@exec_prefix@
@@ -18,7 +18,7 @@ SWIFTCFLAGS= 		@SWIFTCFLAGS@
 SWIFTCFLAGS+=		-I $(srcdir)
 
 SWIFT_BUILD= 		@SWIFT_BUILD@
-SWIFT_BUILD_FLAGS= 	$(addprefix -Xswiftc , $(SWIFTCFLAGS)) 
+SWIFT_BUILD_FLAGS= 	$(addprefix -Xswiftc , $(SWIFTCFLAGS))
 
 DEFS=			@DEFS@
 SWIFTDEFS=		$(addprefix -Xcc , $(DEFS))
@@ -48,9 +48,9 @@ package:
 		cd $(SWIFT_PACKAGE_DIR) && \
 		$(SWIFT_BUILD) --build-path $(SWIFT_BUILD_DIR) $(SWIFT_BUILD_FLAGS) $(SWIFTDEFS)
 
-$(SWIFT_BUILD_DIR)/debug/libServalClient.a: package
+$(SWIFT_BUILD_DIR)/debug/lib$(SWIFT_MODULE_NAME).a: package
 
-swift-client-util: $(srcdir)/client_util.swift $(SWIFT_BUILD_DIR)/debug/libServalClient.a
+swift-client-util: $(srcdir)/client_util.swift $(SWIFT_BUILD_DIR)/debug/lib$(SWIFT_MODULE_NAME).a
 	@echo SWIFT $@
 	@$(SWIFTC) -emit-executable $(SWIFTCFLAGS) $(SWIFTDEFS) -I $(SWIFT_BUILD_DIR)/debug -o $@ $^
 

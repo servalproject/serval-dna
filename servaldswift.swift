@@ -19,25 +19,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import Foundation
 import ServalDNA
-import servald.log
 
 // Logging
-//
-// A simplistic console log outputter that writes to standard error and is not
-// configurable.  Note that log_output_console.o is not linked into
-// servaldswift, in order to avoid duplicate log outputs on standard error.
 
-private func logPrint(_ level: CInt, _ message: UnsafePointer<CChar>?, _ overrun: Int8) {
-    let level_text = String(cString: serval_log_level_prefix_string(level)!)
-    let message_text = String(cString: message!)
-    FileHandle.standardError.write("\(level_text) \(message_text)\n".data(using:.utf8)!)
-}
-
-serval_log_delegate.print = logPrint
-serval_log_delegate.minimum_level = LOG_LEVEL_WARN
-serval_log_delegate.show_prolog = 1
-serval_log_delegate.show_pid = 1
-serval_log_delegate.show_time = 1
+logSetup()
 
 // Output
 
