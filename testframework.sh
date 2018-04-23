@@ -322,6 +322,10 @@ runTests() {
    _tfw_test_number_watermark=0
    local testNumber
    local testPosition=0
+   # capture the real stdio handles for verbose logging
+   _tfw_stdout=5
+   _tfw_stderr=6
+   exec 5>&1 6>&2
    for ((testNumber = 1; testNumber <= ${#_tfw_test_names[*]}; ++testNumber)); do
       local testSourceFile="${_tfw_test_sourcefiles[$(($testNumber - 1))]}"
       local testName="${_tfw_test_names[$(($testNumber - 1))]}"
@@ -397,10 +401,10 @@ runTests() {
          local finish_time=unknown
          (  #)#<-- fixes Vim syntax highlighting
             _tfw_result=FATAL
-            _tfw_stdout=5
-            _tfw_stderr=5
-            _tfw_log_fd=6
-            BASH_XTRACEFD=7
+            _tfw_log_fd=7
+            # redirect test output to log file
+            exec 7>"$_tfw_tmp/log.stdout" 1>&7 2>"$_tfw_tmp/log.stderr" 8>"$_tfw_tmp/log.xtrace"
+            BASH_XTRACEFD=8
             # Disable job control.
             set +m
             # If the test is from a different source script than the one
@@ -429,9 +433,17 @@ runTests() {
                # Find the PID of the current subshell process.  Cannot use $BASHPID
                # because MacOS only has Bash-3.2, and $BASHPID was introduced in Bash-4.
                local mypid=$($BASH -c 'echo $PPID')
-               # These tail processes will die when the current subshell exits.
-               tail --pid=$mypid --follow $_tfw_tmp/log.stdout >&$_tfw_stdout 2>/dev/null &
-               tail --pid=$mypid --follow $_tfw_tmp/log.stderr >&$_tfw_stderr 2>/dev/null &
+               (
+                  # Copy the test's stdout to the console stdout
+                  # This tail process will die when the current subshell exits.
+                  tail -n +1 --pid=$mypid --follow $_tfw_tmp/log.stdout >&$_tfw_stdout 2>/dev/null
+                  # Then copy any stderr
+                  if [[ -s $_tfw_tmp/log.stderr ]]; then
+                     echo '++++++++++ log.stderr ++++++++++' >&$_tfw_stderr
+                     cat $_tfw_tmp/log.stderr >&$_tfw_stderr
+                     echo '++++++++++' >&$_tfw_stderr
+                  fi
+               ) &
             fi
             # Execute the test case.
             _tfw_phase=setup
@@ -452,7 +464,7 @@ runTests() {
             esac
             _tfw_result=PASS
             exit 0
-         ) <&- 5>&1 5>&2 6>"$_tfw_tmp/log.stdout" 1>&6 2>"$_tfw_tmp/log.stderr" 7>"$_tfw_tmp/log.xtrace"
+         ) <&-
          local stat=$?
          finish_time=$(_tfw_timestamp)
          local result=FATAL
@@ -1917,7 +1929,7 @@ fork() {
    eval export $_tfw_fork_stderr_var='"$_tfw_fork_stderr_path"'
    mkdir "$_tfw_process_tmp" || _tfw_fatalexit
    $_tfw_assert_noise && tfw_log "# $desc START" $(shellarg "$@")
-   "$@" 6>"$_tfw_fork_stdout_path" 1>&6 2>"$_tfw_fork_stderr_path" 7>"$_tfw_fork_xtrace_path" &
+   "$@" 7>"$_tfw_fork_stdout_path" 1>&7 2>"$_tfw_fork_stderr_path" 8>"$_tfw_fork_xtrace_path" &
    _tfw_forked_pids[$forkid]=$!
    _tfw_forked_labels[$forkid]="$_tfw_forklabel"
    [ -n "$_tfw_forklabel" ] && eval _tfw_fork_label_$_tfw_forklabel=$forkid
