@@ -24,13 +24,13 @@ source "${0%/*}/../testdefs.sh"
 
 _simulator() {
    # TODO timeout & failure reporting?
-   "$servald_build_root/simulator" <&8 >$SIM_OUT
+   "$servald_build_root/simulator" <&9 >$SIM_OUT
 }
 start_simulator() {
   SIM_IN="$PWD/SIM_IN"
   SIM_OUT="$PWD/SIM_OUT"
   mkfifo "$SIM_IN"
-  exec 8<>"$SIM_IN"
+  exec 9<>"$SIM_IN"
   fork %simulator _simulator
 }
 simulator_command() {
