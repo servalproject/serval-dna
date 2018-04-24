@@ -504,6 +504,7 @@ static void sync_send_peer(struct subscriber *peer, struct rhizome_sync_keys *sy
 
 void sync_send(struct sched_ent *alarm)
 {
+  time_ms_t now = gettime_ms();
   struct msp_iterator iterator;
   msp_iterator_open(&sync_connections, &iterator);
   
@@ -515,7 +516,14 @@ void sync_send(struct sched_ent *alarm)
     struct subscriber *peer = msp_remote_peer(connection);
     struct rhizome_sync_keys *sync_state = get_peer_sync_state(peer);
     sync_state->connection = connection;
-    sync_send_peer(peer, sync_state);
+
+    if (peer->reachable & REACHABLE_DIRECT){
+      sync_send_peer(peer, sync_state);
+    }else{
+      // pause transfers if the routing table flaps, give up after 5s of inactivity
+      if (now - msp_last_packet(connection) > 5000)
+	free_peer_sync_state(peer);
+    }
   }
 
   while(1){
@@ -991,7 +999,8 @@ static int sync_keys_recv(struct internal_mdp_header *header, struct overlay_buf
 	msp_consumed(connection_state, packet, recv_payload);
       }
       
-      sync_send_peer(header->source, sync_state);
+      if (header->source->reachable & REACHABLE_DIRECT)
+	sync_send_peer(header->source, sync_state);
 
       time_ms_t next_action = msp_next_action(connection_state);
       if (sync_complete_transfers()==1){
@@ -1013,7 +1022,7 @@ static int sync_keys_recv(struct internal_mdp_header *header, struct overlay_buf
   return 0;
 }
 
-static void sync_neighbour_changed(struct subscriber *neighbour, uint8_t found, unsigned count)
+static void sync_neighbour_changed(struct subscriber *UNUSED(neighbour), uint8_t UNUSED(found), unsigned count)
 {
   struct sched_ent *alarm = &ALARM_STRUCT(sync_send_keys);
   int enabled = is_rhizome_advertise_enabled();
@@ -1029,9 +1038,6 @@ static void sync_neighbour_changed(struct subscriber *neighbour, uint8_t found, 
     unschedule(alarm);
     unschedule(&ALARM_STRUCT(sync_keys_status));
   }
-  
-  if (!found || !enabled)
-    free_peer_sync_state(neighbour);
 }
 DEFINE_TRIGGER(nbr_change, sync_neighbour_changed);
 
