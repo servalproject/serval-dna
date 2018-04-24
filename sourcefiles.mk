@@ -23,6 +23,7 @@ SERVAL_CLIENT_SOURCES = \
 	log_util.c \
 	mem.c \
 	net.c \
+	nibble_tree.c \
 	numeric_str.c \
 	os.c \
 	performance_timing.c \
@@ -93,7 +94,6 @@ SERVAL_DAEMON_SOURCES = \
 	overlay_mdp_dnalookup.c \
 	mdp_filter.c \
 	msp_server.c \
-	nibble_tree.c \
 	network_cli.c \
 	overlay_olsr.c \
 	overlay_packetformats.c \
