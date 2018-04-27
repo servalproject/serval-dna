@@ -2132,7 +2132,7 @@ assertGrep() {
 # Compare the two arguments as dotted ascii decimal version strings.
 # Return 0 if they are equal, 1 if arg1 < arg2, 2 if arg1 > arg2
 tfw_cmp_version() {
-   local IFS=.
+   local IFS=.-
    local i=0 a=($1) b=($2)
    for (( i=0; i < ${#a[@]} || i < ${#b[@]}; ++i )); do
       local ai="${a[i]:-0}"

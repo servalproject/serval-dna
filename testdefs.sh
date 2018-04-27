@@ -975,36 +975,52 @@ curl() {
 }
 
 # Setup function:
-# - ensure that the netcat6 nc6(1) utility is available
-setup_netcat6() {
-   NETCAT6=$(type -P nc6) || error "nc6(1) command is not present"
-   local minversion="${1:-1.0}"
-   local ver="$("$NETCAT6" --version | tr '\n' ' ')"
+# - ensure that a suitable version of the OpenBSD netcat utility is available
+setup_netcat() {
+   local try=(nc.openbsd nc)
+   NETCAT=
+   for exe in "${try[@]}"; do
+      NETCAT=$(type -P "$exe") && break
+   done
+   [ -x "$NETCAT" ] || error "OpenBSD netcat command is not present: tried ${try[*]}"
+   local minversion="${1:-1.130-3}"
+   local ver="$("$NETCAT" -h 2>&1 | tr '\n' ' ')"
    case "$ver" in
-   nc6\ version\ *)
+   'OpenBSD netcat (Debian patchlevel '*')'*)
       set -- $ver
-      tfw_cmp_version "$3" "$minversion"
+      local version="${5%)}"
+      tfw_cmp_version "$version" "$minversion"
       case $? in
       0|2)
-         export NETCAT6
+         export NETCAT
          return 0
          ;;
       esac
-      error "$NETCAT6 version $3 is not adequate (expecting $minversion or higher)"
+      error "$NETCAT version $version is not adequate (require $minversion or higher)"
+      ;;
+   '[v'*']'*)
+      error "$NETCAT is the traditional netcat (require the OpenBSD netcat, version $minversion or higher)"
+      ;;
+   *)
+      error "cannot parse output of $NETCAT -h: $ver"
       ;;
    esac
-   error "cannot parse output of $NETCAT6 --version: $ver"
+}
+
+# Utility function:
+# - invoke the OpenBSD netcat utility
+netcat() {
+   [ -x "$NETCAT" ] || error "missing call to setup_netcat in the fixture"
+   "$NETCAT" "$@"
 }
 
 # Guard functions.
-NETCAT6=
-nc6() {
-   [ -x "$NETCAT6" ] || error "missing call to setup_netcat6 in the fixture"
-   "$NETCAT6" "$@"
-}
 nc() {
-   error "do not use nc; instead use nc6(1) after calling setup_netcat6 in the fixture"
+   error "do not use nc directly; instead use netcat() after calling setup_netcat() in the fixture"
 }
-netcat() {
-   error "do not use netcat; instead use nc6(1) after calling setup_netcat6 in the fixture"
+setup_netcat6() {
+   error "use of netcat6 is discontinued; use setup_netcat() instead"
+}
+nc6() {
+   error "use of netcat6 is discontinued; use netcat() instead"
 }
