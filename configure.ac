@@ -88,6 +88,7 @@ dnl available in Xcode, then the configure script fails with an error.
 dnl
 xcrun=''
 xcode_sdk=''
+xcode_sysroot=''
 arch_flag=''
 min_version_flag=''
 AS_IF([test "x$enable_xcode_sdk" != x], [ dnl
@@ -117,6 +118,10 @@ AS_IF([test "x$enable_xcode_sdk" != x], [ dnl
     AR="${xcrun}ar"
     RANLIB="${xcrun}ranlib"
 
+    AC_MSG_CHECKING([Clang Xcode sysroot])
+    xcode_sysroot=[`$xcrun --show-sdk-path`]
+    AC_MSG_RESULT([$xcode_sysroot])
+
     dnl Map the CPU name from the one used by config.sub to the one used by Xcode.
     AS_CASE([$host_cpu], [aarch64], [host_arch=arm64], [host_arch=$host_cpu])
     arch_flag="-arch $host_arch"
@@ -132,7 +137,7 @@ AS_IF([test "x$enable_xcode_sdk" != x], [ dnl
     AC_MSG_CHECKING([Clang Xcode target options])
     AS_CASE([$xcode_sdk_os],
         [[macosx]], [min_version_flag="-mmacosx-version-min=$xcode_sdk_version"],
-        [[iphoneos]], [min_version_flag="-miphoneos-version-min=$xcode_sdk_version"]
+        [[iphoneos]], [min_version_flag="-miphoneos-version-min=$xcode_sdk_version"],
         [[iphonesimulator]], [min_version_flag="-mios-simulator-version-min=$xcode_sdk_version"]
     )
     AC_MSG_RESULT([${min_version_flag:-(none)}])
@@ -171,8 +176,16 @@ AS_IF([test "x$SWIFTC" != x], [ dnl
         [iphoneos|iphonesimulator], [swift_target_option="-target $host_arch-apple-ios$xcode_sdk_version"],
         [*],                        [swift_target_option="-target $host_arch-apple-$xcode_sdk"]
     )
-    swiftc_target=`$SWIFTC $swift_target_option $SWIFTCFLAGS -version 2>&1 | sed -n -e 's/^Target:  *//p'`
-    AS_IF([test "x$swiftc_target" = x], [AC_MSG_ERROR([Swift compiler does not report its target: $SWIFTC $swift_target_option $SWIFTCFLAGS -version])])
+    swiftc_command="$SWIFTC $swift_target_option $SWIFTCFLAGS -version"
+    swiftc_version=`$swiftc_command 2>&1`
+    swiftc_target=`echo "$swiftc_version" | sed -n -e 's/^Target:  *//p'`
+    AS_IF([test "x$swiftc_target" = x], [ dnl
+           echo "Command: $swiftc_command" >&AS_MESSAGE_LOG_FD
+           echo "Output was:" >&AS_MESSAGE_LOG_FD
+           echo "$swiftc_version" >&AS_MESSAGE_LOG_FD
+           AC_MSG_FAILURE([Swift compiler does not report its target])
+        ]
+    )
 
     dnl In a build for Mac OSX (native or cross), ensure that the Swift target is high
     dnl enough to create a Swift package, which were not supported before Mac OSX 10.10.
@@ -201,7 +214,7 @@ AS_IF([test "x$SWIFTC" != x], [ dnl
     dnl utility and add the -target option to SWIFTCFLAGS (if the user has already supplied a
     dnl -target option in SWIFTCFLAGS, then this prepended one will take precedence).
     SWIFTC="${xcrun}$SWIFTC"
-    SWIFTCFLAGS="-target $swiftc_target $SWIFTCFLAGS"
+    SWIFTCFLAGS="-target $swiftc_target ${xcode_sysroot:+ -Xcc -isysroot -Xcc $xcode_sysroot} $SWIFTCFLAGS"
 ])
 
 dnl Check for a working Swift package manager, keep going if unsuccessful.
@@ -216,8 +229,8 @@ AC_SUBST([SWIFT_BUILD])
 
 dnl The C compilation and linking flags used in all Makefiles and all the following
 dnl configuration tests.
-CPPFLAGS="$arch_flag $CPPFLAGS -D_GNU_SOURCE"
-CFLAGS="$arch_flag $min_version_flag $CFLAGS"
+CPPFLAGS="$arch_flag ${xcode_sysroot:+ -isysroot $xcode_sysroot} $CPPFLAGS -D_GNU_SOURCE"
+CFLAGS="$min_version_flag $CFLAGS"
 LDFLAGS="$arch_flag $LDFLAGS"
 
 dnl Extra toolchain definitions that get expanded in Makefiles (CC, CCAS, etc. are already
