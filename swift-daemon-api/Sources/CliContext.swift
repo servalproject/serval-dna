@@ -101,10 +101,23 @@ private func cliPuts(_ context: UnsafeMutablePointer<cli_context>?, _ str: Unsaf
     }
 }
 
+// The va_list C type on i386, armv7 and i86_64 is CVaListPointer, whereas on
+// arm64 it is Optional<CVaListPointer>.
+#if arch(arm64)
+
+private func cliVprintf(_ context: UnsafeMutablePointer<cli_context>?, _ fmt: UnsafePointer<CChar>?, _ ap: CVaListPointer?) -> Void {
+    let str = NSString(format: String(cString: fmt!), arguments: ap!)
+    _self(context).putString(String(data: str.data(using: String.Encoding.utf16.rawValue)!, encoding:.utf16)!)
+}
+
+#else
+
 private func cliVprintf(_ context: UnsafeMutablePointer<cli_context>?, _ fmt: UnsafePointer<CChar>?, _ ap: CVaListPointer) -> Void {
     let str = NSString(format: String(cString: fmt!), arguments: ap)
     _self(context).putString(String(data: str.data(using: String.Encoding.utf16.rawValue)!, encoding:.utf16)!)
 }
+
+#endif
 
 private func cliPutLong(_ context: UnsafeMutablePointer<cli_context>?, _ value: Int64, _ delim: UnsafePointer<CChar>?) -> Void {
     _self(context).putLong(value, delim != nil ? String(cString: delim!) : nil)
