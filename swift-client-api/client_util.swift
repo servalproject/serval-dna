@@ -70,8 +70,8 @@ func parseOptions(_ args: inout [String], _ options: [(String, (String) -> Void)
         var param : String?
         var optrange : Range<Int>
         if let eq = arg.range(of: "=") {
-            opt = arg.substring(to: eq.lowerBound)
-            param = arg.substring(from: eq.upperBound)
+            opt = String(arg[..<eq.lowerBound])
+            param = String(arg[eq.upperBound...])
             optrange = 0 ..< 1
         }
         else {
