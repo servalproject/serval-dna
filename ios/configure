@@ -30,7 +30,8 @@
 set -e
 
 usage() {
-   echo "Usage: ${0##*/} [-f|--force]"
+   echo "Usage: ${0##*/} [-f|--force] [iphone-version]"
+   echo "Eg:    ${0##*/} 10.3"
 }
 
 # Run the Serval DNA configure script once for each architecture, and save the
@@ -39,13 +40,26 @@ usage() {
 main() {
    setup
    parse_command_line "$@"
+   if [ -z "$ios_version" ]; then
+      discover_sdk_versions
+   fi
    check
    exec 5>&1
    TARGETS=()
-   configure iphoneos        armv7  /Library/Serval
-   configure iphoneos        arm64  /Library/Serval
-   configure iphonesimulator i386   /tmp/serval-dna
-   configure iphonesimulator x86_64 /tmp/serval-dna
+   if [ -n "$ios_version" ]; then
+      configure "iphoneos$ios_version" arm64 /Library/Serval
+      # 32-bit architectures are not supported in iOS 11 and later.
+      if [ ${ios_version%%.*} -lt 11 ]; then
+         configure "iphoneos$ios_version" armv7 /Library/Serval
+      fi
+   fi
+   if [ -n "$sim_version" ]; then
+      configure "iphonesimulator$sim_version" x86_64 /tmp/serval-dna
+      # 32-bit architectures are not supported in iOS 11 and later.
+      if [ ${sim_version%%.*} -lt 11 ]; then
+         configure "iphonesimulator$sim_version" i386 /tmp/serval-dna
+      fi
+   fi
    create_makefile
 }
 
@@ -77,12 +91,12 @@ fatal() {
 parse_command_line() {
    library=libservaldaemon.a
    swiftmodule=ServalDNA.swiftmodule
+   ios_version=
    opt_force_configure=false
    opt_force_config_status=false
    log_display_line_count=10
    while [ $# -ne 0 ]; do
       opt="$1"
-      shift
       case "$opt" in
       -h | --help)
          usage
@@ -98,8 +112,28 @@ parse_command_line() {
          usage_error "Unknown option: $opt"
          ;;
       *)
-         usage_error "Spurious argument: $opt"
+         break
          ;;
+      esac
+      shift
+   done
+   if [ $# -eq 1 ]; then
+      ios_version="$1"
+      shift
+   elif [ $# -gt 1 ]; then
+      usage_error "Spurious argument: $2"
+   fi
+   sim_version="$ios_version"
+}
+
+# Discover available SDK versions for iPhoneOS and iPhoneSimulator.
+
+discover_sdk_versions() {
+   local sdk
+   for sdk in $(xcodebuild -showsdks | sed -n -e 's/^.*-sdk \([^ ][^ ]*\)$/\1/p'); do
+      case "$sdk" in
+      iphoneos*)        ios_version=${sdk#iphoneos};;
+      iphonesimulator*) sim_version=${sdk#iphonesimulator};;
       esac
    done
 }
