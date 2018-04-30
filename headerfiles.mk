@@ -33,7 +33,6 @@ LIB_HDRS= \
 # in Xcode projects.
 PUBLIC_HDRS= \
 	constants.h \
-	log.h \
 	conf.h \
 	conf_schema.h \
 	idebug.h \
