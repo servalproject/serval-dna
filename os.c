@@ -38,6 +38,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string.h>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
+#include <inttypes.h> // PRIu32
 #endif
 
 void log_info_mkdir(struct __sourceloc __whence, const char *path, mode_t mode, void *UNUSED(context))
@@ -360,14 +361,21 @@ ssize_t get_self_executable_path(char *buf, size_t len)
 #elif defined (__sun__)
   return read_symlink("/proc/self/path/a.out", buf, len);
 #elif defined (__APPLE__)
+  // Ensure that len is not too large.
+  assert(((int32_t)len)>=0);
   uint32_t bufsize = len;
-  // OSX complains if the ? : operator returns fields with different signedness
-  // so we cast the uint32_t bufsize to signed.  We should really check to make
-  // sure that _NSGetExecutablePath doesn't return a value in bufsize that would
-  // be negative when cast.
   ssize_t s = _NSGetExecutablePath(buf, &bufsize);
+  // Ensure that _NSGetExecutablePath doesn't return a gigantic value in bufsize that would be
+  // negative when cast.
   assert(((int32_t)bufsize)>=0);
-  return ( s || len == 0 ) ? (int32_t)bufsize : -1;
+  if (len == 0) {
+    if (s != -1)
+      return WHYF("_NSGetExecutablePath(%p, &%zd) returned %zd, expecting -1", buf, len, s);
+    return bufsize;
+  }
+  if (s == -1)
+    return WHYF("_NSGetExecutablePath(%p, &%zd) returned %zd, bufsize=%"PRIu32, buf, len, s, bufsize);
+  return strlen(buf) + 1; // include terminating nul
 #else
 #error Unable to find executable path
 #endif

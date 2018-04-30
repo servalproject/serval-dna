@@ -239,6 +239,10 @@ int file_exists_is_directory(const char *path);
  * number of bytes placed in the buffer, including the terminating nul (ie,
  * returns strlen(buf) + 1).
  *
+ * If the 'len' parameter is zero, then does not alter the contents of 'buf'
+ * but just returns the size of the buffer that would be needed to hold the
+ * path, including the terminating nul.
+ *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 ssize_t get_self_executable_path(char *buf, size_t len);
