@@ -154,7 +154,7 @@ AS_IF([test "x$enable_xcode_sdk" != x], [ dnl
 dnl Check for C assembler.
 AM_PROG_AS
 
-dnl Check for a Swift 3 or 4 compiler; set SWIFTC if found.
+dnl Check for a Swift 4.1 compiler; set SWIFTC if found.
 AC_PROG_SWIFTC
 
 AS_IF([test "x$SWIFTC" != x], [ dnl
@@ -188,16 +188,13 @@ AS_IF([test "x$SWIFTC" != x], [ dnl
     )
     AC_MSG_RESULT([$swiftc_target])
 
-    dnl Check whether the Swift compiler will compile a simple Swift 4 program with the supplied flags.
-    dnl If not, report failure but keep going.
-    AC_PROG_SWIFTC_IS_SWIFT4
-    AS_IF([test "x$ac_cv_prog_swiftc_is_swift4" = xyes], [SWIFT_VERSION=4], [ dnl
-        AC_PROG_SWIFTC_IS_SWIFT3
-        AS_IF([test "x$ac_cv_prog_swiftc_is_swift3" = xyes], [SWIFT_VERSION=3], [ dnl
-            AC_MSG_WARN([$SWIFTC version is too old; omitting Swift API])
-            SWIFT_VERSION=
-            SWIFTC=
-        ])
+    dnl Check whether the Swift compiler will compile a simple Swift 4.1
+    dnl program with the supplied flags.  If not, report failure and carry on
+    dnl without support for Swift.
+    AC_PROG_SWIFTC_IS_SWIFT4_1
+    AS_IF([test "x$ac_cv_prog_swiftc_is_swift4_1" = xyes], [], [ dnl
+        AC_MSG_WARN([$SWIFTC version is too old; omitting Swift API])
+        SWIFTC=
     ])
 
     dnl Set up the Swift compiler for cross compilation; invoke it using the Xcode xcrun wrapper
@@ -215,7 +212,6 @@ AS_IF([test "x$SWIFTC" != x && test "x$SWIFT_BUILD" = x], [
 dnl Swift definitions that get expanded in Makefiles.
 AC_SUBST([SWIFTC])
 AC_SUBST([SWIFTCFLAGS])
-AC_SUBST([SWIFT_VERSION])
 AC_SUBST([SWIFT_BUILD])
 
 dnl The C compilation and linking flags used in all Makefiles and all the following

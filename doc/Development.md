@@ -1,6 +1,6 @@
 Notes for Serval DNA Developers
 ===============================
-[Serval Project][], December 2017
+[Serval Project][], May 2018
 
 This document is intended for all developers of [Serval DNA][], and also for
 non-developers who are experiencing errors in the [build][] process.
@@ -14,12 +14,11 @@ around the [Bash shell][] command-line on [Unix][] platforms such as
 between different platforms.
 
 To date, the [Serval Project][] has not dedicated effort to integrating with
-GUI development environments such as [Android Studio][] or supporting non-Unix
-platforms such as [Microsoft Windows][], because the ongoing effort of
-maintaining compatibility with so many platforms would detract from the
-development of core features.  Anybody is welcome to contribute support for
-more platforms, but at this stage, the Serval Project cannot commit to
-maintaining any contributed integrations.
+[IDE][]s such as [Android Studio][] or supporting non-Unix platforms such as
+[Microsoft Windows][], because the ongoing effort of maintaining compatibility
+with so many platforms would detract from the development of core features.
+Anybody is welcome to contribute support for more platforms, but at this stage,
+the Serval Project cannot commit to maintaining any contributed integrations.
 
 Autotools
 ---------
@@ -253,11 +252,10 @@ Swift
 Serval DNA supports [Swift][], the language that Apple recommend for developing
 iOS apps for their mobile devices such as phones and tablets.  The
 `./configure` script [generated from configure.ac](#autotools) detects whether
-a [Swift 4][] compiler is present, or failing that, a [Swift 3][] compiler, and
-if so, then produces a Makefile that will compile [servaldswift.swift][] into
-the *servaldswift* executable, to prove that the Swift [module
-map](../module.modulemap) allows Swift source code to invoke internal Serval
-DNA functions.
+a [Swift 4.1][] compiler is present, and if so, then produces a Makefile that
+will compile [servaldswift.swift][] into the *servaldswift* executable, to
+prove that the Swift [module map](../module.modulemap) allows Swift source code
+to invoke internal Serval DNA functions.
 
 The `./configure` script can be passed the following variables, either as
 environment variables or using the `VARNAME=value` syntax on its command line:
@@ -344,7 +342,7 @@ and may need to be changed for your particular circumstances.
 
 -----
 **Copyright 2015 Serval Project Inc.**  
-**Copyright 2016-2017 Flinders University**  
+**Copyright 2016-2018 Flinders University**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 Available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 
@@ -393,8 +391,10 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface
 [Swift]: https://en.wikipedia.org/wiki/Swift_(programming_language)
 [Swift module]: https://swift.org/package-manager/#modules
-[Swift 3]: https://swift.org/blog/swift-3-0-released/
-[Swift 4]: https://swift.org/blog/swift-4-0-released/
+[Swift 4.1]: https://swift.org/blog/swift-4-1-released/
 [URLSession]: https://developer.apple.com/documentation/foundation/urlsession
 [gold]: https://en.wikipedia.org/wiki/Gold_(linker)
+[IDE]: https://en.wikipedia.org/wiki/Integrated_development_environment
+[Android Studio]: https://en.wikipedia.org/wiki/Android_Studio
+[Microsoft Windows]: https://en.wikipedia.org/wiki/Microsoft_Windows
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell

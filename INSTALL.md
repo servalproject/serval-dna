@@ -1,6 +1,6 @@
 Serval DNA Build and Test
 =========================
-[Serval Project][], December 2017
+[Serval Project][], May 2018
 
 Supported Architectures
 -----------------------
@@ -22,8 +22,8 @@ are separate build instructions:
    Linux kernels 2.6.x and 3.x, Arm architecture, using [gcc 4.4][] supplied as
    part of [Android NDK][] Revision 7b
 
- * [Serval DNA on iOS][iOS] gives instructions for [Apple iOS][] using
-   [Xcode][] versions 8, supplemented by [homebrew][]
+ * [Serval DNA on iOS][iOS] gives instructions for [Apple iOS][] using [Xcode
+   version 9.3][Xcode 9], supplemented by [homebrew][]
 
  * [Serval DNA on OpenWRT][OpenWRT] gives instructions for the embedded router
    Linux distribution, as used by the [Serval Mesh Extender][], the [Mesh
@@ -62,7 +62,7 @@ Mandatory dependencies:
 Optional:
 
  * [Java][] compiler and SDK 1.6.0 or later
- * [Swift][] 3 or 4 compiler
+ * [Swift][] 4.1 compiler
  * ALSA sound library and headers (present on Linux, not on Android)
 
 Test dependencies:
@@ -75,10 +75,10 @@ Test dependencies:
 Apple Mac OS
 ------------
 
-On Apple Mac OS, the following dependencies are provided by the [Xcode][]
-package:
+On Apple Mac OS, the following dependencies are provided by the [Xcode version
+9.3][Xcode 9] package:
  * all libraries and headers listed above
- * **Swift** 3 or 4
+ * **Swift** 4.1
  * **Bash** 3.2.48
  * **curl** 7.45
 
@@ -276,8 +276,8 @@ The [native build](#native-build) process produces the following artifacts:
 * **tfw_createfile** is an executable utility needed by test scripts for
   creating large data files with unique, non-repeating content.
 
-In addition, the following artifacts are produced [if a Swift compiler is
-present][Swift development]:
+In addition, the following artifacts are produced [if a suitable Swift compiler
+is present][Swift development]:
 
 * **servaldswift** is a statically linked Serval DNA executable identical to
   *servald*, but its *main* entry point is compiled from a [Swift][] program to
@@ -344,7 +344,7 @@ and may need to be changed for your particular circumstances.
 
 -----
 **Copyright 2013-2015 Serval Project Inc.**  
-**Copyright 2016-2017 Flinders University**  
+**Copyright 2016-2018 Flinders University**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 This document is available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 
@@ -357,6 +357,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [Android 2.2 “Froyo”]: http://developer.android.com/about/versions/android-2.2-highlights.html
 [Android NDK]: http://developer.android.com/tools/sdk/ndk/index.html
 [Xcode]: https://developer.apple.com/xcode/
+[Xcode 9]: https://developer.apple.com/library/content/releasenotes/DeveloperTools/RN-Xcode/Chapters/Introduction.html
 [gcc 4.4]: http://gcc.gnu.org/gcc-4.4/
 [gcc 5]: http://gcc.gnu.org/gcc-5/
 [gcc 6]: http://gcc.gnu.org/gcc-6/
@@ -386,6 +387,5 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [Git]: http://git-scm.com/
 [Subversion]: http://subversion.apache.org/
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
-[Xcode]: https://developer.apple.com/xcode/
 [homebrew]: http://brew.sh/
 [CC BY 4.0]: ./LICENSE-DOCUMENTATION.md

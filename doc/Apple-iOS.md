@@ -1,6 +1,6 @@
 Serval DNA on iOS
 =================
-[Serval Project][], November 2017
+[Serval Project][], May 2018
 
 These instructions describe how to embed [Serval DNA][] into an [Apple iOS][]
 app.
@@ -10,28 +10,41 @@ This work was funded by a grant from the [NLnet Foundation][].
 Introduction
 ------------
 
-Please see the [build instructions][build] and [Notes for Developers][develop]
-for an introduction to the [Serval DNA][] native build and development
-environment.  (To summarise: the [Serval DNA][] build and development toolchain
-is completely oriented around the [Bash shell][] command-line on [Unix][]
-platforms such as [GNU][]/[Linux][] and [Darwin][], and uses [GNU autoconf][]
-achieve portability between different platforms.)
+The [build instructions][build] and [Notes for Developers][develop] introduce
+[Serval DNA][]'s build and development environment.  To summarise:
 
-The only platform available for developing iOS apps is the [Xcode][] integrated
-development environment from Apple.  Xcode is only available on Mac OS-X, so
-[Serval DNA][]'s iOS development toolchain is based entirely on the
-[Darwin][]/[Xcode][] environment and is not complicated by portability issues.
-Xcode builds iOS apps by [cross compiling][] to the selected target.
+ * the build toolchain is completely oriented around the [Bash shell][]
+   command-line on [Unix][] platforms such as [GNU][]/[Linux][] and [Darwin][]
 
-The [ios](../ios) subdirectory contains scripts for building Serval DNA into a
-multi-target [Framework Bundle][] that can be imported into any Xcode project.
-The framework provides access to all public C functions in the Serval DNA
-source code, and to all entry points of the Serval DNA Swift API.
+ * [GNU autoconf][] is used to achieve portability between different platforms
+
+Serval DNA does not support building by [IDE][]s, however the only platform
+available for developing iOS apps is the [Xcode][] IDE from Apple.  Xcode is
+only available for Mac OS-X, and it builds iOS apps by [cross compiling][] to
+the selected target.
+
+Overview
+--------
+
+To use Serval DNA in an iOS app, a developer must use the Mac OSX command line
+to configure and build Serval DNA into a multi-target [Framework Bundle][] for
+iOS.  This framework allows an app to call all entry points of the Serval DNA
+Swift API, and also to call any public C function in the Serval DNA source
+code.
+
+Once the Serval DNA framework bundle is built, the developer may then import it
+into any Xcode project.
+
+The scripts for building the Serval DNA framework bundle are in the
+[ios](../ios/) sub-directory.  [Serval DNA][]'s iOS support is based on recent
+versions of the [Darwin][]/[Xcode][] environment, so these scripts are not
+complicated by the kinds of portability issues that plague other environments,
+like GNU/Linux and POSIX.
 
 Supported targets
 -----------------
 
-The supported operating systems are:
+The supported target operating systems are:
 
  * [iOS 10][] or later (iPhoneOS and iPhoneSimulator)
 
@@ -61,16 +74,18 @@ the above list, the supported targets are:
 Dependencies
 ------------
 
-Building [Serval DNA][] for iOS requires [Xcode version 8][Xcode 8] or later,
-because the [Swift 3][] programming language was first introduced in [Xcode
-version 8][Xcode 8], and Serval DNA exposes its API in iOS using Swift 3.
+[Serval DNA][] exposes its API using the [Swift 4.1][] programming language, so
+building it for iOS requires:
 
-[Xcode 8][] provides the following command-line utilities:
+ * [Xcode version 9.3][Xcode 9] or later (which introduced Swift 4.1), which in turn requires
+ * [Mac OS 10.13 “High Sierra”][] or later.
+
+[Xcode 9][] provides the following command-line utilities:
 
  * [Bash shell][] version 3.2
  * [GNU make][] version 3.81
  * [Clang][] compiler for [C11][] based on LLVM version 8
- * [Swift 3][] compiler based on LLVM version 8
+ * [Swift 4.1][] compiler based on LLVM version 8
  * standard BSD utilities such as [sed][], [tr][], and [mkdir][]
 
 These are adequate for cross-compiling for iOS as described below, but may not
@@ -276,11 +291,13 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [Clang]: https://en.wikipedia.org/wiki/Clang
 [build]: ../INSTALL.md
 [develop]: ./Development.md
+[IDE]: https://en.wikipedia.org/wiki/Integrated_development_environment
 [Xcode]: https://en.wikipedia.org/wiki/Xcode
-[Xcode 8]: https://developer.apple.com/swift/blog/?id=36
+[Xcode 9]: https://developer.apple.com/library/content/releasenotes/DeveloperTools/RN-Xcode/Chapters/Introduction.html
 [C11]: https://en.wikipedia.org/wiki/C11_(C_standard_revision)
-[Swift 3]: https://swift.org/blog/swift-3-0-released/
+[Swift 4.1]: https://swift.org/blog/swift-4-1-released/
 [cross compiling]: https://en.wikipedia.org/wiki/Cross_compiler
+[Mac OS 10.13 “High Sierra”]: https://en.wikipedia.org/wiki/MacOS_High_Sierra
 [iOS 10]: https://en.wikipedia.org/wiki/IOS_10
 [iPhone 5]: https://en.wikipedia.org/wiki/IPhone_5
 [iPhone 5C]: https://en.wikipedia.org/wiki/IPhone_5C
@@ -297,3 +314,4 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [Framework Bundle]: https://developer.apple.com/library/content/documentation/MacOSX/Conceptual/BPFrameworks/Frameworks.html
 [Clang module]: https://clang.llvm.org/docs/Modules.html
 [lipo(1)]: http://www.manpages.info/macosx/lipo.1.html
+[CC BY 4.0]: ../LICENSE-DOCUMENTATION.md
