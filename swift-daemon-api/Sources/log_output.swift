@@ -18,7 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 import Foundation
-import servald.log
+import serval_dna.lib
 
 #if os(iOS)
 

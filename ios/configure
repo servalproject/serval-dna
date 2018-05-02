@@ -89,8 +89,9 @@ fatal() {
 # Parse command-line options.
 
 parse_command_line() {
-   library=libservaldaemon.a
-   swiftmodule=ServalDNA.swiftmodule
+   c_api_library=libservaldaemon.a
+   swift_api_library=libServalDNA.a
+   swift_api_module=ServalDNA.swiftmodule
    ios_version=
    opt_force_configure=false
    opt_force_config_status=false
@@ -293,99 +294,112 @@ create_makefile() {
 srcdir=$SERVAL_DNA_DIR_RELATIVE_TO_SCRIPT_DIR
 dstdir=frameworks
 targets=${TARGETS[*]}
+bundle_id_prefix=org.servalproject.
+xcconfig=\$(dstdir)/serval-dna.xcconfig
 
-fw_name=ServalDNA
-fw_version=A
-fw_bundle_id=org.servalproject.serval-dna
-fw_bundle_version=1.0
+fw_capi_name=serval_dna
+fw_capi_version=A
+fw_capi_bundle_id=\$(bundle_id_prefix)\$(fw_capi_name)
+fw_capi_bundle_version=1.0
+fw_capi_dir=\$(dstdir)/\$(fw_capi_name).framework
+fw_capi_dstdir=\$(fw_capi_dir)/Versions/\$(fw_capi_version)
+fw_capi_library=\$(fw_capi_dstdir)/\$(fw_capi_name)
+fw_capi_info_plist=\$(fw_capi_dstdir)/Resources/Info.plist
+fw_capi_config_headers=\$(targets:%=\$(fw_capi_dstdir)/Headers/%/config.h)
+fw_capi_serval_headers=\$(addprefix \$(fw_capi_dstdir)/Headers/, \$(LIB_HDRS) \$(PUBLIC_HDRS))
+fw_capi_sqlite3_headers=\$(addprefix \$(fw_capi_dstdir)/Headers/, \$(notdir \$(SQLITE3_HDRS)))
+fw_capi_modulemap=\$(fw_capi_dstdir)/Modules/module.modulemap
 
-fw_dir=\$(dstdir)/\$(fw_name).framework
-fw_dstdir=\$(fw_dir)/Versions/\$(fw_version)
-fw_library=\$(fw_dstdir)/\$(fw_name)
-fw_swiftmodule=\$(fw_dstdir)/Modules/\$(fw_name).swiftmodule
-fw_info_plist=\$(fw_dstdir)/Resources/Info.plist
-fw_config_headers=\$(targets:%=\$(fw_dstdir)/Headers/%/config.h)
-fw_serval_headers=\$(addprefix \$(fw_dstdir)/Headers/, \$(LIB_HDRS) \$(PUBLIC_HDRS))
-fw_sqlite3_headers=\$(addprefix \$(fw_dstdir)/Headers/, \$(notdir \$(SQLITE3_HDRS)))
-fw_modulemap=\$(fw_dstdir)/Modules/module.modulemap
-xcconfig=\$(dstdir)/\$(fw_name).xcconfig
+fw_swiftapi_name=${swift_api_module%.swiftmodule}
+fw_swiftapi_version=A
+fw_swiftapi_bundle_id=\$(bundle_id_prefix)\$(fw_swiftapi_name)
+fw_swiftapi_bundle_version=1.0
+fw_swiftapi_dir=\$(dstdir)/\$(fw_swiftapi_name).framework
+fw_swiftapi_dstdir=\$(fw_swiftapi_dir)/Versions/\$(fw_swiftapi_version)
+fw_swiftapi_module=\$(fw_swiftapi_dstdir)/Modules/$swift_api_module
+fw_swiftapi_library=\$(fw_swiftapi_dstdir)/\$(fw_swiftapi_name)
+fw_swiftapi_info_plist=\$(fw_swiftapi_dstdir)/Resources/Info.plist
 
 include \$(srcdir)/headerfiles.mk
 
 .PHONY: all \\
         clean\
 $(foreach_target echo    '" \\"' \; \
-                 echo    '"        install_${target_var}_sodium_headers \\"' \; \
-                 echo    '"        $target_dir/$library \\"' \; \
-                 echo    '"        $target_dir/$swiftmodule \\"' \; \
                  echo -n '"        clean-$target"')
 
-all: \$(fw_library) \\
-     \$(fw_info_plist) \\
-     \$(fw_config_headers) \\
-     \$(fw_serval_headers) \\
-     \$(fw_sqlite3_headers) \\
-     \$(fw_modulemap) \\
-     \$(xcconfig)$(foreach_target echo '" \\"' \; \
-                                  echo -n '"     install_${target_var}_sodium_headers"' \; \
-                                  echo -n '"     \$(fw_swiftmodule)/$arch.swiftmodule"')
-	cd \$(fw_dstdir)/.. && ln -snf \$(fw_version) Current
-	cd \$(fw_dstdir)/../.. && ln -snf Versions/Current/* .
+all: fw_capi fw_swiftapi \$(xcconfig)
 
-\$(fw_info_plist): ./info-plist.sh
+# The C API is in a framework that contains a multi-slice (multi-architecture)
+# static library file and accompanying header files.
+
+.PHONY: fw_capi
+fw_capi: \$(fw_capi_info_plist) \\
+         \$(fw_capi_library) \\
+         \$(fw_capi_config_headers) \\
+         \$(fw_capi_serval_headers) \\
+         \$(fw_capi_sqlite3_headers) \\
+         \$(fw_capi_modulemap)
+	cd \$(fw_capi_dstdir)/.. && ln -snf \$(fw_capi_version) Current
+	cd \$(fw_capi_dstdir)/../.. && ln -snf Versions/Current/* .
+
+\$(fw_capi_info_plist): ./info-plist.sh
 	mkdir -p \$(dir \$@)
-	./info-plist.sh \$(fw_name) \$(fw_bundle_id) \$(fw_bundle_version) >\$@
+	./info-plist.sh \$(fw_capi_name) \$(fw_capi_bundle_id) \$(fw_capi_bundle_version) >\$@
 
-\$(fw_library):$(foreach_target echo '" \\"' \; \
-                                echo -n '"		$target_dir/$library"')
+\$(fw_capi_library):$(foreach_target echo '" \\"' \; \
+                                     echo -n '"		$target_dir/$c_api_library"')
 	mkdir -p \$(dir \$@)
 	lipo -create -output \$@ \$^
 
-$(foreach_target echo '"\$(fw_swiftmodule)/$arch.swiftmodule: $target_dir/$swiftmodule"' \; \
-                 echo '"	mkdir -p \$(dir \$@)"' \; \
-                 echo '"	cp \$< \$@"' \; \
-                 echo)
-
-\$(fw_config_headers): \$(fw_dstdir)/Headers/%: build/%
+\$(fw_capi_config_headers): \$(fw_capi_dstdir)/Headers/%: build/%
 	mkdir -p \$(dir \$@)
 	cp \$< \$@
 
-\$(fw_serval_headers): \$(fw_dstdir)/Headers/%: \$(srcdir)/%
+\$(fw_capi_serval_headers): \$(fw_capi_dstdir)/Headers/%: \$(srcdir)/%
 	mkdir -p \$(dir \$@)
 	cp \$< \$@
 
-\$(fw_sqlite3_headers): \$(fw_dstdir)/Headers/%: \$(srcdir)/\$(SQLITE3_AMALGAMATION)/%
+\$(fw_capi_sqlite3_headers): \$(fw_capi_dstdir)/Headers/%: \$(srcdir)/\$(SQLITE3_AMALGAMATION)/%
 	mkdir -p \$(dir \$@)
 	cp \$< \$@
 
-\$(fw_modulemap):$(foreach_target echo '" \\"' \; \
-                 echo -n '"        install_${target_var}_sodium_headers"') \\
+\$(fw_capi_modulemap):$(foreach_target echo '" \\"' \; \
+                                       echo -n '"        install_${target_var}_sodium_headers"') \\
         \$(srcdir)/headerfiles.mk Makefile
 	mkdir -p \$(dir \$@)
 	@{ \\
 	   echo '/*' \\
-	   echo 'module.modulemap for Serval DNA on Apple iOS' ;\\
+	   echo 'module.modulemap for Serval DNA C API on Apple iOS' ;\\
 	   echo 'Copyright 2017 Flinders University' ;\\
 	   echo 'This file was auto-generated by \$(abspath Makefile)' ;\\
 	   echo '\$(shell date)' ;\\
+	   echo 'The naming and structure of this file must match ../modules.modulemap' ;\\
 	   echo '*/' ;\\
-	   echo 'framework module ServalDNA {' ;\\
+           echo 'framework module serval_dna {' ;\\
 	   echo '    requires tls // thread-local storage' ;\\
-	   echo '    explicit module Daemon {' ;\\
-	   echo '        export Sodium' ;\\
+	   echo '    explicit module lib {' ;\\
 $(foreach_target echo '"	   echo '\''        header \"$target/config.h\"'\'' ;\\"')
-           for header in \$(LIB_HDRS) \$(PUBLIC_HDRS) \$(notdir \$(SQLITE3_HDRS)); do \\
+           for header in \$(LIB_HDRS); do \\
                echo "        header \"\$\$header\"" ;\\
-           done ; \\
+           done ;\\
 	   echo '    }' ;\\
-	   echo '    explicit module Sodium {' ;\\
+	   echo '    explicit module daemon {' ;\\
+	   echo '        export lib' ;\\
+	   echo '        export sqlite' ;\\
+	   echo '        export sodium' ;\\
+           for header in \$(PUBLIC_HDRS); do \\
+               echo "        header \"\$\$header\"" ;\\
+           done ;\\
+	   echo '    }' ;\\
+	   echo '    explicit module sqlite {' ;\\
+           for header in \$(notdir \$(SQLITE3_HDRS)); do \\
+               echo "        header \"\$\$header\"" ;\\
+           done ;\\
+	   echo '    }' ;\\
+	   echo '    explicit module sodium {' ;\\
 $(foreach_target echo '"	   echo '\''        header \"$target/sodium.h\"'\'' ;\\"' \; \
                  echo '"	   (cd $target_dir/libsodium-dev/include/; find . -type f -print | sed -e '\''s|^\./||'\'' -e '\''s|.*|        header \"$target/&\"|'\'' ) ;\\"')
 	   echo '    }' ;\\
-	   echo '}' ;\\
-	   echo 'module ifaddrs [system] [extern_c] {' ;\\
-           echo '    header "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk/usr/include/ifaddrs.h"' ;\\
-           echo '    export *' ;\\
 	   echo '}' ;\\
 	   echo 'module inttypes [system] [extern_c] {' ;\\
            echo '    header "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include/inttypes.h"' ;\\
@@ -393,38 +407,76 @@ $(foreach_target echo '"	   echo '\''        header \"$target/sodium.h\"'\'' ;\\
 	   echo '}' ;\\
 	} >\$@
 
+# The Swift API is in a framework that contains one Swift module file per
+# architecture. and a multi-slice (multi-architecture) static library file.
+
+.PHONY: fw_swiftapi
+fw_swiftapi: \$(fw_swiftapi_info_plist) \\
+             \$(fw_swiftapi_library) \\
+             $(foreach_target echo '" \\"' \; \
+                              echo -n '"     \$(fw_swiftapi_module)/$arch.swiftmodule"')
+	cd \$(fw_swiftapi_dstdir)/.. && ln -snf \$(fw_capi_version) Current
+	cd \$(fw_swiftapi_dstdir)/../.. && ln -snf Versions/Current/* .
+
+\$(fw_swiftapi_info_plist): ./info-plist.sh
+	mkdir -p \$(dir \$@)
+	./info-plist.sh \$(fw_swiftapi_name) \$(fw_swiftapi_bundle_id) \$(fw_swiftapi_bundle_version) >\$@
+
+\$(fw_swiftapi_library):$(foreach_target echo '" \\"' \; \
+                                         echo -n '"		$target_dir/$swift_api_library"')
+	mkdir -p \$(dir \$@)
+	lipo -create -output \$@ \$^
+
+$(foreach_target echo '"\$(fw_swiftapi_module)/$arch.swiftmodule: $target_dir/$swift_api_module"' \; \
+                 echo '"	mkdir -p \$(dir \$@)"' \; \
+                 echo '"	cp \$< \$@"' \; \
+                 echo)
+
 \$(xcconfig): Makefile
 	mkdir -p \$(dir \$@)
+	@echo "create \$@"
 	@{ \\
-	   echo '// ServalDNA.xcconfig for Serval DNA on Apple iOS' ;\\
-	   echo '// Copyright 2017 Flinders University' ;\\
-           echo '// This file was auto-generated by \$(abspath Makefile)' ;\\
+	   echo '// \$(notdir \$@) for Serval DNA on Apple iOS' ;\\
+	   echo '// Copyright 2018 Flinders University' ;\\
+	   echo '// This file was auto-generated by \$(abspath Makefile)' ;\\
 	   echo '// \$(shell date)' ;\\
-	   echo 'SERVAL_DNA_FRAMEWORK_DIR = \$(abspath \$(fw_dir))' ;\\
 	   echo 'FRAMEWORK_SEARCH_PATHS = \$\$(inherited) \$(abspath \$(dstdir))' ;\\
 	   echo 'GCC_PREPROCESSOR_DEFINITIONS = \$\$(inherited) HAVE_CONFIG_H=1' ;\\
-$(foreach_target echo '"	   echo '\''HEADER_SEARCH_PATHS[arch=$arch] = \$\$(inherited) \$\$(SERVAL_DNA_FRAMEWORK_DIR)/Headers/$target'\'' ;\\"')
-	   echo 'SWIFT_INCLUDE_PATHS = \$\$(inherited) \$\$(SERVAL_DNA_FRAMEWORK_DIR)/Modules' ;\\
+$(foreach_target echo '"	   echo '\''HEADER_SEARCH_PATHS[arch=$arch] = \$\$(inherited) \$(abspath \$(fw_capi_dir))/Headers/$target'\'' ;\\"')
+	   echo 'SWIFT_VERSION = 4.1' ;\\
 	   echo 'OTHER_SWIFT_FLAGS = \$\$(inherited) -Xcc -DHAVE_CONFIG_H=1' ;\\
 	} >\$@
 
 $(foreach_target echo \; \
-                 echo '"install_${target_var}_sodium_headers: $target_dir/$library"' \; \
-                 echo '"	cp -R $target_dir/libsodium-dev/include/ \$(fw_dstdir)/Headers/$target/"')
+                 echo '".PHONY: install_${target_var}_sodium_headers"' \; \
+                 echo '"install_${target_var}_sodium_headers: $target_dir/$c_api_library"' \; \
+                 echo '"	cp -R $target_dir/libsodium-dev/include/ \$(fw_capi_dstdir)/Headers/$target/"')
 
+# Recursive make targets.
+#
 # If the source directory is already configured, then its config.h header
 # file would interfere with these sub-makes, so delete it before invoking
 # each sub-make.
 
 $(foreach_target echo \; \
-                 echo '"$target_dir/$library:"' \; \
+                 echo '".PHONY: $target_dir/$c_api_library"' \; \
+                 echo '"$target_dir/$c_api_library:"' \; \
                  echo '"	\$(RM) \$(srcdir)/config.h"' \; \
-                 echo '"	\$(MAKE) -C $target_dir $library"')
+                 echo '"	\$(MAKE) -C $target_dir $c_api_library"')
 
 $(foreach_target echo \; \
-                 echo '"$target_dir/$swiftmodule:"' \; \
+                 echo '".PHONY: $target_dir/$swift_api_library"' \; \
+                 echo '"$target_dir/$swift_api_library:"' \; \
                  echo '"	\$(RM) \$(srcdir)/config.h"' \; \
-                 echo '"	\$(MAKE) -C $target_dir $swiftmodule"')
+                 echo '"	\$(MAKE) -C $target_dir $swift_api_library"')
+
+$(foreach_target echo \; \
+                 echo '".PHONY: $target_dir/$swift_api_module"' \; \
+                 echo '"$target_dir/$swift_api_module:"' \; \
+                 echo '"	\$(RM) \$(srcdir)/config.h"' \; \
+                 echo '"	\$(MAKE) -C $target_dir $swift_api_module"')
+
+# Clean targets.
 
 clean: $(foreach_target echo -n '" clean-$target"')
 	\$(RM) -r \$(dstdir)

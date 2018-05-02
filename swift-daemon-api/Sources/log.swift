@@ -17,7 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-import servald.log
+import serval_dna.lib
 
 private func serval_log(level: CInt, format: String, va_list: CVaListPointer) {
     format.withCString { CString in

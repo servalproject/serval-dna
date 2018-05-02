@@ -1,6 +1,10 @@
 # These public library headers are designed for re-use, and do not depend on
 # any PUBLIC_HDRS or PRIVATE_HDRS.
 LIB_HDRS= \
+	cli.h \
+	log.h \
+	log_output.h \
+	log_output_delegate.h \
 	lang.h \
 	feature.h \
 	section.h \
@@ -18,20 +22,18 @@ LIB_HDRS= \
 	mem.h \
 	os.h \
 	strbuf_helpers.h \
-	log.h \
-	log_output.h \
-	debug.h \
 	rotbuf.h \
 	fifo.h \
-	cli.h \
 	fdqueue.h \
 	http_server.h \
-	nibble_tree.h
+	nibble_tree.h \
+	limit.h
 
 # These headers are specific to Serval DNA, and may depend on LIB_HDRS.  They
 # are exposed by the iOS framework module, so they are accessible to Swift code
 # in Xcode projects.
 PUBLIC_HDRS= \
+	commandline.h \
 	constants.h \
 	conf.h \
 	conf_schema.h \
@@ -41,14 +43,12 @@ PUBLIC_HDRS= \
 	rhizome_types.h \
 	dataformats.h \
 	sighandlers.h \
-	commandline.h \
 	crypto.h \
 	server.h \
 	servald_main.h \
 	sync_keys.h \
 	keyring.h \
 	route_link.h \
-	limit.h \
 	overlay_buffer.h \
 	overlay_address.h \
 	overlay_packet.h \
@@ -73,6 +73,7 @@ SQLITE3_HDRS = $(SQLITE3_AMALGAMATION)/sqlite3.h
 # headers.  They are not exposed by the iOS framework module, so are
 # inaccessible to Swift code in Xcode projects.
 PRIVATE_HDRS= \
+	debug.h \
 	httpd.h \
 	msp_common.h \
 	overlay_interface.h \

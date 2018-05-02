@@ -18,7 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 import Foundation
-import servald.cli
+import serval_dna.daemon
 
 /* A Swift entry point to the Serval DNA daemon command-line entry point, which takes a
  * [String] parameter, converts it into an argv array of C strings, and invokes
