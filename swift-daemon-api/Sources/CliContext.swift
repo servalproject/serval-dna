@@ -20,7 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 import Foundation
 import serval_dna.lib
 
-private extension Data {
+internal extension Data {
     var hexUpper: String {
         return map { String(format: "%02hhX", $0) }.joined()
     }
