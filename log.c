@@ -264,10 +264,7 @@ static void iterator_vprintf_nl(struct log_output_iterator *it, int level, struc
   assert(current_iterator);
   log_start_line(it, level);
   whence_prefix(it, whence);
-  va_list ap1;
-  va_copy(ap1, ap);
-  vxprintf(it->xpf, fmt, ap1);
-  va_end(ap1);
+  vxprintf(it->xpf, fmt, ap);
   log_end_line(it, level);
 }
 
@@ -300,7 +297,10 @@ void serval_vlogf(int level, struct __sourceloc whence, const char *fmt, va_list
 	  if (is_log_available(&it)) {
 	    current_iterator = &it;
 	    print_newdate(&it);
-	    iterator_vprintf_nl(&it, level, whence, fmt, ap);
+	    va_list ap1;
+	    va_copy(ap1, ap);
+	    iterator_vprintf_nl(&it, level, whence, fmt, ap1);
+	    va_end(ap1);
 	    log_flush(&it);
 	    current_iterator = NULL;
 	  }

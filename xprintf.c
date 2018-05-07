@@ -105,14 +105,20 @@ void _cx_vprintf_mallocbuf(void *context, const char *fmt, va_list ap)
   if (mb->current) {
     if (mb->current + 1 >= mb->buffer + mb->size)
       grow_mallocbuf(mb, 1024);
-    int n = vsnprintf(mb->current, mb->buffer + mb->size - mb->current, fmt, ap);
+    va_list ap1;
+    va_copy(ap1, ap);
+    int n = vsnprintf(mb->current, mb->buffer + mb->size - mb->current, fmt, ap1);
+    va_end(ap1);
     char *newcurrent = mb->current + n;
     char *end = mb->buffer + mb->size;
     if (newcurrent < end)
       mb->current = newcurrent;
     else {
       grow_mallocbuf(mb, newcurrent - end + 1);
-      n = vsnprintf(mb->current, mb->buffer + mb->size - mb->current, fmt, ap);
+      va_list ap1;
+      va_copy(ap1, ap);
+      n = vsnprintf(mb->current, mb->buffer + mb->size - mb->current, fmt, ap1);
+      va_end(ap1);
       char *newcurrent = mb->current + n;
       char *end = mb->buffer + mb->size;
       if (newcurrent < end)
