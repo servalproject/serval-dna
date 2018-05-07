@@ -179,12 +179,19 @@ static void log_close(struct log_output_iterator *it)
     (*it->output)->close(it);
 }
 
-static void log_capture_fd(struct log_output_iterator *it, int fd, bool_t *captured)
+static bool_t log_capture_fd(struct log_output_iterator *it, int fd)
 {
   assert(it->output);
   assert(*it->output);
-  if ((*it->output)->capture_fd)
-    (*it->output)->capture_fd(it, fd, captured);
+  return (*it->output)->capture_fd ? (*it->output)->capture_fd(it, fd) : 0;
+}
+
+static void log_suppress_fd(struct log_output_iterator *it, int fd)
+{
+  assert(it->output);
+  assert(*it->output);
+  if ((*it->output)->suppress_fd)
+    (*it->output)->suppress_fd(it, fd);
 }
 
 /* Functions for use by log outputters.  This is the "private" API of the logging system, as
@@ -333,7 +340,12 @@ bool_t serval_log_capture_fd(int fd) {
   struct log_output_iterator it;
   log_iterator_start(&it);
   bool_t captured = 0;
-  while (log_iterator_advance(&it))
-    log_capture_fd(&it, fd, &captured);
+  while (!captured && log_iterator_advance(&it))
+    captured = log_capture_fd(&it, fd);
+  if (captured) {
+    log_iterator_start(&it);
+    while (log_iterator_advance(&it))
+      log_suppress_fd(&it, fd);
+  }
   return captured;
 }

@@ -67,9 +67,17 @@ private func logPrint(_ level: CInt, _ message: UnsafePointer<CChar>?, _ overrun
 
 #endif
 
-public func logSetup() {
+private func logSuppress(_ fd: CInt) {
+    if (fd == FileHandle.standardError.fileDescriptor) {
+        serval_log_delegate.print = nil
+    }
+}
+
+public func servalLogSetup(minimum_level: LogLevel = .info, baseFilePath file: String = #file) {
+    baseFilePath = file
     serval_log_delegate.print = logPrint
-    serval_log_delegate.minimum_level = LOG_LEVEL_DEBUG
+    serval_log_delegate.suppress_fd = logSuppress
+    serval_log_delegate.minimum_level = minimum_level.rawValue
     serval_log_delegate.show_prolog = 1
 #if os(iOS) || os(macOS)
     // Apple's unified logging system (iOS) and syslog (macOS) both record the

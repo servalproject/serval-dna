@@ -29,6 +29,8 @@ struct log_delegate {
     bool_t show_time;
     void (*print)(int level, const char *message, bool_t overrun);
     void (*flush)();
+    bool_t (*capture_fd)(int fd);
+    void (*suppress_fd)(int fd);
 };
 
 extern struct log_delegate serval_log_delegate;

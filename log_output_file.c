@@ -310,26 +310,27 @@ static void open_log_file(struct log_output_iterator *it)
   }
 }
 
-static void capture_fd_log_file(struct log_output_iterator *it, int fd, bool_t *capture)
+static bool_t capture_fd_log_file(struct log_output_iterator *it, int fd)
 {
-  if (!*capture) {
-    // This outputter does not connect the file descriptor to an output file until the next log
-    // message is output.
-    _state(*it->output)->capture_fd = fd;
-    // Ensure that the file descriptor is occupied, so that no other open() call can occupy it in
-    // the meantime.
-    int devnull;
-    if ((devnull = open("/dev/null", O_RDWR, 0)) == -1)
-      WHY_perror("open(\"/dev/null\")");
-    else {
-      if (devnull != fd && dup2(devnull, fd) == -1)
-	WHYF_perror("dup2(%d, %d)", devnull, fd);
-      else
-	*capture = 1;
-      if (devnull != fd)
-	close(devnull);
-    }
+  bool_t captured = 0;
+  // This outputter does not connect the file descriptor to an output file until the next log
+  // message is output.
+  _state(*it->output)->capture_fd = fd;
+  // Ensure that the file descriptor is occupied, so that no other open() call can occupy it in
+  // the meantime.
+  int devnull;
+  if ((devnull = open("/dev/null", O_RDWR, 0)) == -1)
+    WHY_perror("open(\"/dev/null\")");
+  else if (devnull == fd)
+    captured = 1;
+  else {
+    if (dup2(devnull, fd) == -1)
+      WHYF_perror("dup2(%d, %d)", devnull, fd);
+    else
+      captured = 1;
+    close(devnull);
   }
+  return captured;
 }
 
 static bool_t is_log_file_available(const struct log_output_iterator *it)
@@ -377,6 +378,7 @@ static struct log_output static_log_output = {
   .state = &static_state,
   .open = open_log_file,
   .capture_fd = capture_fd_log_file,
+  .suppress_fd = NULL,
   .is_available = is_log_file_available,
   .start_line = log_file_start_line,
   .end_line = NULL,

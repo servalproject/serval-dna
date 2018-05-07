@@ -66,10 +66,15 @@ struct log_output {
   //   vlogMessage() primitive, before start_line() is called.
   void (*open)(struct log_output_iterator *it);
 
-  //   If *capture is 0 and the output is of a persistent nature (eg, a file or
-  //   system log) and is able to redirect data written to the given file
-  //   descriptor to its output, then do so and set *capture to 1.
-  void (*capture_fd)(struct log_output_iterator *it, int fd, bool_t *capture);
+  //   If the output is of a persistent nature (eg, a file or system log) and
+  //   is able to redirect data written to the given file descriptor to its
+  //   output, then do so and return true, otherwise return false.
+  bool_t (*capture_fd)(struct log_output_iterator *it, int fd);
+
+  //   Cease writing any output to the given file descriptor.  This is called
+  //   on all outputters immediately after any outputter's capture_fd(fd) call
+  //   returns true, to prevent duplicate log messages being captured.
+  void (*suppress_fd)(struct log_output_iterator *it, int fd);
 
   //   Test whether output is able to handle messages; if it returns false then
   //   start_line() and end_line() will not be invoked.

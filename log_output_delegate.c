@@ -84,6 +84,17 @@ static void log_delegate_open(struct log_output_iterator *it)
   }
 }
 
+static bool_t log_delegate_capture_fd(struct log_output_iterator *UNUSED(it), int fd)
+{
+  return serval_log_delegate.capture_fd && serval_log_delegate.capture_fd(fd);
+}
+
+static void log_delegate_suppress_fd(struct log_output_iterator *UNUSED(it), int fd)
+{
+  if (serval_log_delegate.suppress_fd)
+    serval_log_delegate.suppress_fd(fd);
+}
+
 static void log_delegate_start_line(struct log_output_iterator *it, int UNUSED(level))
 {
   struct log_output_delegate_state *state = _state(*it->output);
@@ -113,7 +124,8 @@ static struct log_output static_log_output = {
   .show_time = log_delegate_show_time,
   .state = &static_state,
   .open = log_delegate_open,
-  .capture_fd = NULL,
+  .capture_fd = log_delegate_capture_fd,
+  .suppress_fd = log_delegate_suppress_fd,
   .is_available = is_log_delegate_available,
   .start_line = log_delegate_start_line,
   .end_line = log_delegate_end_line,
@@ -130,5 +142,7 @@ struct log_delegate serval_log_delegate = {
     .show_pid = 0,
     .show_time = 1,
     .print = NULL,
-    .flush = NULL
+    .flush = NULL,
+    .capture_fd = NULL,
+    .suppress_fd = NULL
 };

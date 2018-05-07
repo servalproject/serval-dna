@@ -82,8 +82,10 @@ static void open_log_console(struct log_output_iterator *it)
   }
 }
 
-static void capture_fd_log_console(struct log_output_iterator *it, int fd, bool_t *UNUSED(capture))
+static void suppress_fd_log_console(struct log_output_iterator *it, int fd)
 {
+  // If another log outputter is capturing the console's output (eg, the logfile outputer), then
+  // cease logging to the console to avoid duplicate messages being sent to that output.
   struct log_output_console_state *state = _state(*it->output);
   if (state->fp && state->fp != DISABLED && fileno(state->fp) == fd) {
     fflush(state->fp);
@@ -137,7 +139,8 @@ static struct log_output static_log_output = {
   .show_time = log_console_show_time,
   .state = &static_state,
   .open = open_log_console,
-  .capture_fd = capture_fd_log_console,
+  .capture_fd = NULL,
+  .suppress_fd = suppress_fd_log_console,
   .is_available = is_log_console_available,
   .start_line = log_console_start_line,
   .end_line = log_console_end_line,

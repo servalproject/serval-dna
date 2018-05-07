@@ -64,7 +64,9 @@ void xprint_sourceloc(XPRINTF xpf, struct __sourceloc loc)
   if (loc.function && loc.function[0]) {
     if (flag)
       xputc(':', xpf);
-    xprintf(xpf, "%s()", loc.function);
+    xprintf(xpf, "%s", loc.function);
+    if (loc.function[strlen(loc.function) - 1] != ')')
+      xputs("()", xpf);
     ++flag;
   }
 }

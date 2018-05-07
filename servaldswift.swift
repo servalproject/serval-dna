@@ -22,7 +22,7 @@ import ServalDNA
 
 // Logging
 
-logSetup()
+servalLogSetup(minimum_level: .debug)
 
 // Output
 

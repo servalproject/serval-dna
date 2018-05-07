@@ -19,40 +19,81 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import serval_dna.lib
 
-private func serval_log(level: CInt, format: String, va_list: CVaListPointer) {
-    format.withCString { CString in
-        serval_vlogf(level, __whence, CString, va_list)
-    }
-}
+public enum LogLevel {
+    case debug
+    case info
+    case hint
+    case warn
+    case error
+    case fatal
 
-public func serval_log(level: CInt, text: String) {
-    text.withCString { CString in
-        withVaList([CString]) { va_list in
-            serval_log(level: level, format: "%s", va_list: va_list)
+    var rawValue : CInt {
+        get {
+            switch (self) {
+            case .debug: return LOG_LEVEL_DEBUG
+            case .info: return LOG_LEVEL_INFO
+            case .hint: return LOG_LEVEL_HINT
+            case .warn: return LOG_LEVEL_WARN
+            case .error: return LOG_LEVEL_ERROR
+            case .fatal: return LOG_LEVEL_FATAL
+            }
         }
     }
 }
 
-public func serval_log_fatal(_ text: String) {
-    serval_log(level: LOG_LEVEL_FATAL, text: text)
+internal var baseFilePath : String = #file
+
+private func trimpath(_ path: String) -> String {
+    var i = path.startIndex
+    for (b, p) in zip(baseFilePath.indices, path.indices) {
+        if path[p] != baseFilePath[b] {
+            break;
+        }
+        if path[p] == "/" {
+            i = path.index(after: p)
+        }
+    }
+    return String(path[i..<path.endIndex])
 }
 
-public func serval_log_error(_ text: String) {
-    serval_log(level: LOG_LEVEL_ERROR, text: text)
+private func servalLog(level: LogLevel, format: String, va_list: CVaListPointer, file: String = #file, line: Int = #line, function: String = #function) {
+    trimpath(file).withCString { c_file in
+        function.withCString { c_function in
+            format.withCString { c_format in
+                serval_vlogf(level.rawValue, __sourceloc(file: c_file, line: UInt32(exactly: line) ?? 0, function: c_function), c_format, va_list)
+            }
+        }
+    }
 }
 
-public func serval_log_warning(_ text: String) {
-    serval_log(level: LOG_LEVEL_WARN, text: text)
+public func servalLog(level: LogLevel, text: String, file: String = #file, line: Int = #line, function: String = #function) {
+    text.withCString { c_text in
+        withVaList([c_text]) { va_list in
+            servalLog(level: level, format: "%s", va_list: va_list, file: file, line: line, function: function)
+        }
+    }
 }
 
-public func serval_log_hint(_ text: String) {
-    serval_log(level: LOG_LEVEL_HINT, text: text)
+public func servalLogFatal(_ text: String, file: String = #file, line: Int = #line, function: String = #function) {
+    servalLog(level: .fatal, text: text, file: file, line: line, function: function)
 }
 
-public func serval_log_info(_ text: String) {
-    serval_log(level: LOG_LEVEL_INFO, text: text)
+public func servalLogError(_ text: String, file: String = #file, line: Int = #line, function: String = #function) {
+    servalLog(level: .error, text: text, file: file, line: line, function: function)
 }
 
-public func serval_log_debug(_ text: String) {
-    serval_log(level: LOG_LEVEL_DEBUG, text: text)
+public func servalLogWarning(_ text: String, file: String = #file, line: Int = #line, function: String = #function) {
+    servalLog(level: .warn, text: text, file: file, line: line, function: function)
+}
+
+public func servalLogHint(_ text: String, file: String = #file, line: Int = #line, function: String = #function) {
+    servalLog(level: .hint, text: text, file: file, line: line, function: function)
+}
+
+public func servalLogInfo(_ text: String, file: String = #file, line: Int = #line, function: String = #function) {
+    servalLog(level: .info, text: text, file: file, line: line, function: function)
+}
+
+public func servalLogDebug(_ text: String, file: String = #file, line: Int = #line, function: String = #function) {
+    servalLog(level: .debug, text: text, file: file, line: line, function: function)
 }
