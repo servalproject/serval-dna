@@ -198,6 +198,75 @@ static int app_crypt_test(const struct cli_parsed *parsed, struct cli_context *c
   return 0;
 }
 
+struct keyset{
+  sign_keypair_t sign_sk;
+  uint8_t box_sk[crypto_box_SECRETKEYBYTES];
+  identity_t sign_pk;
+  sid_t box_pk;
+};
+
+// It is possible to perform a multi-party ECDH exchange using libsodium.
+// However, the number of messages required means it isn't very practical for a group chat implementation
+DEFINE_CMD(app_multiparty_crypt, 0,
+   "Test multi-person ECDH",
+   "test","multiparty");
+static int app_multiparty_crypt(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  DEBUG_cli_parsed(verbose, parsed);
+
+  unsigned i;
+  unsigned j;
+  static const unsigned char zero[16] = { 0 };
+  unsigned count=4;
+  struct keyset keys[count];
+
+  cli_puts(context, "Generate identities;\n");
+
+  for(i=0;i<count;i++){
+    crypto_sign_ed25519_keypair(keys[i].sign_pk.binary, keys[i].sign_sk.binary);
+    crypto_sign_ed25519_sk_to_curve25519(keys[i].box_sk, keys[i].sign_sk.binary);
+    crypto_scalarmult_base(keys[i].box_pk.binary, keys[i].box_sk);
+    cli_put_hexvalue(context,keys[i].box_sk,sizeof(keys[i].box_sk),",");
+    cli_put_hexvalue(context,keys[i].box_pk.binary,sizeof(keys[i].box_pk.binary),"\n");
+  }
+
+  cli_puts(context, "Calc beforenm for each identity;\n");
+  uint8_t first_hash[crypto_box_BEFORENMBYTES];
+
+  for(i=0;i<count;i++){
+    // Starting with each persons public key
+    uint8_t s[32];
+    memcpy(s,keys[i].box_pk.binary,sizeof s);
+
+    for(j=0;j<count;j++){
+      if (i==j)
+	continue;
+
+      uint8_t k[32];
+      memcpy(k,s,sizeof k);
+      // scalar-mult with each other persons private key
+      if (crypto_scalarmult_curve25519(s, keys[j].box_sk,  k))
+	WARN("crypto_scalarmult_curve25519 failed?");
+
+      cli_put_hexvalue(context,k,8,"*");
+      cli_put_hexvalue(context,keys[j].box_sk,8,"=");
+      cli_put_hexvalue(context,s,8,"\n");
+      cli_flush(context);
+    }
+
+    // then hash to produce a shared secret
+    uint8_t hash[crypto_box_BEFORENMBYTES];
+    crypto_core_hsalsa20(hash, zero, s, NULL);
+    cli_put_hexvalue(context,hash,sizeof(hash),"\n");
+    if (i==0)
+      memcpy(first_hash, hash, sizeof hash);
+    else if(memcmp(first_hash, hash, sizeof hash)!=0)
+      cli_put_string(context, "--DOESN'T MATCH--", "\n");
+  }
+
+  return 0;
+}
+
 void context_switch_test(int);
 DEFINE_CMD(app_mem_test, 0,
    "Run memory speed test",
