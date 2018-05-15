@@ -1427,13 +1427,35 @@ static void mdp_interface_packet(struct socket_address *client, struct mdp_heade
       if (interface)
 	overlay_interface_close(interface);
     }break;
+    case MDP_INTERFACE_PEER:{
+      // some form of external peer discovery has occurred
+      struct overlay_interface *interface=overlay_interface_find_name_file_addr(NULL, NULL, client);
+      if (interface){
+	// queue a unicast probe packet to this address
+	struct socket_address addr;
+	addr.addrlen = ob_get(payload);
+	if ((size_t)addr.addrlen > sizeof(addr)){
+	  WARNF("Malformed MDP_INTERFACE_RECV header, %u bytes is too large", (unsigned)addr.addrlen);
+	  break;
+	}
+	bcopy(ob_get_bytes_ptr(payload, addr.addrlen), addr.raw, addr.addrlen);
+	struct network_destination *destination = create_unicast_destination(&addr, state->interface);
+	if (!destination)
+	  break;
+	overlay_send_probe(NULL, destination, OQ_ORDINARY);
+	release_destination_ref(destination);
+      }
+      break;
+    }
     case MDP_INTERFACE_RECV:{
       struct overlay_interface *interface=overlay_interface_find_name_file_addr(NULL, NULL, client);
       if (interface){
 	struct socket_address addr;
 	addr.addrlen = ob_get(payload);
-	if ((size_t)addr.addrlen > sizeof(addr))
-	  break; // TODO errors
+	if ((size_t)addr.addrlen > sizeof(addr)){
+	  WARNF("Malformed MDP_INTERFACE_RECV header, %u bytes is too large", (unsigned)addr.addrlen);
+	  break;
+	}
 	bcopy(ob_get_bytes_ptr(payload, addr.addrlen), addr.raw, addr.addrlen);
 	packetOkOverlay(interface, ob_current_ptr(payload), ob_remaining(payload), &addr);
       }

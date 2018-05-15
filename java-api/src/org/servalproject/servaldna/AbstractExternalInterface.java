@@ -51,6 +51,7 @@ public abstract class AbstractExternalInterface  extends ChannelSelector.Handler
 	private static final int MDP_INTERFACE_UP=0;
 	private static final int MDP_INTERFACE_DOWN=1;
 	private static final int MDP_INTERFACE_RECV=2;
+	private static final int MDP_INTERFACE_PEER=3;
 
 	public void up(String config) throws IOException {
 		MdpPacket packet = new MdpPacket();
@@ -71,22 +72,29 @@ public abstract class AbstractExternalInterface  extends ChannelSelector.Handler
 		packet.send((DatagramChannel) socket.getChannel());
 	}
 
-	public void receivedPacket(byte recvaddr[], byte recvbytes[]) throws IOException {
-		receivedPacket(recvaddr, recvbytes, 0, recvbytes==null?0:recvbytes.length);
-	}
-	public void receivedPacket(byte recvaddr[], byte recvbytes[], int offset, int len) throws IOException {
+	private void deliverPacket(int type, byte recvaddr[], byte recvbytes[], int offset, int len) throws IOException{
 		if (!isUp)
 			return;
-
 		MdpPacket packet = new MdpPacket();
 		packet.setRemotePort(MDP_INTERFACE);
-		packet.payload.put((byte) MDP_INTERFACE_RECV);
+		packet.payload.put((byte) type);
 		packet.payload.put((byte) recvaddr.length);
 		packet.payload.put(recvaddr);
 		if (len>0)
 			packet.payload.put(recvbytes, offset, len);
 		packet.payload.flip();
 		packet.send((DatagramChannel) socket.getChannel());
+	}
+
+	public void discovered(byte recvaddr[]) throws IOException{
+		deliverPacket(MDP_INTERFACE_PEER, recvaddr, null, 0, 0);
+	}
+
+	public void receivedPacket(byte recvaddr[], byte recvbytes[]) throws IOException {
+		deliverPacket(MDP_INTERFACE_RECV, recvaddr, recvbytes, 0, recvbytes==null?0:recvbytes.length);
+	}
+	public void receivedPacket(byte recvaddr[], byte recvbytes[], int offset, int len) throws IOException {
+		deliverPacket(MDP_INTERFACE_RECV, recvaddr, recvbytes, offset, len);
 	}
 
 	protected abstract void sendPacket(byte addr[], ByteBuffer payload);

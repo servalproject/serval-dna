@@ -51,8 +51,7 @@ public class MdpSocket{
 		this.loopbackMdpPort = loopbackMdpPort;
 	}
 	public MdpSocket(int loopbackMdpPort, int port) throws IOException {
-		this(loopbackMdpPort);
-		bind(SubscriberId.ANY, port);
+		this(loopbackMdpPort, SubscriberId.ANY, port);
 	}
 	public MdpSocket(int loopbackMdpPort, SubscriberId sid, int port) throws IOException {
 		this(loopbackMdpPort);

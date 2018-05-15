@@ -99,6 +99,7 @@ struct mdp_identity_request {
 #define MDP_INTERFACE_UP 0
 #define MDP_INTERFACE_DOWN 1
 #define MDP_INTERFACE_RECV 2
+#define MDP_INTERFACE_PEER 3
 
 #define MDP_ROUTE_TABLE 5
 
