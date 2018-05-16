@@ -248,9 +248,7 @@ static int restful_keyring_get(httpd_request *r, const char *remainder)
   keyring_identity *id = keyring_find_identity_sid(keyring, &r->sid1);
   if (!id)
     return http_request_keyring_response(r, 404, "Identity not found");
-  int ret = http_request_keyring_response_identity(r, 200, id);
-  keyring_free_identity(id);
-  return ret;
+  return http_request_keyring_response_identity(r, 200, id);
 }
 
 static int restful_keyring_remove(httpd_request *r, const char *remainder)

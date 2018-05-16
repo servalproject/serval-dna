@@ -98,6 +98,8 @@ doc_keyringGet="REST API get single keyring identity as JSON"
 test_keyringGet() {
    rest_request GET "/restful/keyring/$SIDA1"
    assertJq response.json 'contains({"identity": {"sid": "'$SIDA1'", "identity": "'$IDA1'", "did": "'"$DIDA1"'", "name": "'"$NAMEA1"'"}})'
+   rest_request GET "/restful/keyring/$SIDA1"
+   assertJq response.json 'contains({"identity": {"sid": "'$SIDA1'", "identity": "'$IDA1'", "did": "'"$DIDA1"'", "name": "'"$NAMEA1"'"}})'
 }
 
 doc_keyringAdd="REST API add keyring identity"
