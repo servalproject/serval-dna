@@ -96,8 +96,8 @@ typedef struct keyring_identity {
 
 typedef struct keyring_bam {
   size_t file_offset;
-  unsigned char allocmap[KEYRING_BAM_BYTES];
-  unsigned char loadmap[KEYRING_BAM_BYTES];
+  uint8_t allocmap[KEYRING_BAM_BYTES];
+  uint8_t loadmap[KEYRING_BAM_BYTES];
   struct keyring_bam *next;
 } keyring_bam;
 
@@ -147,7 +147,7 @@ int keyring_send_identity_request(struct subscriber *subscriber);
 
 int keyring_commit(keyring_file *k);
 keyring_identity *keyring_inmemory_identity();
-void keyring_free_identity(keyring_identity *id);
+void keyring_free_identity(keyring_file *k, keyring_identity *id);
 keyring_identity *keyring_create_identity(keyring_file *k, const char *pin);
 void keyring_destroy_identity(keyring_file *k, keyring_identity *id);
 void keyring_identity_extract(const keyring_identity *id, const char **didp, const char **namep);

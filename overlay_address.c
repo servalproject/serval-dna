@@ -108,8 +108,10 @@ struct subscriber *get_my_subscriber(bool_t create)
 
 void release_my_subscriber()
 {
-  if (my_subscriber && my_subscriber->identity->slot==0)
-    keyring_free_identity(my_subscriber->identity);
+  if (my_subscriber && my_subscriber->identity->slot==0) {
+    assert(keyring != NULL);
+    keyring_free_identity(keyring, my_subscriber->identity);
+  }
   server_unlink_proc_state("primary_sid");
   my_subscriber = NULL;
   primary_sid = NULL;

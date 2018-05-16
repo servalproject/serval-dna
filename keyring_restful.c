@@ -228,11 +228,11 @@ static int restful_keyring_add(httpd_request *r, const char *remainder)
   if (id == NULL)
     return http_request_keyring_response(r, 500, "Could not create identity");
   if ((did || name) && keyring_set_did_name(id, did ? did : "", name ? name : "") == -1) {
-    keyring_free_identity(id);
+    keyring_free_identity(keyring, id);
     return http_request_keyring_response(r, 500, "Could not set identity DID/Name");
   }
   if (keyring_commit(keyring) == -1) {
-    keyring_free_identity(id);
+    keyring_free_identity(keyring, id);
     return http_request_keyring_response(r, 500, "Could not store new identity");
   }
   return http_request_keyring_response_identity(r, 201, id);
@@ -265,7 +265,7 @@ static int restful_keyring_remove(httpd_request *r, const char *remainder)
   if (keyring_commit(keyring) == -1)
     return http_request_keyring_response(r, 500, "Could not erase removed identity");
   int ret = http_request_keyring_response_identity(r, 200, id);
-  keyring_free_identity(id);
+  keyring_free_identity(keyring, id);
   return ret;
 }
 
@@ -300,6 +300,6 @@ static int restful_keyring_lock(httpd_request *r, const char *remainder)
   if (!id)
     return http_request_keyring_response(r, 404, "Identity not found");
   keyring_release_identity(keyring, id);
-  keyring_free_identity(id);
+  keyring_free_identity(keyring, id);
   return http_request_keyring_response(r, 200, "Identity locked");
 }

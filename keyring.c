@@ -127,6 +127,7 @@ static int keyring_initialise(keyring_file *k)
  */
 static int keyring_load(keyring_file *k, const char *pin)
 {
+  assert(k->bam == NULL);
   /* Read BAMs for each slab in the file */
   keyring_bam **b=&k->bam;
   size_t offset = 0;
@@ -175,8 +176,8 @@ static unsigned is_slot_allocated(const keyring_file *k, unsigned slot)
   assert(slot < KEYRING_BAM_BITS);
   unsigned position = slot & (KEYRING_BAM_BITS - 1);
   unsigned byte = position >> 3;
-  unsigned bit = position & 7;
-  return (k->bam->allocmap[byte] & (1 << bit)) ? 1 : 0;
+  uint8_t mask = 1 << (position & 7);
+  return (k->bam->allocmap[byte] & mask) ? 1 : 0;
 }
 
 static unsigned is_slot_loadable(const keyring_file *k, unsigned slot)
@@ -185,8 +186,8 @@ static unsigned is_slot_loadable(const keyring_file *k, unsigned slot)
   assert(slot < KEYRING_BAM_BITS);
   unsigned position = slot & (KEYRING_BAM_BITS - 1);
   unsigned byte = position >> 3;
-  unsigned bit = position & 7;
-  return (k->bam->allocmap[byte] & (1 << bit)) && !(k->bam->loadmap[byte] & (1 << bit));
+  uint8_t mask = 1 << (position & 7);
+  return (k->bam->allocmap[byte] & mask) && !(k->bam->loadmap[byte] & mask);
 }
 
 static void mark_slot_allocated(keyring_file *k, unsigned slot, int allocated)
@@ -195,11 +196,13 @@ static void mark_slot_allocated(keyring_file *k, unsigned slot, int allocated)
   assert(slot < KEYRING_BAM_BITS);
   unsigned position = slot & (KEYRING_BAM_BITS - 1);
   unsigned byte = position >> 3;
-  unsigned bit = position & 7;
-  if (allocated)
-    k->bam->allocmap[byte] |= (1 << bit);
-  else
-    k->bam->allocmap[byte] &= ~(1 << bit);
+  uint8_t mask = 1 << (position & 7);
+  if (allocated) {
+    k->bam->allocmap[byte] |= mask;
+  } else {
+    assert(k->bam->allocmap[byte] & mask); // already marked as allocated
+    k->bam->allocmap[byte] &= ~mask;
+  }
 }
 
 static void mark_slot_loaded(keyring_file *k, unsigned slot, int loaded)
@@ -208,11 +211,13 @@ static void mark_slot_loaded(keyring_file *k, unsigned slot, int loaded)
   assert(slot < KEYRING_BAM_BITS);
   unsigned position = slot & (KEYRING_BAM_BITS - 1);
   unsigned byte = position >> 3;
-  unsigned bit = position & 7;
-  if (loaded)
-    k->bam->loadmap[byte] |= (1 << bit);
-  else
-    k->bam->loadmap[byte] &= ~(1 << bit);
+  uint8_t mask = 1 << (position & 7);
+  if (loaded) {
+    k->bam->loadmap[byte] |= mask;
+  } else {
+    assert(k->bam->loadmap[byte] & mask); // already marked as loaded
+    k->bam->loadmap[byte] &= ~mask;
+  }
 }
 
 void keyring_iterator_start(keyring_file *k, keyring_iterator *it)
@@ -319,23 +324,46 @@ static void wipestr(char *str)
     *str++ = ' ';
 }
 
+/* Wipe any sensitive data from the given identity and release its allocated memory by calling
+ * free(3).  The identity must not be linked into any keyring, but this function does not check
+ * that, so it is only for internal use within keyring.c.
+ */
+static void free_identity(keyring_identity *id)
+{
+  if (id->PKRPin) {
+    wipestr(id->PKRPin);
+    free(id->PKRPin);
+    id->PKRPin = NULL;
+  }
+  while(id->keypairs){
+    keypair *kp=id->keypairs;
+    id->keypairs=kp->next;
+    keyring_free_keypair(kp);
+  }
+  if (id->challenge)
+    free(id->challenge);
+  if (id->subscriber)
+    link_stop_routing(id->subscriber);
+  bzero(id,sizeof(keyring_identity));
+  free(id);
+}
+
 void keyring_free(keyring_file *k)
 {
   if (!k) return;
 
   /* Close keyring file handle */
-  if (k->file) fclose(k->file);
-  k->file=NULL;
+  if (k->file) {
+    fclose(k->file);
+    k->file = NULL;
+  }
 
   /* Free BAMs (no substructure, so easy) */
-  keyring_bam *b=k->bam;
-  while(b) {
-    keyring_bam *last_bam=b;
-    b=b->next;
-    /* Clear out any private data */
-    bzero(last_bam,sizeof(keyring_bam));
-    /* release structure */
-    free(last_bam);
+  while (k->bam) {
+    keyring_bam *b = k->bam;
+    k->bam = b->next;
+    bzero(b, sizeof(keyring_bam));
+    free(b);
   }
 
   /* Free dynamically allocated salt strings.
@@ -357,7 +385,7 @@ void keyring_free(keyring_file *k)
   while(k->identities){
     keyring_identity *i = k->identities;
     k->identities=i->next;
-    keyring_free_identity(i);
+    free_identity(i);
   }
   
   /* Wipe everything, just to be sure. */
@@ -368,8 +396,8 @@ void keyring_free(keyring_file *k)
 }
 
 /* Release ("lock") all the identities that have a given PIN, by unlinking them from the in-memory
- * cache list.  DOES call keyring_free_identity(id) on each released identity.  When this function
- * returns, there are no unlocked identities with the given PIN.
+ * cache list.  DOES call free_identity(id) on each released identity.  When this function returns,
+ * there are no unlocked identities with the given PIN.
  */
 void keyring_release_identities_by_pin(keyring_file *k, const char *pin)
 {
@@ -377,12 +405,12 @@ void keyring_release_identities_by_pin(keyring_file *k, const char *pin)
   DEBUGF(keyring, "release identity PIN=%s", alloca_str_toprint(pin));
   keyring_identity **i=&k->identities;
   while(*i){
-    keyring_identity *id = (*i);
+    keyring_identity *id = *i;
     if (id->PKRPin && strcmp(id->PKRPin, pin) == 0) {
       INFOF("release identity slot=%u SID=%s", id->slot, alloca_tohex_sid_t(*id->box_pk));
-      (*i) = id->next;
+      *i = id->next;
       mark_slot_loaded(k, id->slot, 0);
-      keyring_free_identity(id);
+      free_identity(id);
     }else{
       i=&id->next;
     }
@@ -392,8 +420,8 @@ void keyring_release_identities_by_pin(keyring_file *k, const char *pin)
 /* Release the given single identity by unlinking it from the in-memory cache list.  To ensure that
  * re-entering the identity's PIN will unlock it again, mark any other unlocked identities that have
  * the same PIN as no longer "fully" unlocked, so that keyring_enter_pin() will re-try the
- * decryption.  Does NOT call keyring_free_identity(id), so the identity's in-memory structure
- * remain intact; the caller is responsible for freeing the identity.
+ * decryption.  Does NOT call free_identity(id), so the identity's in-memory structure remain
+ * intact; the caller is responsible for freeing the identity.
  */
 void keyring_release_identity(keyring_file *k, keyring_identity *id)
 {
@@ -411,14 +439,15 @@ void keyring_release_identity(keyring_file *k, keyring_identity *id)
   }
   assert(prev); // the identity being released must be in the keyring
   (*prev) = id->next;
+  id->next = NULL;
   mark_slot_loaded(k, id->slot, 0);
 }
 
 /* Release the single identity with the given SID, by unlinking it from the in-memory cache list.
  * See the comment on keyring_release_identity() regarding PIN management.  Returns zero if an
  * identity was found and released, -1 if no such identity was found.  Unlike
- * keyring_release_identity(), this function DOES call keyring_free_identity(id) on any released
- * identity before returning.
+ * keyring_release_identity(), this function DOES call free_identity(id) on any released identity
+ * before returning.
  */
 int keyring_release_subscriber(keyring_file *k, const sid_t *sid)
 {
@@ -428,32 +457,22 @@ int keyring_release_subscriber(keyring_file *k, const sid_t *sid)
     keyring_identity *iid = *i;
     if (cmp_sid_t(iid->box_pk, sid) == 0) {
       keyring_release_identity(k, iid);
-      keyring_free_identity(iid);
+      free_identity(iid);
       return 0;
     }
   }
   return WHYF("cannot release non-existent keyring entry SID=%s", alloca_tohex_sid_t(*sid));
 }
 
-void keyring_free_identity(keyring_identity *id)
+/* Free the given identity after ensuring that it is not linked into the given keyring.
+ */
+void keyring_free_identity(keyring_file *k, keyring_identity *id)
 {
-  if (id->PKRPin) {
-    /* Wipe pin from local memory before freeing. */
-    wipestr(id->PKRPin);
-    free(id->PKRPin);
-    id->PKRPin = NULL;
-  }
-  while(id->keypairs){
-    keypair *kp=id->keypairs;
-    id->keypairs=kp->next;
-    keyring_free_keypair(kp);
-  }
-  if (id->challenge)
-    free(id->challenge);
-  if (id->subscriber)
-    link_stop_routing(id->subscriber);
-  bzero(id,sizeof(keyring_identity));
-  free(id);
+  keyring_identity *i;
+  for (i = k->identities; i; i = i->next)
+    assert(i != id);
+  assert(id->next == NULL);
+  free_identity(id);
 }
 
 /*
@@ -1189,14 +1208,14 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot_data, const
     }
     if (keypair_len > rotbuf_remain(&rbuf)) {
       DEBUGF(keyring, "invalid keypair length %zu", keypair_len);
-      keyring_free_identity(id);
+      free_identity(id);
       return NULL;
     }
     // Create keyring entry to hold the key pair.  Even entries of unknown type are stored,
     // so they can be dumped.
     keypair *kp = keyring_alloc_keypair(ktype, keypair_len);
     if (kp == NULL) {
-      keyring_free_identity(id);
+      free_identity(id);
       return NULL;
     }
     struct rotbuf rbstart = rbuf;
@@ -1211,7 +1230,7 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot_data, const
       // If there is an error, it is probably an empty slot.
       DEBUGF(keyring, "key type 0x%02x does not unpack", ktype);
       keyring_free_keypair(kp);
-      keyring_free_identity(id);
+      free_identity(id);
       return NULL;
     }
     // Ensure that the correct number of bytes was consumed.
@@ -1221,7 +1240,7 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot_data, const
       // empty slot.
       DEBUGF(keyring, "key type 0x%02x unpacked wrong length (unpacked %u, expecting %u)", ktype, (int)unpacked, (int)keypair_len);
       keyring_free_keypair(kp);
-      keyring_free_identity(id);
+      free_identity(id);
       return NULL;
     }
     // Got a valid key pair!  Sort the key pairs by (key type, public key, private key) and weed
@@ -1232,7 +1251,7 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot_data, const
   // If the buffer offset overshot, we got an invalid keypair code and length combination.
   if (rbuf.wrap > 1) {
     DEBUGF(keyring, "slot overrun by %u bytes", rbuf.wrap - 1);
-    keyring_free_identity(id);
+    free_identity(id);
     return NULL;
   }
   DEBUGF(keyring, "unpacked key pairs");
@@ -1368,7 +1387,7 @@ static int keyring_decrypt_pkr(keyring_file *k, const char *pin, int slot)
   bzero(slot_data,KEYRING_PAGE_SIZE);
   bzero(hash,crypto_hash_sha512_BYTES);
   if (id)
-    keyring_free_identity(id);
+    free_identity(id);
   return -1;
 }
 
@@ -1458,6 +1477,8 @@ static unsigned find_free_slot(const keyring_file *k)
  */
 static int keyring_commit_identity(keyring_file *k, keyring_identity *id)
 {
+  assert(id->next == NULL); // not already linked into keyring
+
   keyring_finalise_identity(&k->dirty, id);
   // Do nothing if an identity with this sid already exists
   if (keyring_find_identity_sid(k, id->box_pk)) {
@@ -1468,8 +1489,10 @@ static int keyring_commit_identity(keyring_file *k, keyring_identity *id)
   mark_slot_loaded(k, id->slot, 1);
 
   keyring_identity **i=&k->identities;
-  while(*i)
-    i=&(*i)->next;
+  while (*i) {
+    assert(*i != id); // not already linked into keyring
+    i = &(*i)->next;
+  }
 
   *i=id;
   add_subscriber(id);
@@ -1489,7 +1512,7 @@ static keyring_identity *keyring_new_identity()
     if (key_types[ktype].creator) {
       keypair *kp = keyring_alloc_keypair(ktype, 0);
       if (kp == NULL){
-	keyring_free_identity(id);
+	free_identity(id);
 	return NULL;
       }
       key_types[ktype].creator(kp);
@@ -1518,8 +1541,10 @@ keyring_identity *keyring_inmemory_identity(){
 keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
 {
   DEBUGF(keyring, "k=%p", k);
-  /* Check obvious abort conditions early */
-  if (!k->bam) { WHY("keyring lacks BAM"); return NULL; }
+  if (!k->bam) {
+    WHY("keyring is not loaded");
+    return NULL;
+  }
 
   if (!pin) pin="";
 
@@ -1549,7 +1574,7 @@ keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
 
  kci_safeexit:
   if (id)
-    keyring_free_identity(id);
+    free_identity(id);
   return NULL;
 }
 
@@ -1577,18 +1602,22 @@ static int write_random_slot(keyring_file *k, unsigned slot)
 
 /* Remove the given identity from the keyring by overwriting it's slot in the keyring file with
  * random data, and unlinking it from the in-memory cache list.  Does NOT call
- * keyring_free_identity(id), so the identity's contents remain intact; the caller must free the
- * identity if desired.
+ * free_identity(id), so the identity's contents remain intact; the caller must free the identity if
+ * desired.
  */
 void keyring_destroy_identity(keyring_file *k, keyring_identity *id)
 {
-  DEBUGF(keyring, "k=%p, id=%p", k, id);
+  DEBUGF(keyring, "k=%p, id=%p, id->slot=%u", k, id, id->slot);
   if (!k->bam) {
-    WHY("keyring lacks BAM");
+    WHY("keyring is not loaded");
     return;
   }
   assert(id->slot != 0);
-  DEBUGF(keyring, "Destroy identity in slot %u", id->slot);
+
+  keyring_identity **i = &k->identities;
+  while (*i && *i != id)
+    i = &(*i)->next;
+  assert(*i); // the identity being released must be in the keyring
 
   // Mark the slot as unallocated in the BAM and un-loaded in memory.
   mark_slot_allocated(k, id->slot, 0);
@@ -1598,11 +1627,8 @@ void keyring_destroy_identity(keyring_file *k, keyring_identity *id)
   write_random_slot(k, id->slot);
 
   // Unlink the identity from the in-memory cache.
-  keyring_identity **i = &k->identities;
-  while (*i && *i != id)
-    i = &(*i)->next;
-  if (*i == id)
-    *i = id->next;
+  *i = id->next;
+  id->next = NULL;
 }
 
 int keyring_commit(keyring_file *k)
@@ -2160,7 +2186,7 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
 	line[--linelen] = '\0';
     } else {
       if (id)
-	keyring_free_identity(id);
+	free_identity(id);
       return WHY("line too long");
     }
     unsigned idn;
@@ -2171,12 +2197,12 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
 	break;
     if (n != 2){
       if (id)
-	keyring_free_identity(id);
+	free_identity(id);
       return WHYF("malformed input n=%u", n);
     }
     if (ktype == KEYTYPE_INVALID){
       if (id)
-	keyring_free_identity(id);
+	free_identity(id);
       return WHY("invalid input: ktype=0");
     }
     const char *ktypestr = &line[i];
@@ -2186,7 +2212,7 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
     keypair *kp = keyring_alloc_keypair(ktype, 0);
     if (kp == NULL){
       if (id)
-	keyring_free_identity(id);
+	free_identity(id);
       return -1;
     }
     int (*loader)(keypair *, const char *) = load_unknown;
@@ -2194,7 +2220,7 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
       loader = key_types[ktype].loader;
     if (loader(kp, content) == -1) {
       if (id)
-	keyring_free_identity(id);
+	free_identity(id);
       keyring_free_keypair(kp);
       return -1;
     }
@@ -2202,7 +2228,7 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
       last_idn = idn;
       if (id){
 	if (!keyring_commit_identity(k, id))
-	  keyring_free_identity(id);
+	  free_identity(id);
 	else
 	  k->dirty=1;
       }
@@ -2212,12 +2238,12 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
       }
       if (pini < entry_pinc  && (id->PKRPin = str_edup(entry_pinv[pini++])) == NULL) {
 	keyring_free_keypair(kp);
-	keyring_free_identity(id);
+	free_identity(id);
 	return -1;
       }
       if ((id->slot = find_free_slot(k)) == 0) {
 	keyring_free_keypair(kp);
-	keyring_free_identity(id);
+	free_identity(id);
 	return WHY("no free slot");
       }
       DEBUGF(keyring, "Allocate identity into slot %u", id->slot);
@@ -2227,7 +2253,7 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
   }
   if (id){
     if (!keyring_commit_identity(k, id))
-      keyring_free_identity(id);
+      free_identity(id);
     else
       k->dirty=1;
   }

@@ -270,7 +270,7 @@ static int app_keyring_remove(const struct cli_parsed *parsed, struct cli_contex
   if (keyring_commit(keyring) == -1)
     return WHY("Could not destroy identity");
   cli_output_identity(context, id);
-  keyring_free_identity(id);
+  keyring_free_identity(keyring, id);
   return 0;
 }
 
