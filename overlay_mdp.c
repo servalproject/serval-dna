@@ -1439,7 +1439,7 @@ static void mdp_interface_packet(struct socket_address *client, struct mdp_heade
 	  break;
 	}
 	bcopy(ob_get_bytes_ptr(payload, addr.addrlen), addr.raw, addr.addrlen);
-	struct network_destination *destination = create_unicast_destination(&addr, state->interface);
+	struct network_destination *destination = create_unicast_destination(&addr, interface);
 	if (!destination)
 	  break;
 	overlay_send_probe(NULL, destination, OQ_ORDINARY);
