@@ -221,6 +221,7 @@ test_keyringLockUnlock() {
    # Lock the only PIN1 identity and assert that it no longer appears in the
    # identity list.
    rest_request PUT "/restful/keyring/$SIDA2/lock"
+   assertJq response.json 'contains({"identity": {"sid": "'$SIDA2'", "identity": "'"$IDA2"'"}})'
    rest_request GET "/restful/keyring/identities.json"
    transform_list_json response.json ids1.json
    assert [ "$(jq 'length' ids1.json)" = $((IDENTITY_COUNT - 1)) ]
@@ -228,6 +229,7 @@ test_keyringLockUnlock() {
    # Lock the second PIN2 identity and assert that it no longer appears in the
    # identity list.
    rest_request PUT "/restful/keyring/$SIDA4/lock"
+   assertJq response.json 'contains({"identity": {"sid": "'$SIDA4'", "identity": "'"$IDA4"'"}})'
    rest_request GET "/restful/keyring/identities.json"
    transform_list_json response.json ids2.json
    assert [ "$(jq 'length' ids2.json)" = $((IDENTITY_COUNT - 2)) ]
