@@ -7,10 +7,10 @@ Supported Architectures
 
 These instructions will build [Serval DNA][] successfully for the following platforms:
 
- * Debian Linux, ix86 and x86\_64, kernel versions 2.6 to 4.12, using [gcc
-   4.4][] and later, [gcc 5][] and [gcc 6][]
- * Mac OS-X x86\_64, releases 10.7 “Lion” to 10.11 “El Capitan”, using
-   [Xcode][] versions 3.2 to 8, supplemented by [homebrew][]
+ * Debian Linux, ix86 and x86\_64, kernel versions 2.6 and later, using [gcc
+   4.4][] and later, [gcc 5][], [gcc 6][] and [gcc 7][]
+ * Mac OS x86\_64, releases 10.7 “Lion” to 10.13 “High Sierra”, using [Xcode][]
+   versions 3.2 to 9.3, supplemented by [homebrew][]
  * Oracle SunOs 5.10 (Solaris), Sparc, using [gcc 4.4][] and GNU tools
    installed
 
@@ -55,8 +55,9 @@ Mandatory dependencies:
  * dynamic link library **libdl** and header `<dlfcn.h>`
  * Native Posix Threads Library **libpthread** and header `<pthread.h>`
  * on Solaris, the realtime library **librt** (for the `nanosleep()` function)
- * **autoconf** 2.67-2.69 (2.70 may work but has not been tested)
- * **automake** 1.15
+ * **GNU autoconf** 2.67-2.69 (2.70 may work but has not been tested)
+ * **GNU automake** 1.15 or later
+ * **GNU libtool** 2.4.6 or later (for the `libtoolize` utility)
 
 Optional:
 
@@ -66,15 +67,32 @@ Optional:
 
 Test dependencies:
 
- * bash 3.2.48 or later
- * GNU grep, sed and awk (on Mac OS-X and Solaris, as ggrep, gsed and gawk)
- * jq 1.3 or later
- * curl
+ * **Bash** 3.2.48 or later
+ * **GNU grep**, **GNU sed** and **GNU awk**
+ * **jq** 1.3 or later
+ * **curl** 7.45 or later
 
-**Bash** and **curl** are both provided by the [Xcode][] package for Mac OS X.
-**GNU grep**, **GNU sed**, **GNU awk** and **jq** can all be installed on Mac
-OS-X using the [homebrew][] package manager.  The [Notes for Developers][] give
-more details.
+Apple Mac OS
+------------
+
+On Apple Mac OS, the following dependencies are provided by the [Xcode][]
+package:
+ * all libraries and headers listed above
+ * **Swift** 3 or 4
+ * **Bash** 3.2.48
+ * **curl** 7.45
+
+The following dependencies must be installed on Mac OS using the [homebrew][]
+package manager:
+ * **GNU autoconf** 2.69
+ * **GNU automake** 1.15
+ * **GNU libtool** 2.4.6 (provides `glibtoolize`)
+ * **GNU grep** (provides `ggrep`)
+ * **GNU sed** (provides `gsed`)
+ * **GNU awk** (provides `gawk`)
+ * **jq**
+
+See [Notes for Developers][] for more details.
 
 Native Build
 ------------
@@ -342,6 +360,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [gcc 4.4]: http://gcc.gnu.org/gcc-4.4/
 [gcc 5]: http://gcc.gnu.org/gcc-5/
 [gcc 6]: http://gcc.gnu.org/gcc-6/
+[gcc 7]: http://gcc.gnu.org/gcc-7/
 [Notes for Developers]: ./doc/Development.md
 [Swift development]: ./doc/Development.md#swift
 [Swift Daemon API module]: ./doc/Development.md#swift-daemon-api
