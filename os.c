@@ -117,13 +117,120 @@ int _mkdirsn(struct __sourceloc whence, const char *path, size_t len, mode_t mod
   return -1;
 }
 
+static int copy_file_bytes(struct __sourceloc __whence, const char *oldpath, const char *newpath, int mode){
+  int read_fd = open(oldpath, O_RDONLY);
+  if (read_fd == -1)
+    return WHYF_perror("open(%s)", alloca_str_toprint(oldpath));
+
+  int write_fd = open(newpath, O_WRONLY | O_CREAT | O_EXCL, mode);
+  if (write_fd == -1){
+    close(read_fd);
+    return WHYF_perror("open(%s)", alloca_str_toprint(newpath));
+  }
+
+  uint8_t buff[16*1024];
+  ssize_t r;
+  ssize_t w=0;
+  while(w>=0 && (r = read(read_fd, buff, sizeof buff))>0){
+    off_t offset = 0;
+    while(offset < r && (w = write(write_fd, buff + offset, r - offset))>0)
+      offset+=w;
+    if (w<0)
+      WHY_perror("write()");
+  }
+
+  if (r<0)
+    WHY_perror("read()");
+
+  close(write_fd);
+  close(read_fd);
+
+  if (r<0 || w<0){
+    unlink(newpath);
+    return -1;
+  }
+
+  return 0;
+}
+
+static int move_bytes_recursive(struct __sourceloc __whence, const char *oldpath, const char *newpath, int log_level){
+  struct stat st;
+  if (stat(oldpath, &st)==-1)
+    return WHYF_perror("stat(%s)", alloca_str_toprint(oldpath));
+
+  if (S_ISDIR(st.st_mode)){
+    DIR *dir;
+    struct dirent *dp;
+
+    if (mkdir(newpath, st.st_mode)==-1 && errno!=EEXIST)
+      return WHYF_perror("mkdir(%s)", newpath);
+
+    if (log_level != LOG_LEVEL_SILENT)
+      LOGF(log_level, "mkdir %s (mode %04o)", alloca_str_toprint(newpath), st.st_mode);
+
+    if ((dir = opendir(oldpath)) == NULL)
+      return WHYF_perror("opendir(%s)", alloca_str_toprint(oldpath));
+    errno=0;
+
+    size_t old_len = strlen(oldpath);
+    size_t new_len = strlen(newpath);
+
+    // use static buffers for temporary path construction to reduce stack usage.
+    static char old_buf[400];
+    static char new_buf[400];
+
+    if (oldpath!=old_buf){
+      strcpy(old_buf, oldpath);
+      strcpy(new_buf, newpath);
+    }
+    if (old_buf[old_len - 1]!='/')
+      old_buf[old_len++]='/';
+    old_buf[old_len]='\0';
+    if (new_buf[new_len - 1]!='/')
+      new_buf[new_len++]='/';
+    new_buf[new_len]='\0';
+
+    int r=0;
+    while (r==0 && (dp = readdir(dir)) != NULL) {
+      if (strcmp(dp->d_name,".")==0 || strcmp(dp->d_name,"..")==0)
+	continue;
+
+      strcpy(&old_buf[old_len], dp->d_name);
+      strcpy(&new_buf[new_len], dp->d_name);
+
+      r = move_bytes_recursive(__whence, old_buf, new_buf, log_level);
+    }
+    closedir(dir);
+
+    if (r==0)
+      rmdir(oldpath);
+
+    return r;
+  }
+
+  if (copy_file_bytes(__whence, oldpath, newpath, st.st_mode)==-1)
+    return -1;
+
+  unlink(oldpath);
+
+  if (log_level != LOG_LEVEL_SILENT)
+    LOGF(log_level, "moved %s -> %s", alloca_str_toprint(oldpath), alloca_str_toprint(newpath));
+
+  return 0;
+}
+
 int _erename(struct __sourceloc __whence, const char *oldpath, const char *newpath, int log_level)
 {
-  if (log_level != LOG_LEVEL_SILENT)
-    LOGF(log_level, "rename %s -> %s", alloca_str_toprint(oldpath), alloca_str_toprint(newpath));
-  if (rename(oldpath, newpath) == -1)
+  if (rename(oldpath, newpath) != -1){
+    if (log_level != LOG_LEVEL_SILENT)
+      LOGF(log_level, "renamed %s -> %s", alloca_str_toprint(oldpath), alloca_str_toprint(newpath));
+    return 0;
+  }
+  if (errno != EXDEV)
     return WHYF_perror("rename(%s,%s)", alloca_str_toprint(oldpath), alloca_str_toprint(newpath));
-  return 0;
+  // rename() doesn't move files between filesystems, stream the bytes across the hard way...
+  // TODO test this code path as it occurs on android
+  return move_bytes_recursive(__whence, oldpath, newpath, log_level);
 }
 
 time_ms_t gettime_ms()

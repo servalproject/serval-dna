@@ -311,6 +311,10 @@ setup_MoveDatabaseFolder() {
    executeOk_servald config set rhizome.max_blob_size 0
    echo "A test file" >file1
    executeOk_servald rhizome add file "$SIDA" file1 file1.manifest
+   echo "Another test file" >file2
+   executeOk_servald rhizome add file "$SIDA" file2 file2.manifest
+   echo "Yet another test file" >file3
+   executeOk_servald rhizome add file "$SIDA" file3 file3.manifest
    assert --stderr [ -e "$SERVALINSTANCE_PATH/rhizome/rhizome.db" ]
    executeOk mv "$SERVALINSTANCE_PATH/rhizome/"* "$SERVALINSTANCE_PATH"
    executeOk rmdir "$SERVALINSTANCE_PATH/rhizome/"
@@ -318,7 +322,7 @@ setup_MoveDatabaseFolder() {
 test_MoveDatabaseFolder() {
    executeOk_servald config set rhizome.datastore_path "moved"
    executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 --author="$SIDA" file1
+   assert_rhizome_list --fromhere=1 --author="$SIDA" file1 file2 file3
    assert --stderr [ ! -e "$SERVALINSTANCE_PATH/rhizome/rhizome.db" ]
    assert --stderr [ -e "$SERVALINSTANCE_PATH/moved/rhizome.db" ]
    tfw_cat --stderr
