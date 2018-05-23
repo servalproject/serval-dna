@@ -65,8 +65,7 @@ public abstract class AbstractJsonList<T, E extends Exception> {
     }
 
     protected void handleResponseError() throws E, IOException, ServalDInterfaceException {
-        throw new ServalDFailureException("received unexpected HTTP Status "+
-                httpConnection.getResponseCode()+" " + httpConnection.getResponseMessage()+" from " + httpConnection.getURL());
+        throw new ServalDUnexpectedHttpStatus(httpConnection);
     }
 
     public void connect() throws IOException, ServalDInterfaceException, E {
