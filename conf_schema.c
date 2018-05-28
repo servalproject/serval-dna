@@ -260,7 +260,7 @@ int cf_opt_int32_nonneg(int32_t *intp, const char *text)
 {
   const char *end = text;
   long value = strtol(text, (char**)&end, 10);
-  if (end == text || *end || value < 0 || value > 0x7fffffffL)
+  if (end == text || *end || value < 0 || value > INT32_MAX)
     return CFINVALID;
   *intp = value;
   return CFOK;
@@ -270,7 +270,7 @@ int cf_opt_int32_rs232baudrate(int32_t *intp, const char *text)
 {
   const char *end = text;
   long value = strtol(text, (char**)&end, 10);
-  if (end == text || *end || value < 0 || value > 0x7fffffffL)
+  if (end == text || *end || value < 0 || value > INT32_MAX)
     return CFINVALID;
   switch(value) {
   case 50: case 75: case 110: case 134: case 150: case 200: case 300:
@@ -341,7 +341,7 @@ int cf_opt_uint32_nonzero(uint32_t *intp, const char *text)
 {
   const char *end = text;
   unsigned long value = strtoul(text, (char**)&end, 10);
-  if (end == text || *end || value < 1 || value > 0xffffffffL)
+  if (end == text || *end || value < 1 || value > UINT32_MAX)
     return CFINVALID;
   *intp = value;
   return CFOK;
@@ -483,7 +483,7 @@ int cf_opt_ushort(unsigned short *ushortp, const char *text)
 {
   const char *end = text;
   unsigned long value = strtoul(text, (char**)&end, 10);
-  if (end == text || *end || value > 0xffffL)
+  if (end == text || *end || value > UINT16_MAX)
     return CFINVALID;
   *ushortp = value;
   return CFOK;
