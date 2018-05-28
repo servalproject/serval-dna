@@ -266,14 +266,7 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 	// interface ServalDHttpConnectionFactory
 	public HttpURLConnection newServalDHttpConnection(String verb, String path, Iterable<QueryParam> query_params) throws ServalDInterfaceException, IOException
 	{
-		StringBuilder str = new StringBuilder();
-		char sep = '?';
-		for (QueryParam param : query_params) {
-			str.append(sep);
-			param.uri_encode(str);
-			sep = '&';
-		}
-		URL url = new URL("http://127.0.0.1:" + httpPort + path + str.toString());
+		URL url = new URL("http://127.0.0.1:" + httpPort + path + QueryParam.encode(query_params));
 		URLConnection uconn = url.openConnection();
 		HttpURLConnection conn;
 		try {

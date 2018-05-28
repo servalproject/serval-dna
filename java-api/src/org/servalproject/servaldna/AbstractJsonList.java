@@ -26,6 +26,7 @@ import org.servalproject.json.JSONTableScanner;
 import org.servalproject.json.JSONTokeniser;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +44,10 @@ public abstract class AbstractJsonList<T, E extends Exception> {
 		String verb;
 		String url;
 
+        public Request(String verb, String url, Iterable<ServalDHttpConnectionFactory.QueryParam> parms) throws UnsupportedEncodingException {
+            this(verb, url + ServalDHttpConnectionFactory.QueryParam.encode(parms));
+        }
+
 		public Request(String verb, String url) {
 			this.verb = verb;
 			this.url = url;
@@ -54,7 +59,7 @@ public abstract class AbstractJsonList<T, E extends Exception> {
         this.table = table;
     }
 
-    protected abstract Request getRequest();
+    protected abstract Request getRequest() throws UnsupportedEncodingException;
 
     public boolean isConnected(){
         return this.json != null;

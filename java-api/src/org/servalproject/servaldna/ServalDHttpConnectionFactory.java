@@ -45,6 +45,17 @@ public interface ServalDHttpConnectionFactory {
 			}
 		}
 
+		public static String encode(Iterable<QueryParam> query_params) throws UnsupportedEncodingException {
+			StringBuilder str = new StringBuilder();
+			char sep = '?';
+			for (QueryParam param : query_params) {
+				str.append(sep);
+				param.uri_encode(str);
+				sep = '&';
+			}
+			return str.toString();
+		}
+
 		static private void uri_encode_string(StringBuilder str, String text) throws UnsupportedEncodingException {
 			for (byte b : text.getBytes("UTF-8")) {
 				if (	(b >= '0' && b <= '9')

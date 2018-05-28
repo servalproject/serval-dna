@@ -31,7 +31,9 @@ import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.util.Map;
+import java.util.Vector;
 
 public class RhizomeBundleList extends AbstractJsonList<RhizomeListBundle, IOException> {
 
@@ -80,7 +82,7 @@ public class RhizomeBundleList extends AbstractJsonList<RhizomeListBundle, IOExc
 	}
 
 	@Override
-	protected Request getRequest() {
+	protected Request getRequest() throws UnsupportedEncodingException {
 		StringBuilder sb = new StringBuilder();
 		if (this.sinceToken == null)
 			sb.append("/restful/rhizome/bundlelist.json");
@@ -89,22 +91,17 @@ public class RhizomeBundleList extends AbstractJsonList<RhizomeListBundle, IOExc
 		else
 			sb.append("/restful/rhizome/newsince/").append(this.sinceToken).append("/bundlelist.json");
 
-		char parmDelim = '?';
-		if (service != null){
-			sb.append(parmDelim).append("service=").append(service);
-			parmDelim='&';
-		}
-		if (name!=null) {
-			sb.append(parmDelim).append("name=").append(name);
-			parmDelim='&';
-		}
-		if (sender!=null) {
-			sb.append(parmDelim).append("sender=").append(sender.toHex());
-			parmDelim='&';
-		}
-		if (recipient!=null)
-			sb.append(parmDelim).append("recipient=").append(recipient.toHex());
-		return new Request("GET", sb.toString());
+		Vector<ServalDHttpConnectionFactory.QueryParam> query_params = new Vector<ServalDHttpConnectionFactory.QueryParam>();
+		if (service != null)
+			query_params.add(new ServalDHttpConnectionFactory.QueryParam("service", service));
+		if (name != null)
+			query_params.add(new ServalDHttpConnectionFactory.QueryParam("name", name));
+		if (sender != null)
+			query_params.add(new ServalDHttpConnectionFactory.QueryParam("sender", sender.toHex()));
+		if (recipient != null)
+			query_params.add(new ServalDHttpConnectionFactory.QueryParam("recipient", recipient.toHex()));
+
+		return new Request("GET", sb.toString(), query_params);
 	}
 
 	@Override
