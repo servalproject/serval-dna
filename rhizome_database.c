@@ -1564,7 +1564,7 @@ enum rhizome_bundle_status rhizome_add_manifest_to_store(rhizome_manifest *m, rh
       // due to potential race conditions, we have to do this here
       // even though the CLI will try to send us a MDP_SYNC_RHIZOME message
       if (m->rowid > max_rowid+1)
-	server_rhizome_add_bundle(m->rowid);
+	rhizome_process_added_bundles(m->rowid);
       max_rowid = m->rowid;
       CALL_TRIGGER(bundle_add, m);
     }else{
@@ -2028,14 +2028,14 @@ end:
   return ret;
 }
 
-// Detect bundles added from the cmdline, and call trigger functions
-void server_rhizome_add_bundle(uint64_t rowid){
+// Detect bundles added from the cmdline, and call trigger functions.
+void rhizome_process_added_bundles(uint64_t up_to_rowid) {
   assert(serverMode);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
     "SELECT id, manifest, version, inserttime, author, rowid FROM manifests WHERE rowid > ? AND rowid < ?"
     "ORDER BY rowid",
-    INT64, max_rowid, INT64, rowid, END);
+    INT64, max_rowid, INT64, up_to_rowid, END);
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     rhizome_manifest *m = rhizome_new_manifest();
     if (!m)

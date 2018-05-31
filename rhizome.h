@@ -910,6 +910,7 @@ int rhizome_cache_close();
 
 int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t version, rhizome_filehash_t *hashp);
 
+void rhizome_process_added_bundles(uint64_t up_to_rowid);
 void rhizome_sync_status();
 
 DECLARE_ALARM(rhizome_fetch_status);

@@ -64,6 +64,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "keyring.h"
 #include "socket.h"
 #include "server.h"
+#include "rhizome.h"
 #include "route_link.h"
 #include "debug.h"
 
@@ -1620,7 +1621,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	break;
       case MDP_SYNC_RHIZOME:
 	DEBUGF(mdprequests, "Processing MDP_SYNC_RHIZOME from %s", alloca_socket_address(client));
-	server_rhizome_add_bundle(INT64_MAX);
+	rhizome_process_added_bundles(INT64_MAX);
 	mdp_reply_ok(client, header);
 	break;
       case MDP_INTERFACE:
