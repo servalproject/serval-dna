@@ -447,6 +447,9 @@ static int get_proc_path(const char *path, char *buf, size_t bufsiz)
 
 int server_write_proc_state(const char *path, const char *fmt, ...)
 {
+  // Only a running server process/thread may modify the proc files.
+  assert(serverMode != SERVER_NOT_RUNNING);
+
   char path_buf[400];
   if (get_proc_path(path, path_buf, sizeof path_buf)==-1)
     return -1;
@@ -480,6 +483,9 @@ int server_write_proc_state(const char *path, const char *fmt, ...)
 
 int server_unlink_proc_state(const char *path)
 {
+  // Only a running server process/thread may modify the proc files.
+  assert(serverMode != SERVER_NOT_RUNNING);
+
   char path_buf[400];
   if (get_proc_path(path, path_buf, sizeof path_buf)==-1)
     return -1;
@@ -517,6 +523,8 @@ DEFINE_ALARM(server_config_reload);
 void server_config_reload(struct sched_ent *alarm)
 {
   if (serverMode == SERVER_CLOSING){
+    // All shutdown triggers should unschedule their respective alarms.  Once there are no alarms
+    // left, the fd_poll2() in server_loop() will return zero.
     CALL_TRIGGER(shutdown);
     return;
   }
@@ -682,9 +690,11 @@ void server_close(){
 
   DEBUGF(server,"Graceful shutdown");
 
+  // Cause the next server_config_reload() alarm to invoke the "shutdown" trigger, which in turn
+  // will cause an orderly exit from server_loop().
   serverMode = SERVER_CLOSING;
 
-  // trigger an alarm to finish cleanup
+  // Schedule the server_config_reload() alarm to go off immediately.
   time_ms_t now = gettime_ms();
   RESCHEDULE(&ALARM_STRUCT(server_config_reload),
     now,
@@ -802,7 +812,7 @@ static void cli_server_details(struct cli_context *context, const struct pid_tid
   }
 }
 
-DEFINE_CMD(app_server_start, 0, 
+DEFINE_CMD(app_server_start, 0,
   "Start daemon with instance path from SERVALINSTANCE_PATH environment variable.",
   "start" KEYRING_PIN_OPTIONS, "[--seed]", "[foreground|exec <path>]");
 static int app_server_start(const struct cli_parsed *parsed, struct cli_context *context)
@@ -821,6 +831,8 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     RETURN(-1);
+  // Work out the Process and Thread IDs of any currently running server process, by reading an
+  // existing pidfile.
   struct pid_tid id = get_server_pid_tid();
   if (id.pid < 0)
     RETURN(-1);

@@ -43,15 +43,39 @@ extern __thread enum server_mode serverMode;
  */
 int server_pid();
 
+/* Call this method within a server process/thread to initialise the server:
+ * - marks the server state as "running" (thread-local variable)
+ * - sets up signal handling
+ * - calls the "startup" trigger
+ * - starts the HTTP server (if enabled)
+ * - creates the pidfile
+ * - initialises the network packet queues
+ * - schedules a periodic stats job
+ */
 int server_bind();
 
-void server_close();
-
+/* Call this method within a server process/thread to execute the server main
+ * loop.  Only returns once the server is shut down.
+ */
 void server_loop(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeup)());
 
+/* Call this method within a server process/thread to initiate an orderly
+ * shut-down of the server.  It sets the server state as "closing" so that
+ * server_loop() will exit in an orderly fashion.
+ */
+void server_close();
+
+/* These functions are called by various server subsystems to populate the
+ * "proc" directory, which gives information about the running server, such as:
+ * - port numbers
+ * - primary identity
+ * - etc.
+ */
 int server_write_proc_state(const char *path, const char *fmt, ...);
 int server_unlink_proc_state(const char *path);
 
+/* Triggers that are fired during server start-up and shut-down.
+ */
 DECLARE_TRIGGER(startup);
 DECLARE_TRIGGER(shutdown);
 
