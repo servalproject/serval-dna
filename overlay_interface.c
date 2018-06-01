@@ -1546,7 +1546,7 @@ static void rescan_soon(time_ms_t run_at){
 
 static void overlay_interface_config_change()
 {
-  if (!serverMode)
+  if (serverMode == SERVER_NOT_RUNNING)
     return;
 
   // bring down all interfaces that no longer match any configuration

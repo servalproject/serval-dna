@@ -607,7 +607,7 @@ static void set_mdp_packet_rules(struct packet_rule *rules)
 int reload_mdp_packet_rules()
 {
   if (!config.mdp.filter_rules_path[0]) {
-    if (packet_rules_meta.mtime.tv_sec != -1 && serverMode)
+    if (packet_rules_meta.mtime.tv_sec != -1 && serverMode != SERVER_NOT_RUNNING)
       INFOF("no packet rules file configured");
     clear_mdp_packet_rules();
     packet_rules_meta = FILE_META_UNKNOWN;
@@ -624,7 +624,7 @@ int reload_mdp_packet_rules()
   DEBUGF(mdp_filter, "packet_rules_meta=%s", alloca_file_meta(&packet_rules_meta));
   if (cmp_file_meta(&meta, &packet_rules_meta) == 0)
     return 0; // no change since last load
-  if (packet_rules_meta.mtime.tv_sec != -1 && serverMode)
+  if (packet_rules_meta.mtime.tv_sec != -1 && serverMode != SERVER_NOT_RUNNING)
     INFOF("packet rules file %s -- detected new version", rules_path);
   int ret = 1;
   if (meta.mtime.tv_sec == -1) {

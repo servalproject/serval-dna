@@ -249,7 +249,7 @@ DEFINE_TRIGGER(shutdown, overlay_mdp_shutdown);
 
 static void overlay_mdp_setup_sockets()
 {
-  if (serverMode==0)
+  if (serverMode == SERVER_NOT_RUNNING)
     return;
 
   /* Delete stale socket files from instance directory. */
@@ -258,7 +258,7 @@ static void overlay_mdp_setup_sockets()
   if (mdp_sock.poll.fd == -1) {
     mdp_sock.poll.fd = mdp_bind_socket("mdp.socket");
     if (mdp_sock.poll.fd == -1){
-      serverMode=0;
+      serverMode = SERVER_NOT_RUNNING;
       return;
     }
     mdp_sock.poll.events = POLLIN;
@@ -268,7 +268,7 @@ static void overlay_mdp_setup_sockets()
   if (mdp_sock2.poll.fd == -1) {
     mdp_sock2.poll.fd = mdp_bind_socket("mdp.2.socket");
     if (mdp_sock2.poll.fd == -1){
-      serverMode=0;
+      serverMode = SERVER_NOT_RUNNING;
       return;
     }
     mdp_sock2.poll.events = POLLIN;
@@ -312,7 +312,7 @@ static void overlay_mdp_setup_sockets()
       
       if (fd!=-1){
 	close(fd);
-	serverMode=0;
+	serverMode = SERVER_NOT_RUNNING;
 	return;
       }
     }

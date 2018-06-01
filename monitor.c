@@ -120,7 +120,7 @@ struct profile_total client_stats;
 
 static void monitor_setup_sockets()
 {
-  if (serverMode==0)
+  if (serverMode == SERVER_NOT_RUNNING)
     return;
 
   int sock = -1;
@@ -148,7 +148,7 @@ static void monitor_setup_sockets()
 error:
   if (sock != -1)
     close(sock);
-  serverMode=0;
+  serverMode = SERVER_NOT_RUNNING;
 }
 DEFINE_TRIGGER(startup, monitor_setup_sockets);
 
@@ -182,7 +182,7 @@ void monitor_poll(struct sched_ent *alarm)
 static void monitor_close(struct monitor_context *c){
   INFOF("Tearing down monitor client fd=%d", c->alarm.poll.fd);
   
-  if (serverMode && (c->flags & MONITOR_QUIT_ON_DISCONNECT)){
+  if (serverMode != SERVER_NOT_RUNNING && (c->flags & MONITOR_QUIT_ON_DISCONNECT)){
     INFOF("Stopping server due to client disconnecting");
     server_close();
   }

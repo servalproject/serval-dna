@@ -62,7 +62,7 @@ static __thread struct subscriber *my_subscriber = NULL;
 
 struct subscriber *get_my_subscriber(bool_t create)
 {
-  if (!serverMode)
+  if (serverMode == SERVER_NOT_RUNNING)
     return NULL;
   if (my_subscriber && my_subscriber->reachable != REACHABLE_SELF)
     my_subscriber = NULL;
@@ -140,7 +140,7 @@ void free_subscribers()
 {
   // don't attempt to free anything if we're running as a server
   // who knows where subscriber ptr's may have leaked to.
-  if (serverMode)
+  if (serverMode != SERVER_NOT_RUNNING)
     FATAL("Freeing subscribers from a running daemon is not supported");
   tree_walk(&root, NULL, 0, free_node, NULL);
 }

@@ -259,12 +259,12 @@ int server_bind()
   // Any CPU or IO heavy initialisation should be performed in a config changed trigger
 
   CALL_TRIGGER(startup);
-  if (serverMode == 0)
+  if (serverMode == SERVER_NOT_RUNNING)
     return -1;
 
   // start the HTTP server if enabled
   if (httpd_server_start(config.rhizome.http.port, config.rhizome.http.port + HTTPD_PORT_RANGE)==-1) {
-    serverMode = 0;
+    serverMode = SERVER_NOT_RUNNING;
     return -1;
   }
 
@@ -280,7 +280,7 @@ int server_bind()
 
   /* record PID file so that servald start can return */
   if (server_write_pid()) {
-    serverMode = 0;
+    serverMode = SERVER_NOT_RUNNING;
     return -1;
   }
 
@@ -633,9 +633,9 @@ void rhizome_clean_db(struct sched_ent *alarm)
 
 static void server_on_config_change()
 {
-  if (!serverMode)
+  if (serverMode == SERVER_NOT_RUNNING)
     return;
-  
+
   time_ms_t now = gettime_ms();
 
   if (config.server.watchdog.executable[0])
@@ -773,7 +773,7 @@ static void signal_handler(int signum)
   kill(getpid(), signum);
 
   // Just in case...
-  FATALF("Sending %s to self (pid=%d) did not cause exit", alloca_signal_name(signum));
+  FATALF("Sending %s to self (pid=%d) did not cause exit", alloca_signal_name(signum), getpid());
 }
 
 static void cli_server_details(struct cli_context *context, const struct pid_tid *id)

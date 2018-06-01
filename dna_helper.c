@@ -155,7 +155,7 @@ dna_helper_close_pipes()
 static void dna_helper_start()
 {
   dna_helper_shutdown();
-  if (!serverMode)
+  if (serverMode == SERVER_NOT_RUNNING)
     return;
 
   if (!config.dna.helper.executable[0]) {

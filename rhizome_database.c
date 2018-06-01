@@ -455,7 +455,7 @@ int rhizome_opendb()
   if (config.rhizome.clean_on_open)
     rhizome_cleanup(NULL);
 
-  if (serverMode){
+  if (serverMode != SERVER_NOT_RUNNING) {
     sqlite_exec_uint64_retry(&retry, &max_rowid,
 	"SELECT max(rowid) "
 	"FROM manifests", END);
@@ -546,8 +546,11 @@ static void rhizome_on_cmd_cleanup()
 sqlite_retry_state sqlite_retry_state_init(int serverLimit, int serverSleep, int otherLimit, int otherSleep)
 {
   return (sqlite_retry_state){
-      .limit = rhizomeRetryLimit >= 0 ? rhizomeRetryLimit : serverMode ? (serverLimit < 0 ? 50 : serverLimit) : (otherLimit < 0 ? 5000 : otherLimit),
-      .sleep = serverMode ? (serverSleep < 0 ? 10 : serverSleep) : (otherSleep < 0 ? 100 : otherSleep),
+      .limit = rhizomeRetryLimit >= 0	        ? rhizomeRetryLimit :
+	       serverMode != SERVER_NOT_RUNNING ? (serverLimit < 0 ? 50 : serverLimit)
+				                : (otherLimit < 0 ? 5000 : otherLimit),
+      .sleep = serverMode != SERVER_NOT_RUNNING ? (serverSleep < 0 ? 10 : serverSleep)
+						: (otherSleep < 0 ? 100 : otherSleep),
       .elapsed = 0,
       .start = -1,
       .busytries = 0
@@ -573,7 +576,7 @@ int _sqlite_retry(struct __sourceloc __whence, sqlite_retry_state *retry, const 
   if (retry->elapsed >= retry->limit) {
     // reset ready for next query
     retry->busytries = 0;
-    if (!serverMode)
+    if (serverMode == SERVER_NOT_RUNNING)
       retry->start = -1;
     return 0; // tell caller to stop trying
   }
@@ -596,7 +599,7 @@ void _sqlite_retry_done(struct __sourceloc __whence, sqlite_retry_state *retry, 
   }
   // reset ready for next query
   retry->busytries = 0;
-  if (!serverMode)
+  if (serverMode == SERVER_NOT_RUNNING)
     retry->start = -1;
 }
 
@@ -1558,7 +1561,7 @@ enum rhizome_bundle_status rhizome_add_manifest_to_store(rhizome_manifest *m, rh
 	  alloca_tohex_rhizome_bid_t(m->keypair.public_key),
 	  m->version
 	);
-    if (serverMode){
+    if (serverMode != SERVER_NOT_RUNNING) {
       assert(max_rowid < m->rowid);
       // detect any bundles added by the CLI
       // due to potential race conditions, we have to do this here
@@ -2030,7 +2033,7 @@ end:
 
 // Detect bundles added from the cmdline, and call trigger functions.
 void rhizome_process_added_bundles(uint64_t up_to_rowid) {
-  assert(serverMode);
+  assert(serverMode != SERVER_NOT_RUNNING);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
     "SELECT id, manifest, version, inserttime, author, rowid FROM manifests WHERE rowid > ? AND rowid < ?"
