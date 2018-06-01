@@ -354,21 +354,36 @@ $(SIMULATOR_OBJS):			Makefile $(CONFIG_H) $(PREFIXED_HEADERS) $(LIBSODIUM_HEADER
 
 # Rules for main targets.
 
+# The daemon static library.  This is linked into any statically-linked daemon,
+# such as the Swift Daemon API module's static library, and contains all the
+# features of the full Serval DNA daemon.  It includes servald_features.o so
+# that a statically-linked server can simply reference servald_features() in
+# order to force all the features to be linked in.  It also includes all the
+libservaldaemon.a: _servald.a $(LIBSODIUM_A)
+	@$(call MERGE_STATIC_LIBS, $@, $^)
+
+# This intermediate library exists only so that libservaldaemon.a can be
+# constructed by merging two static libraries.
 .INTERMEDIATE: _servald.a
-_servald.a: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
+_servald.a:	$(SERVALD_OBJS) \
+		$(OBJSDIR_TOOLS)/version.o \
+		$(OBJSDIR_SERVALD)/servald_features.o
 	@echo AR $@
 	@$(RM) $@
 	@$(AR) -cr $@ $^
 
-libservaldaemon.a: _servald.a $(LIBSODIUM_A)
-	@$(call MERGE_STATIC_LIBS, $@, $^)
-
+# The daemon shared library.  This is linked in at run-time by the JNI
+# interface using dlopen(3).  The servald_features.o object is explicitly
+# included here, even though it is also available in libservaldaemon.a, because
+# without it, many feature-specific .o object files would not be pulled into
+# the shared library, and the Java API would then fail at run-time with errors
+# like:
+# java.lang.UnsatisfiedLinkError: libservaldaemon.so: undefined symbol: __stop_httpd
 libservaldaemon.so: \
 		$(OBJSDIR_SERVALD)/servald_features.o \
 		$(OBJSDIR_SERVALD)/log_output_console.o \
 		$(SERVAL_DAEMON_JNI_OBJS) \
-		_servald.a \
-		$(LIBSODIUM_A)
+		libservaldaemon.a
 	@echo LINK $@
 	@$(CC) -Wall -shared -o $@ $(LDFLAGS) $(filter %.o, $^) $(filter %.a, $^)
 

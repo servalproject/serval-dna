@@ -33,6 +33,7 @@ LIB_HDRS= \
 # are exposed by the iOS framework module, so they are accessible to Swift code
 # in Xcode projects.
 PUBLIC_HDRS= \
+	servald_features.h \
 	commandline.h \
 	constants.h \
 	conf.h \
