@@ -8,6 +8,7 @@ public class ServalDUnexpectedHttpStatus extends ServalDInterfaceException {
 	public final int responseCode;
 	public final String responseMessage;
 	public final URL url;
+
 	public ServalDUnexpectedHttpStatus(HttpURLConnection httpConnection) throws IOException {
 		super("received unexpected HTTP Status "+
 				httpConnection.getResponseCode()+" " + httpConnection.getResponseMessage()+" from " + httpConnection.getURL());

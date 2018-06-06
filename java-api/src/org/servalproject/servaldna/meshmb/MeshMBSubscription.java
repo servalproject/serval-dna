@@ -20,8 +20,6 @@
 
 package org.servalproject.servaldna.meshmb;
 
-import org.servalproject.servaldna.BundleId;
-import org.servalproject.servaldna.SigningKey;
 import org.servalproject.servaldna.Subscriber;
 
 public class MeshMBSubscription {

@@ -21,25 +21,21 @@
 
 package org.servalproject.servaldna.rhizome;
 
+import org.servalproject.servaldna.BundleId;
+import org.servalproject.servaldna.BundleKey;
+import org.servalproject.servaldna.ContentType;
+import org.servalproject.servaldna.FileHash;
+import org.servalproject.servaldna.SubscriberId;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.RandomAccessFile;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.io.UnsupportedEncodingException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import org.servalproject.servaldna.AbstractId;
-import org.servalproject.servaldna.ContentType;
-import org.servalproject.servaldna.SubscriberId;
-import org.servalproject.servaldna.BundleId;
-import org.servalproject.servaldna.FileHash;
-import org.servalproject.servaldna.BundleKey;
+import java.io.RandomAccessFile;
+import java.util.HashMap;
 
 public class RhizomeManifest {
 

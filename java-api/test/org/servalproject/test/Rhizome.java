@@ -26,6 +26,7 @@ import java.io.OutputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import org.servalproject.json.JsonParser;
 import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.ServalDNotImplementedException;
@@ -62,14 +63,14 @@ public class Rhizome {
 				+ (manifest.name != null ? sep + "name=" + manifest.name : "");
 	}
 
-	static void rhizome_list() throws ServalDInterfaceException, IOException, InterruptedException
+	static void rhizome_list() throws ServalDInterfaceException, IOException, InterruptedException, JsonParser.JsonParseException
 	{
 		ServalDClient client = new ServerControl().getRestfulClient();
 		RhizomeBundleList list = null;
 		try {
 			list = client.rhizomeListBundles();
 			RhizomeListBundle bundle;
-			while ((bundle = list.nextBundle()) != null) {
+			while ((bundle = list.next()) != null) {
 				System.out.println(
 						"_token=" + bundle.token +
 						", _rowId=" + bundle.rowId +
@@ -87,7 +88,7 @@ public class Rhizome {
 		System.exit(0);
 	}
 
-	static void rhizome_list_newsince(String token) throws ServalDInterfaceException, IOException, InterruptedException
+	static void rhizome_list_newsince(String token) throws ServalDInterfaceException, IOException, InterruptedException, JsonParser.JsonParseException
 	{
 		System.err.println("token=" + token);
 		ServalDClient client = new ServerControl().getRestfulClient();
@@ -95,7 +96,7 @@ public class Rhizome {
 		try {
 			list = client.rhizomeListBundlesSince(token);
 			RhizomeListBundle bundle;
-			while ((bundle = list.nextBundle()) != null) {
+			while ((bundle = list.next()) != null) {
 				System.out.println(
 						"_token=" + bundle.token +
 						", _rowId=" + bundle.rowId +

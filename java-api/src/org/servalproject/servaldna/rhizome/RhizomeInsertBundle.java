@@ -21,8 +21,8 @@
 
 package org.servalproject.servaldna.rhizome;
 
-import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.BundleSecret;
+import org.servalproject.servaldna.SubscriberId;
 
 public class RhizomeInsertBundle extends RhizomeManifestBundle {
 

@@ -20,6 +20,7 @@
 
 package org.servalproject.test;
 
+import org.servalproject.json.JsonParser;
 import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.ServerControl;
@@ -42,7 +43,7 @@ public class Meshms {
 		try {
 			list = client.meshmsListConversations(sid);
 			MeshMSConversation conv;
-			while ((conv = list.nextConversation()) != null) {
+			while ((conv = list.next()) != null) {
 				System.out.println(
 					"_id=" + conv._id +
 					", my_sid=" + conv.mySid +
@@ -53,10 +54,9 @@ public class Meshms {
 				);
 			}
 		}
-		catch (MeshMSException e) {
+		catch (MeshMSException | JsonParser.JsonParseException e) {
 			System.out.println(e.toString());
-		}
-		finally {
+		} finally {
 			if (list != null)
 				list.close();
 		}
@@ -72,7 +72,7 @@ public class Meshms {
 			System.out.println("read_offset=" + list.getReadOffset());
 			System.out.println("latest_ack_offset=" + list.getLatestAckOffset());
 			MeshMSMessage msg;
-			while ((msg = list.nextMessage()) != null) {
+			while ((msg = list.next()) != null) {
 				System.out.println("type=" + msg.type
 							   + ", my_sid=" + msg.mySid
 							   + ", their_sid=" + msg.theirSid
@@ -87,10 +87,10 @@ public class Meshms {
 							);
 			}
 		}
-		catch (MeshMSException e) {
+		catch (MeshMSException |
+				JsonParser.JsonParseException e) {
 			System.out.println(e.toString());
-		}
-		finally {
+		} finally {
 			if (list != null)
 				list.close();
 		}
@@ -104,7 +104,7 @@ public class Meshms {
 		try {
 			list = client.meshmsListMessagesSince(sid1, sid2, token);
 			MeshMSMessage msg;
-			while ((msg = list.nextMessage()) != null) {
+			while ((msg = list.next()) != null) {
 				System.out.println("type=" + msg.type
 							   + ", my_sid=" + msg.mySid
 							   + ", their_sid=" + msg.theirSid
@@ -119,7 +119,8 @@ public class Meshms {
 							);
 			}
 		}
-		catch (MeshMSException e) {
+		catch (MeshMSException |
+				JsonParser.JsonParseException e) {
 			System.out.println(e.toString());
 		}
 		finally {

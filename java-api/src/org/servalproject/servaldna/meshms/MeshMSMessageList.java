@@ -21,19 +21,18 @@
 
 package org.servalproject.servaldna.meshms;
 
-import org.servalproject.json.JSONInputException;
-import org.servalproject.json.JSONTableScanner;
-import org.servalproject.json.JSONTokeniser;
-import org.servalproject.servaldna.AbstractJsonList;
+import org.servalproject.json.JsonObjectHelper;
+import org.servalproject.json.JsonParser;
+import org.servalproject.servaldna.HttpJsonSerialiser;
+import org.servalproject.servaldna.HttpRequest;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
-import java.util.Map;
 
-public class MeshMSMessageList extends AbstractJsonList<MeshMSMessage, MeshMSException> {
+public class MeshMSMessageList extends HttpJsonSerialiser<MeshMSMessage, ServalDInterfaceException> {
 
 	private final SubscriberId my_sid;
 	private final SubscriberId their_sid;
@@ -48,59 +47,57 @@ public class MeshMSMessageList extends AbstractJsonList<MeshMSMessage, MeshMSExc
 
 	public MeshMSMessageList(ServalDHttpConnectionFactory connector, SubscriberId my_sid, SubscriberId their_sid, String since_token)
 	{
-		super(connector, new JSONTableScanner()
-				.addColumn("type", String.class)
-				.addColumn("my_sid", SubscriberId.class)
-				.addColumn("their_sid", SubscriberId.class)
-				.addColumn("my_offset", Long.class)
-				.addColumn("their_offset", Long.class)
-				.addColumn("token", String.class)
-				.addColumn("text", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
-				.addColumn("delivered", Boolean.class)
-				.addColumn("read", Boolean.class)
-				.addColumn("timestamp", Long.class, JSONTokeniser.Narrow.ALLOW_NULL)
-				.addColumn("ack_offset", Long.class, JSONTokeniser.Narrow.ALLOW_NULL));
+		super(connector);
+		addField("type", true, JsonObjectHelper.StringFactory);
+		addField("my_sid", true, SubscriberId.class);
+		addField("their_sid", true, SubscriberId.class);
+		addField("my_offset", true, JsonObjectHelper.LongFactory);
+		addField("their_offset", true, JsonObjectHelper.LongFactory);
+		addField("token", true, JsonObjectHelper.StringFactory);
+		addField("text", false, JsonObjectHelper.StringFactory);
+		addField("delivered", true, JsonObjectHelper.BoolFactory);
+		addField("read", true, JsonObjectHelper.BoolFactory);
+		addField("timestamp", false, JsonObjectHelper.LongFactory);
+		addField("ack_offset", false, JsonObjectHelper.LongFactory);
 		this.my_sid = my_sid;
 		this.their_sid = their_sid;
 		this.sinceToken = since_token;
 	}
 
 	@Override
-	protected Request getRequest() {
+	protected HttpRequest getRequest() {
+		String suffix;
 		if (this.sinceToken == null)
-			return new Request("GET", "/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + "/messagelist.json");
+			suffix = "/messagelist.json";
 		else if(this.sinceToken.equals(""))
-			return new Request("GET", "/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + "/newsince/messagelist.json");
+			suffix = "/newsince/messagelist.json";
 		else
-			return new Request("GET", "/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + "/newsince/" + sinceToken + "/messagelist.json");
+			suffix = "/newsince/" + sinceToken + "/messagelist.json";
+
+		return new MeshMSRequest("GET", "/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + suffix){
+			@Override
+			public boolean checkResponse() throws IOException, ServalDInterfaceException {
+				if (super.checkResponse())
+					return true;
+				decodeJson();
+				return false;
+			}
+		};
 	}
 
 	@Override
-	protected void consumeHeader() throws JSONInputException, IOException {
-		Object tok = json.nextToken();
-		if (tok.equals("read_offset")) {
-			json.consume(JSONTokeniser.Token.COLON);
-			readOffset = json.consume(Long.class);
-			json.consume(JSONTokeniser.Token.COMMA);
-		} else if (tok.equals("latest_ack_offset")) {
-			json.consume(JSONTokeniser.Token.COLON);
-			latestAckOffset = json.consume(Long.class);
-			json.consume(JSONTokeniser.Token.COMMA);
-		} else
-			super.consumeHeader();
+	public void consumeObject(JsonParser.JsonMember header) throws IOException, JsonParser.JsonParseException {
+		if (header.name.equals("read_offset") && header.type == JsonParser.ValueType.Number)
+			readOffset = parser.readNumber().longValue();
+		else if(header.name.equals("latest_ack_offset") && header.type == JsonParser.ValueType.Number)
+			latestAckOffset = parser.readNumber().longValue();
+		else
+			super.consumeObject(header);
 	}
 
 	@Override
-	protected void handleResponseError() throws MeshMSException, IOException, ServalDInterfaceException {
-		if (json!=null)
-			MeshMSCommon.processRestfulError(httpConnection, json);
-
-		super.handleResponseError();
-	}
-
-	@Override
-	protected MeshMSMessage factory(Map<String, Object> row, long rowCount) throws ServalDInterfaceException {
-		String typesym = (String) row.get("type");
+	public MeshMSMessage create(Object[] parameters, int row) throws ServalDInterfaceException{
+		String typesym = (String)parameters[0];
 		MeshMSMessage.Type type;
 		if (typesym.equals(">"))
 			type = MeshMSMessage.Type.MESSAGE_SENT;
@@ -111,36 +108,38 @@ public class MeshMSMessageList extends AbstractJsonList<MeshMSMessage, MeshMSExc
 		else
 			throw new ServalDInterfaceException("invalid column value: type=" + typesym);
 		return new MeshMSMessage(
-				(int)rowCount,
+				row,
 				type,
-				new Subscriber((SubscriberId)row.get("my_sid")),
-				new Subscriber((SubscriberId)row.get("their_sid")),
-				(Long)row.get("my_offset"),
-				(Long)row.get("their_offset"),
-				(String)row.get("token"),
-				(String)row.get("text"),
-				(Boolean)row.get("delivered"),
-				(Boolean)row.get("read"),
-				(Long)row.get("timestamp"),
-				(Long)row.get("ack_offset")
+				new Subscriber((SubscriberId)parameters[1]),
+				new Subscriber((SubscriberId)parameters[2]),
+				(Long)parameters[3],
+				(Long)parameters[4],
+				(String)parameters[5],
+				(String)parameters[6],
+				(Boolean)parameters[7],
+				(Boolean)parameters[8],
+				(Long)parameters[9],
+				(Long)parameters[10]
 		);
 	}
 
 	public long getReadOffset()
 	{
-		assert json != null;
+		assert parser != null;
 		return readOffset;
 	}
 
 	public long getLatestAckOffset()
 	{
-		assert json != null;
+		assert parser != null;
 		return latestAckOffset;
 	}
 
-	@Deprecated
-	public MeshMSMessage nextMessage() throws ServalDInterfaceException, IOException
-	{
-		return next();
+	public MeshMSMessage nextMessage() throws ServalDInterfaceException, IOException {
+		try {
+			return next();
+		} catch (JsonParser.JsonParseException e) {
+			throw new ServalDInterfaceException(e);
+		}
 	}
 }

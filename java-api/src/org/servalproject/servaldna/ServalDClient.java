@@ -24,7 +24,6 @@ import org.servalproject.codec.Base64;
 import org.servalproject.servaldna.keyring.KeyringCommon;
 import org.servalproject.servaldna.keyring.KeyringIdentity;
 import org.servalproject.servaldna.keyring.KeyringIdentityList;
-import org.servalproject.servaldna.route.RouteIdentityList;
 import org.servalproject.servaldna.meshmb.MeshMBActivityList;
 import org.servalproject.servaldna.meshmb.MeshMBCommon;
 import org.servalproject.servaldna.meshmb.MeshMBSubscriptionList;
@@ -36,7 +35,6 @@ import org.servalproject.servaldna.meshms.MeshMSMessageList;
 import org.servalproject.servaldna.meshms.MeshMSStatus;
 import org.servalproject.servaldna.rhizome.RhizomeBundleList;
 import org.servalproject.servaldna.rhizome.RhizomeCommon;
-import org.servalproject.servaldna.rhizome.RhizomeDecryptionException;
 import org.servalproject.servaldna.rhizome.RhizomeEncryptionException;
 import org.servalproject.servaldna.rhizome.RhizomeException;
 import org.servalproject.servaldna.rhizome.RhizomeFakeManifestException;
@@ -52,6 +50,7 @@ import org.servalproject.servaldna.rhizome.RhizomeManifestSizeException;
 import org.servalproject.servaldna.rhizome.RhizomePayloadBundle;
 import org.servalproject.servaldna.rhizome.RhizomePayloadRawBundle;
 import org.servalproject.servaldna.rhizome.RhizomeReadOnlyException;
+import org.servalproject.servaldna.route.RouteIdentityList;
 
 import java.io.File;
 import java.io.IOException;
@@ -61,11 +60,6 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Vector;
-import java.util.Set;
-import java.util.LinkedHashSet;
-import java.util.Arrays;
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 
 public class ServalDClient implements ServalDHttpConnectionFactory {
 	private final int httpPort;
@@ -85,8 +79,8 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 	}
 
 	public KeyringIdentityList keyringListIdentities(String pin) throws ServalDInterfaceException, IOException {
-		KeyringIdentityList list = new KeyringIdentityList(this);
-		list.connect(pin);
+		KeyringIdentityList list = new KeyringIdentityList(this, pin);
+		list.connect();
 		return list;
 	}
 
@@ -145,7 +139,7 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 		return RhizomeCommon.rhizomePayloadRaw(this, bid);
 	}
 
-	public RhizomePayloadBundle rhizomePayload(BundleId bid) throws ServalDInterfaceException, IOException, RhizomeDecryptionException
+	public RhizomePayloadBundle rhizomePayload(BundleId bid) throws ServalDInterfaceException, IOException, RhizomeEncryptionException
 	{
 		return RhizomeCommon.rhizomePayload(this, bid);
 	}

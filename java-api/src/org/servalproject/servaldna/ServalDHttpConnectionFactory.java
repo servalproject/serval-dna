@@ -20,8 +20,6 @@
 
 package org.servalproject.servaldna;
 
-import java.lang.Iterable;
-import java.lang.StringBuilder;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;

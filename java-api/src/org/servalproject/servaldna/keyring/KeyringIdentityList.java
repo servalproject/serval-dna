@@ -21,9 +21,10 @@
 
 package org.servalproject.servaldna.keyring;
 
-import org.servalproject.json.JSONInputException;
-import org.servalproject.json.JSONTableScanner;
-import org.servalproject.json.JSONTokeniser;
+import org.servalproject.json.JsonObjectHelper;
+import org.servalproject.json.JsonParser;
+import org.servalproject.servaldna.HttpJsonSerialiser;
+import org.servalproject.servaldna.HttpRequest;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SigningKey;
@@ -31,59 +32,30 @@ import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
-import java.net.HttpURLConnection;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Vector;
-import java.util.Map;
 
-public class KeyringIdentityList {
+public class KeyringIdentityList extends HttpJsonSerialiser<KeyringIdentity, IOException> {
 
-	private ServalDHttpConnectionFactory httpConnector;
-	private HttpURLConnection httpConnection;
-	private JSONTokeniser json;
-	private JSONTableScanner table;
-	int rowCount;
-
-	public KeyringIdentityList(ServalDHttpConnectionFactory connector)
+	private final String pin;
+	public KeyringIdentityList(ServalDHttpConnectionFactory connector, String pin)
 	{
-		this.httpConnector = connector;
-		this.table = new JSONTableScanner()
-					.addColumn("sid", SubscriberId.class)
-					.addColumn("identity", SigningKey.class)
-					.addColumn("did", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
-					.addColumn("name", String.class, JSONTokeniser.Narrow.ALLOW_NULL);
+		super(connector);
+		addField("sid", true, SubscriberId.class);
+		addField("identity", true, SigningKey.class);
+		addField("did", false, JsonObjectHelper.StringFactory);
+		addField("name", false, JsonObjectHelper.StringFactory);
+		this.pin = pin;
 	}
 
-	public boolean isConnected()
-	{
-		return this.json != null;
-	}
-
-	public void connect(String pin) throws IOException, ServalDInterfaceException
-	{
-		try {
-			rowCount = 0;
-			Vector<ServalDHttpConnectionFactory.QueryParam> query_params = new Vector<ServalDHttpConnectionFactory.QueryParam>();
-			if (pin != null) {
-				query_params.add(new ServalDHttpConnectionFactory.QueryParam("pin", pin));
-			}
-			httpConnection = httpConnector.newServalDHttpConnection("GET", "/restful/keyring/identities.json", query_params);
-			httpConnection.connect();
-			KeyringCommon.Status status = KeyringCommon.receiveRestfulResponse(httpConnection, HttpURLConnection.HTTP_OK);
-			json = status.json;
-			json.consume(JSONTokeniser.Token.START_OBJECT);
-			json.consume("header");
-			json.consume(JSONTokeniser.Token.COLON);
-			table.consumeHeaderArray(json);
-			json.consume(JSONTokeniser.Token.COMMA);
-			json.consume("rows");
-			json.consume(JSONTokeniser.Token.COLON);
-			json.consume(JSONTokeniser.Token.START_ARRAY);
-		}
-		catch (JSONInputException e) {
-			throw new ServalDInterfaceException(e);
-		}
+	@Override
+	protected HttpRequest getRequest() throws UnsupportedEncodingException {
+		Vector<ServalDHttpConnectionFactory.QueryParam> query_params = new Vector<ServalDHttpConnectionFactory.QueryParam>();
+		if (pin != null)
+			query_params.add(new ServalDHttpConnectionFactory.QueryParam("pin", pin));
+		return new HttpRequest("GET", "/restful/keyring/identities.json", query_params);
 	}
 
 	public static List<KeyringIdentity> getTestIdentities() {
@@ -105,41 +77,23 @@ public class KeyringIdentityList {
 		}
 	}
 
-	public KeyringIdentity nextIdentity() throws ServalDInterfaceException, IOException
-	{
+	@Override
+	public KeyringIdentity create(Object[] parameters, int row) {
+		return new KeyringIdentity(
+				row,
+				new Subscriber((SubscriberId)parameters[0],
+						(SigningKey)parameters[1],
+						true),
+				(String)parameters[2],
+				(String)parameters[3]);
+	}
+
+	@Deprecated
+	public KeyringIdentity nextIdentity() throws IOException, ServalDInterfaceException {
 		try {
-			Object tok = json.nextToken();
-			if (tok == JSONTokeniser.Token.END_ARRAY) {
-				json.consume(JSONTokeniser.Token.END_OBJECT);
-				json.consume(JSONTokeniser.Token.EOF);
-				return null;
-			}
-			if (rowCount != 0)
-				JSONTokeniser.match(tok, JSONTokeniser.Token.COMMA);
-			else
-				json.pushToken(tok);
-			Map<String,Object> row = table.consumeRowArray(json);
-			return new KeyringIdentity(
-					rowCount++,
-					new Subscriber((SubscriberId)row.get("sid"),
-							(SigningKey) row.get("identity"),
-							true),
-					(String)row.get("did"),
-					(String)row.get("name")
-				);
-		}
-		catch (JSONInputException e) {
+			return next();
+		} catch (JsonParser.JsonParseException e) {
 			throw new ServalDInterfaceException(e);
 		}
 	}
-
-	public void close() throws IOException
-	{
-		httpConnection = null;
-		if (json != null) {
-			json.close();
-			json = null;
-		}
-	}
-
 }

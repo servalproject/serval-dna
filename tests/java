@@ -1,0 +1,83 @@
+#!/bin/bash
+
+# Tests for Java API.
+#
+# Copyright 2014 Serval Project Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_java.sh"
+
+setup() {
+   assert_java_classes_exist
+}
+
+doc_JsonParser="Verify json parser correctness"
+test_JsonParser() {
+   executeJava --exit-status=1 --stderr org.servalproject.test.UnitTests json-parser ''
+   assertStderrGrep 'Expected value, got end of input'
+   executeJava --exit-status=1 --stderr org.servalproject.test.UnitTests json-parser 'a'
+   assertStderrGrep 'Expected value, got '\''a'\'
+   executeJavaOk --stderr org.servalproject.test.UnitTests json-parser 'null'
+   assertStdoutIs -e 'null'
+   executeJava --exit-status=1 --stderr org.servalproject.test.UnitTests json-parser 'null,null'
+   assertStderrGrep 'Expected end of input, got '\'','\'
+   executeJavaOk --stderr org.servalproject.test.UnitTests json-parser 'true'
+   assertStdoutIs -e 'true'
+   executeJavaOk --stderr org.servalproject.test.UnitTests json-parser 'false'
+   assertStdoutIs -e 'false'
+   executeJavaOk --stderr org.servalproject.test.UnitTests json-parser '"String Value"'
+   assertStdoutIs -e '"String Value"'
+   executeJavaOk --stderr org.servalproject.test.UnitTests json-parser '12345'
+   assertStdoutIs -e '12345'
+   executeJavaOk --stderr org.servalproject.test.UnitTests json-parser '-0.1'
+   assertStdoutIs -e '-0.1'
+   executeJavaOk --stderr org.servalproject.test.UnitTests json-parser '1.5e6'
+   assertStdoutIs -e '1500000.0'
+   executeJava --exit-status=1 --stderr org.servalproject.test.UnitTests json-parser '.1'
+   assertStderrGrep 'Expected value, got '\''.'\'
+   executeJava --exit-status=1 --stderr org.servalproject.test.UnitTests json-parser '0.0.0'
+   assertStderrGrep 'Expected end of input, got '\''.'\'
+   executeJavaOk --stderr org.servalproject.test.UnitTests json-parser '[]'
+   assertStdoutIs -e '[]'
+   executeJava --exit-status=1 --stderr org.servalproject.test.UnitTests json-parser '['
+   assertStderrGrep 'Expected value, got end of input'
+   executeJavaOk --stderr org.servalproject.test.UnitTests json-parser '[1,"a",null,true,false]'
+   assertStdoutIs -e '[1,"a",null,true,false]'
+   executeJavaOk --stderr org.servalproject.test.UnitTests json-parser '{}'
+   assertStdoutIs -e '{}'
+   executeJava --exit-status=1 --stderr org.servalproject.test.UnitTests json-parser '{'
+   assertStderrGrep 'Expected '\''"'\'', got end of input'
+   executeJavaOk --stderr org.servalproject.test.UnitTests json-parser '{"a":1,"b":true,"c":"string","d":[1,2,3],"e":{"f":"g"}}'
+   assertStdoutIs -e '{"a":1,"b":true,"c":"string","d":[1,2,3],"e":{"f":"g"}}'
+}
+
+doc_JsonNonBlocking="Verify that partial json input is returned from a non-blocking input"
+test_JsonNonBlocking() {
+   OUT="$TFWVAR/OUT"
+   exec 9> >(runJava org.servalproject.test.UnitTests json-parser --stdin >"$OUT")
+   echo -n "[[1,2,3]" >&9
+   wait_until --timeout=10 grep '\[\[1,2,3\]' "$OUT"
+   echo -n ",[4,5,6]" >&9
+   wait_until --timeout=10 grep '\[\[1,2,3\],\[4,5,6\]' "$OUT"
+   echo -n "]" >&9
+   exec 9>&-
+   wait_until --timeout=10 grep '\[\[1,2,3\],\[4,5,6\]\]' "$OUT"
+}
+
+runTests "$@"
+

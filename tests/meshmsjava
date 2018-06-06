@@ -58,8 +58,8 @@ test_MeshmsDisabled() {
    executeJava org.servalproject.test.Meshms meshms-list-conversations "$SIDA1"
    tfw_cat --stdout --stderr
    assertExitStatus != 0
-   assertStderrGrep ServalDFailureException
-   assertStderrGrep --ignore-case 'missing meshms_status_code'
+   assertStderrGrep ServalDUnexpectedHttpStatus
+   assertStderrGrep --ignore-case '404 Not Found'
 }
 
 doc_MeshmsListConversations="Java API list MeshMS conversations"

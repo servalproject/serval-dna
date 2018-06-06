@@ -22,6 +22,8 @@
 package org.servalproject.test;
 
 import java.io.IOException;
+
+import org.servalproject.json.JsonParser;
 import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.ServerControl;
@@ -30,14 +32,13 @@ import org.servalproject.servaldna.route.RouteIdentity;
 
 public class Route {
 
-	static void route_list() throws ServalDInterfaceException, IOException, InterruptedException
-	{
+	static void route_list() throws ServalDInterfaceException, IOException, JsonParser.JsonParseException {
 		ServalDClient client = new ServerControl().getRestfulClient();
 		RouteIdentityList list = null;
 		try {
 			list = client.routeListIdentities();
 			RouteIdentity id;
-			while ((id = list.nextIdentity()) != null) {
+			while ((id = list.next()) != null) {
 				System.out.println("sid=" + id.sid +
 								   ", did=" + id.did +
 								   ", name=" + id.name +

@@ -21,152 +21,23 @@
 
 package org.servalproject.servaldna.keyring;
 
-import org.servalproject.json.JSONInputException;
-import org.servalproject.json.JSONTokeniser;
-import org.servalproject.servaldna.ContentType;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
-import org.servalproject.servaldna.ServalDNotImplementedException;
-import org.servalproject.servaldna.SigningKey;
-import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.PrintStream;
 import java.net.HttpURLConnection;
-import java.util.List;
-import java.util.Map;
 import java.util.Vector;
 
 public class KeyringCommon
 {
 
-	public static class Status {
-		ContentType contentType;
-		InputStream input_stream;
-		JSONTokeniser json;
-		public int http_status_code;
-		public String http_status_message;
-		public KeyringIdentity identity;
-	}
-
-	protected static Status receiveResponse(HttpURLConnection conn, int expected_response_code) throws IOException, ServalDInterfaceException
-	{
-		int[] expected_response_codes = { expected_response_code };
-		return receiveResponse(conn, expected_response_codes);
-	}
-
-	protected static Status receiveResponse(HttpURLConnection conn, int[] expected_response_codes) throws IOException, ServalDInterfaceException
-	{
-		Status status = new Status();
-		status.http_status_code = conn.getResponseCode();
-		status.http_status_message = conn.getResponseMessage();
-		try {
-			status.contentType = new ContentType(conn.getContentType());
-		} catch (ContentType.ContentTypeException e) {
-			throw new ServalDInterfaceException("malformed HTTP Content-Type: " + conn.getContentType(),e);
-		}
-
-		for (int code: expected_response_codes) {
-			if (status.http_status_code == code) {
-				status.input_stream = conn.getInputStream();
-				return status;
-			}
-		}
-		if (!ContentType.applicationJson.matches(status.contentType))
-			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + status.contentType);
-		if (status.http_status_code >= 300) {
-			status.json = new JSONTokeniser(conn.getErrorStream());
-			decodeRestfulStatus(status);
-		}
-		if (status.http_status_code == HttpURLConnection.HTTP_FORBIDDEN)
-			return status;
-		if (status.http_status_code == HttpURLConnection.HTTP_NOT_IMPLEMENTED)
-			throw new ServalDNotImplementedException(status.http_status_message);
-		throw new ServalDInterfaceException("unexpected HTTP response: " + status.http_status_code + " " + status.http_status_message);
-	}
-
-	protected static ServalDInterfaceException unexpectedResponse(HttpURLConnection conn, Status status)
+	protected static ServalDInterfaceException unexpectedResponse(KeyringRequest request)
 	{
 		return new ServalDInterfaceException(
-				"unexpected Keyring failure, " + quoteString(status.http_status_message)
-				+ " from " + conn.getURL()
+				"unexpected Keyring failure, " + quoteString(request.httpStatusMessage)
+				+ " from " + request.url
 			);
-	}
-
-	protected static Status receiveRestfulResponse(HttpURLConnection conn, int expected_response_code) throws IOException, ServalDInterfaceException
-	{
-		int[] expected_response_codes = { expected_response_code };
-		return receiveRestfulResponse(conn, expected_response_codes);
-	}
-
-	protected static Status receiveRestfulResponse(HttpURLConnection conn, int[] expected_response_codes) throws IOException, ServalDInterfaceException
-	{
-		Status status = receiveResponse(conn, expected_response_codes);
-		status.json = new JSONTokeniser(status.input_stream);
-		return status;
-	}
-
-	protected static void decodeRestfulStatus(Status status) throws IOException, ServalDInterfaceException
-	{
-		JSONTokeniser json = status.json;
-		try {
-			json.consume(JSONTokeniser.Token.START_OBJECT);
-			json.consume("http_status_code");
-			json.consume(JSONTokeniser.Token.COLON);
-			int hs = json.consume(Integer.class);
-			json.consume(JSONTokeniser.Token.COMMA);
-			if (status.http_status_code == 0)
-				status.http_status_code = json.consume(Integer.class);
-			else if (hs != status.http_status_code)
-				throw new ServalDInterfaceException("JSON/header conflict"
-						+ ", http_status_code=" + hs
-						+ " but HTTP response code is " + status.http_status_code);
-			json.consume("http_status_message");
-			json.consume(JSONTokeniser.Token.COLON);
-			status.http_status_message = json.consume(String.class);
-			Object tok = json.nextToken();
-			if (tok == JSONTokeniser.Token.COMMA) {
-				json.consume("identity");
-				json.consume(JSONTokeniser.Token.COLON);
-				json.consume(JSONTokeniser.Token.START_OBJECT);
-				json.consume("sid");
-				json.consume(JSONTokeniser.Token.COLON);
-				SubscriberId sid = new SubscriberId(json.consume(String.class));
-				json.consume(JSONTokeniser.Token.COMMA);
-				json.consume("identity");
-				json.consume(JSONTokeniser.Token.COLON);
-				SigningKey sas = new SigningKey(json.consume(String.class));
-				String did = null;
-				String name = null;
-				tok = json.nextToken();
-				if (tok == JSONTokeniser.Token.COMMA) {
-					json.consume("did");
-					json.consume(JSONTokeniser.Token.COLON);
-					did = json.consume(String.class);
-					tok = json.nextToken();
-				}
-				if (tok == JSONTokeniser.Token.COMMA) {
-					json.consume("name");
-					json.consume(JSONTokeniser.Token.COLON);
-					name = json.consume(String.class);
-					tok = json.nextToken();
-				}
-				json.match(tok, JSONTokeniser.Token.END_OBJECT);
-				tok = json.nextToken();
-				status.identity = new KeyringIdentity(0, new Subscriber(sid, sas, true), did, name);
-			}
-			json.match(tok, JSONTokeniser.Token.END_OBJECT);
-			json.consume(JSONTokeniser.Token.EOF);
-		}
-		catch (SubscriberId.InvalidHexException e) {
-			throw new ServalDInterfaceException("malformed JSON status response", e);
-		}
-		catch (JSONInputException e) {
-			throw new ServalDInterfaceException("malformed JSON status response", e);
-		}
 	}
 
 	private static String quoteString(String unquoted)
@@ -195,19 +66,16 @@ public class KeyringCommon
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("name", name));
 		if (pin != null)
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("pin", pin));
-		HttpURLConnection conn = connector.newServalDHttpConnection("POST", "/restful/keyring/" + sid.toHex(), query_params);
-		conn.connect();
-		Status status = receiveRestfulResponse(conn, HttpURLConnection.HTTP_OK);
+		KeyringRequest request = new KeyringRequest("POST", "/restful/keyring/" + sid.toHex(), query_params);
 		try {
-			decodeRestfulStatus(status);
-			if (status.identity == null)
+			request.connect(connector);
+			if (request.identity == null)
 				throw new ServalDInterfaceException("invalid JSON response; missing identity");
 
-			return status.identity;
+			return request.identity;
 		}
 		finally {
-			if (status.input_stream != null)
-				status.input_stream.close();
+			request.close();
 		}
 	}
 
@@ -221,18 +89,16 @@ public class KeyringCommon
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("name", name));
 		if (pin != null)
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("pin", pin));
-		HttpURLConnection conn = connector.newServalDHttpConnection("POST", "/restful/keyring/add", query_params);
-		conn.connect();
-		Status status = receiveRestfulResponse(conn, HttpURLConnection.HTTP_CREATED);
-		try {
-			decodeRestfulStatus(status);
-			if (status.identity == null)
+		KeyringRequest request = new KeyringRequest("POST", "/restful/keyring/add", query_params);
+		try{
+			request.setExpectedStatusCodes(HttpURLConnection.HTTP_CREATED);
+			request.connect(connector);
+			if (request.identity == null)
 				throw new ServalDInterfaceException("invalid JSON response; missing identity");
-			return status.identity;
+			return request.identity;
 		}
 		finally {
-			if (status.input_stream != null)
-				status.input_stream.close();
+			request.close();
 		}
 	}
 
@@ -242,18 +108,15 @@ public class KeyringCommon
 		Vector<ServalDHttpConnectionFactory.QueryParam> query_params = new Vector<ServalDHttpConnectionFactory.QueryParam>();
 		if (pin != null)
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("pin", pin));
-		HttpURLConnection conn = connector.newServalDHttpConnection("GET", "/restful/keyring/" + sid.toHex(), query_params);
-		conn.connect();
-		Status status = receiveRestfulResponse(conn, HttpURLConnection.HTTP_OK);
+		KeyringRequest request = new KeyringRequest("GET", "/restful/keyring/" + sid.toHex(), query_params);
 		try {
-			decodeRestfulStatus(status);
-			if (status.identity == null)
+			request.connect(connector);
+			if (request.identity == null)
 				throw new ServalDInterfaceException("invalid JSON response; missing identity");
-			return status.identity;
+			return request.identity;
 		}
 		finally {
-			if (status.input_stream != null)
-				status.input_stream.close();
+			request.close();
 		}
 	}
 
@@ -263,18 +126,16 @@ public class KeyringCommon
 		Vector<ServalDHttpConnectionFactory.QueryParam> query_params = new Vector<ServalDHttpConnectionFactory.QueryParam>();
 		if (pin != null)
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("pin", pin));
-		HttpURLConnection conn = connector.newServalDHttpConnection("DELETE", "/restful/keyring/" + sid.toHex(), query_params);
-		conn.connect();
-		Status status = receiveRestfulResponse(conn, HttpURLConnection.HTTP_OK);
+		KeyringRequest request = new KeyringRequest("DELETE", "/restful/keyring/" + sid.toHex(), query_params);
+
 		try {
-			decodeRestfulStatus(status);
-			if (status.identity == null)
+			request.connect(connector);
+			if (request.identity == null)
 				throw new ServalDInterfaceException("invalid JSON response; missing identity");
-			return status.identity;
+			return request.identity;
 		}
 		finally {
-			if (status.input_stream != null)
-				status.input_stream.close();
+			request.close();
 		}
 	}
 

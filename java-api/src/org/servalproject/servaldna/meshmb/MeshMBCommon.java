@@ -21,7 +21,6 @@
 package org.servalproject.servaldna.meshmb;
 
 import org.servalproject.servaldna.PostHelper;
-import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDFailureException;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;

@@ -276,7 +276,7 @@ setup_RhizomePayloadDecryptedForeign() {
 test_RhizomePayloadDecryptedForeign() {
    executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-payload-decrypted "${BID[1]}" decrypted.bin$n
    tfw_cat --stdout --stderr
-   assertStdoutGrep RhizomeDecryptionException
+   assertStdoutGrep RhizomeEncryptionException
 }
 
 doc_RhizomeInsert="Java API insert new Rhizome bundles"

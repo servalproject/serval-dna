@@ -29,7 +29,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.HttpURLConnection;
-import java.net.ProtocolException;
 
 public class PostHelper {
     private HttpURLConnection conn;

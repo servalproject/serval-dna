@@ -20,6 +20,8 @@
 
 package org.servalproject.servaldna.meshms;
 
+import org.servalproject.servaldna.ServalDInterfaceException;
+
 import java.net.URL;
 
 /**
@@ -28,7 +30,7 @@ import java.net.URL;
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-public abstract class MeshMSException extends Exception
+public abstract class MeshMSException extends ServalDInterfaceException
 {
 	public final URL url;
 

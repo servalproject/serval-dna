@@ -21,9 +21,9 @@
 
 package org.servalproject.servaldna.meshms;
 
+import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
-import org.servalproject.servaldna.ServalDInterfaceException;
 
 import java.util.Date;
 

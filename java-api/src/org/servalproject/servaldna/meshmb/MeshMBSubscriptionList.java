@@ -20,49 +20,46 @@
 
 package org.servalproject.servaldna.meshmb;
 
-import org.servalproject.json.JSONTableScanner;
-import org.servalproject.json.JSONTokeniser;
-import org.servalproject.servaldna.AbstractJsonList;
+import org.servalproject.json.JsonObjectHelper;
+import org.servalproject.servaldna.HttpJsonSerialiser;
+import org.servalproject.servaldna.HttpRequest;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
-import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SigningKey;
 import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
-import java.util.Map;
 
-public class MeshMBSubscriptionList extends AbstractJsonList<MeshMBSubscription, IOException> {
+public class MeshMBSubscriptionList extends HttpJsonSerialiser<MeshMBSubscription, IOException> {
 
 	public final Subscriber identity;
 
 	public MeshMBSubscriptionList(ServalDHttpConnectionFactory httpConnector, Subscriber identity){
-		super(httpConnector, new JSONTableScanner()
-				.addColumn("id", SigningKey.class)
-				.addColumn("author", SubscriberId.class)
-				.addColumn("blocked", Boolean.class)
-				.addColumn("name", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
-				.addColumn("timestamp", Long.class)
-				.addColumn("last_message", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
-		);
+		super(httpConnector);
+		addField("id", true, SigningKey.class);
+		addField("author", true, SubscriberId.class);
+		addField("blocked", true, JsonObjectHelper.BoolFactory);
+		addField("name", false, JsonObjectHelper.StringFactory);
+		addField("timestamp", true, JsonObjectHelper.LongFactory);
+		addField("last_message", false, JsonObjectHelper.StringFactory);
 		this.identity = identity;
 	}
 
 	@Override
-	protected Request getRequest() {
-		return new Request("GET", "/restful/meshmb/" + identity.signingKey.toHex() + "/feedlist.json");
+	protected HttpRequest getRequest() {
+		return new HttpRequest("GET", "/restful/meshmb/" + identity.signingKey.toHex() + "/feedlist.json");
 	}
 
 	@Override
-	protected MeshMBSubscription factory(Map<String, Object> row, long rowCount) throws ServalDInterfaceException {
+	public MeshMBSubscription create(Object[] parameters, int row) {
 		return new MeshMBSubscription(
-				new Subscriber((SubscriberId)row.get("author"),
-						(SigningKey) row.get("id"),
+				new Subscriber((SubscriberId)parameters[0],
+						(SigningKey)parameters[1],
 						true),
-				(Boolean) row.get("blocked"),
-				(String) row.get("name"),
-				(Long) row.get("timestamp"),
-				(String) row.get("last_message")
+				(Boolean) parameters[2],
+				(String) parameters[3],
+				(Long) parameters[4],
+				(String) parameters[5]
 		);
 	}
 }

@@ -20,57 +20,55 @@
 
 package org.servalproject.servaldna.meshmb;
 
-import org.servalproject.json.JSONTableScanner;
-import org.servalproject.json.JSONTokeniser;
-import org.servalproject.servaldna.AbstractJsonList;
+import org.servalproject.json.JsonObjectHelper;
+import org.servalproject.servaldna.HttpJsonSerialiser;
+import org.servalproject.servaldna.HttpRequest;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
-import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SigningKey;
 import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
-import java.util.Map;
 
-public class MeshMBActivityList extends AbstractJsonList<MeshMBActivityMessage, IOException> {
+public class MeshMBActivityList extends HttpJsonSerialiser<MeshMBActivityMessage, IOException> {
 	private final Subscriber identity;
 	private final String token;
 
 	public MeshMBActivityList(ServalDHttpConnectionFactory httpConnector, Subscriber identity, String token) {
-		super(httpConnector, new JSONTableScanner()
-				.addColumn(".token", String.class)
-				.addColumn("ack_offset", Long.class)
-				.addColumn("id", SigningKey.class)
-				.addColumn("author", SubscriberId.class)
-				.addColumn("name", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
-				.addColumn("timestamp", Long.class)
-				.addColumn("offset", Long.class)
-				.addColumn("message", String.class));
+		super(httpConnector);
+		addField(".token", true, JsonObjectHelper.StringFactory);
+		addField("ack_offset", true, JsonObjectHelper.LongFactory);
+		addField("id", true, SigningKey.class);
+		addField("author", true, SubscriberId.class);
+		addField("name", false, JsonObjectHelper.StringFactory);
+		addField("timestamp", true, JsonObjectHelper.LongFactory);
+		addField("offset", true, JsonObjectHelper.LongFactory);
+		addField("message", true, JsonObjectHelper.StringFactory);
 		this.identity = identity;
 		this.token = token;
 	}
 
 	@Override
-	protected Request getRequest() {
+	protected HttpRequest getRequest() {
 		if (token == null)
-			return new Request("GET", "/restful/meshmb/" + identity.signingKey.toHex() + "/activity.json");
+			return new HttpRequest("GET", "/restful/meshmb/" + identity.signingKey.toHex() + "/activity.json");
 		if (token.equals(""))
-			return new Request("GET", "/restful/meshmb/" + identity.signingKey.toHex() + "/activity/activity.json");
-		return new Request("GET", "/restful/meshmb/" + identity.signingKey.toHex() + "/activity/"+token+"/activity.json");
+			return new HttpRequest("GET", "/restful/meshmb/" + identity.signingKey.toHex() + "/activity/activity.json");
+		return new HttpRequest("GET", "/restful/meshmb/" + identity.signingKey.toHex() + "/activity/"+token+"/activity.json");
 	}
 
 	@Override
-	protected MeshMBActivityMessage factory(Map<String, Object> row, long rowCount) throws ServalDInterfaceException {
+	public MeshMBActivityMessage create(Object[] parameters, int row) {
 		return new MeshMBActivityMessage(
-				(String) row.get(".token"),
-				(Long) row.get("ack_offset"),
-				new Subscriber((SubscriberId)row.get("author"),
-						(SigningKey) row.get("id"),
+				(String) parameters[0],
+				(Long) parameters[1],
+				new Subscriber((SubscriberId)parameters[2],
+						(SigningKey) parameters[3],
 						true),
-				(String) row.get("name"),
-				(Long) row.get("timestamp"),
-				(Long) row.get("offset"),
-				(String) row.get("message")
+				(String) parameters[4],
+				(Long) parameters[5],
+				(Long) parameters[6],
+				(String) parameters[7]
 		);
 	}
 }

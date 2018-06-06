@@ -21,32 +21,25 @@
 
 package org.servalproject.servaldna.rhizome;
 
-import org.servalproject.json.JSONTableScanner;
-import org.servalproject.json.JSONTokeniser;
-import org.servalproject.servaldna.AbstractJsonList;
+import org.servalproject.json.JsonObjectHelper;
 import org.servalproject.servaldna.BundleId;
 import org.servalproject.servaldna.FileHash;
+import org.servalproject.servaldna.HttpJsonSerialiser;
+import org.servalproject.servaldna.HttpRequest;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
-import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.util.Map;
 import java.util.Vector;
 
-public class RhizomeBundleList extends AbstractJsonList<RhizomeListBundle, IOException> {
+public class RhizomeBundleList extends HttpJsonSerialiser<RhizomeListBundle, IOException> {
 
 	private String sinceToken;
 	private String service;
 	private String name;
 	private SubscriberId sender;
 	private SubscriberId recipient;
-
-	public RhizomeBundleList(ServalDHttpConnectionFactory connector)
-	{
-		this(connector, null);
-	}
 
 	public void setServiceFilter(String service){
 		this.service = service;
@@ -61,28 +54,33 @@ public class RhizomeBundleList extends AbstractJsonList<RhizomeListBundle, IOExc
 		this.recipient = recipient;
 	}
 
+	public RhizomeBundleList(ServalDHttpConnectionFactory connector)
+	{
+		this(connector, null);
+	}
+
 	public RhizomeBundleList(ServalDHttpConnectionFactory connector, String since_token)
 	{
-		super(connector, new JSONTableScanner()
-				.addColumn("_id", Integer.class)
-				.addColumn(".token", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
-				.addColumn("service", String.class)
-				.addColumn("id", BundleId.class)
-				.addColumn("version", Long.class)
-				.addColumn("date", Long.class)
-				.addColumn(".inserttime", Long.class)
-				.addColumn(".author", SubscriberId.class, JSONTokeniser.Narrow.ALLOW_NULL)
-				.addColumn(".fromhere", Integer.class)
-				.addColumn("filesize", Long.class)
-				.addColumn("filehash", FileHash.class, JSONTokeniser.Narrow.ALLOW_NULL)
-				.addColumn("sender", SubscriberId.class, JSONTokeniser.Narrow.ALLOW_NULL)
-				.addColumn("recipient", SubscriberId.class, JSONTokeniser.Narrow.ALLOW_NULL)
-				.addColumn("name", String.class, JSONTokeniser.Narrow.ALLOW_NULL));
+		super(connector);
+		addField("id", true, BundleId.class);
+		addField("version", true, JsonObjectHelper.LongFactory);
+		addField("filesize", true, JsonObjectHelper.LongFactory);
+		addField("filehash", false, FileHash.class);
+		addField("sender", false, SubscriberId.class);
+		addField("recipient", false, SubscriberId.class);
+		addField("date", true, JsonObjectHelper.LongFactory);
+		addField("service", true, JsonObjectHelper.StringFactory);
+		addField("name", false, JsonObjectHelper.StringFactory);
+		addField("_id", true, JsonObjectHelper.IntFactory);
+		addField(".token", false, JsonObjectHelper.StringFactory);
+		addField(".inserttime", true, JsonObjectHelper.LongFactory);
+		addField(".author", false, SubscriberId.class);
+		addField(".fromhere", true, JsonObjectHelper.IntFactory);
 		this.sinceToken = since_token;
 	}
 
 	@Override
-	protected Request getRequest() throws UnsupportedEncodingException {
+	protected HttpRequest getRequest() throws UnsupportedEncodingException {
 		StringBuilder sb = new StringBuilder();
 		if (this.sinceToken == null)
 			sb.append("/restful/rhizome/bundlelist.json");
@@ -101,36 +99,29 @@ public class RhizomeBundleList extends AbstractJsonList<RhizomeListBundle, IOExc
 		if (recipient != null)
 			query_params.add(new ServalDHttpConnectionFactory.QueryParam("recipient", recipient.toHex()));
 
-		return new Request("GET", sb.toString(), query_params);
+		return new HttpRequest("GET", sb.toString(), query_params);
 	}
 
 	@Override
-	protected RhizomeListBundle factory(Map<String, Object> row, long rowCount) throws ServalDInterfaceException {
+	public RhizomeListBundle create(Object[] parameters, int row) {
 		return new RhizomeListBundle(
-				new RhizomeManifest((BundleId)row.get("id"),
-						(Long)row.get("version"),
-						(Long)row.get("filesize"),
-						(FileHash)row.get("filehash"),
-						(SubscriberId)row.get("sender"),
-						(SubscriberId)row.get("recipient"),
+				new RhizomeManifest((BundleId)parameters[0],
+						(Long)parameters[1],
+						(Long)parameters[2],
+						(FileHash)parameters[3],
+						(SubscriberId)parameters[4],
+						(SubscriberId)parameters[5],
 						null, // BK
 						null, // crypt
 						null, // tail
-						(Long)row.get("date"),
-						(String)row.get("service"),
-						(String)row.get("name")),
-				(int)rowCount,
-				(Integer)row.get("_id"),
-				(String)row.get(".token"),
-				(Long)row.get(".inserttime"),
-				(SubscriberId)row.get(".author"),
-				(Integer)row.get(".fromhere")
-		);
-	}
-
-	@Deprecated
-	public RhizomeListBundle nextBundle() throws ServalDInterfaceException, IOException
-	{
-		return next();
+						(Long)parameters[6],
+						(String)parameters[7],
+						(String)parameters[8]),
+				row,
+				(Integer)parameters[9],
+				(String)parameters[10],
+				(Long)parameters[11],
+				(SubscriberId)parameters[12],
+				(Integer)parameters[13]);
 	}
 }

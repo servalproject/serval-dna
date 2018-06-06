@@ -22,6 +22,7 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
+includeTests java
 includeTests jni
 includeTests keyringjava
 includeTests routejava

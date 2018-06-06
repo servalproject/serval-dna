@@ -21,68 +21,35 @@
 
 package org.servalproject.servaldna.route;
 
-import org.servalproject.json.JSONInputException;
-import org.servalproject.json.JSONTableScanner;
-import org.servalproject.json.JSONTokeniser;
+import org.servalproject.json.JsonObjectHelper;
+import org.servalproject.servaldna.HttpJsonSerialiser;
+import org.servalproject.servaldna.HttpRequest;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
-import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
-import java.net.HttpURLConnection;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Vector;
-import java.util.Map;
 
-public class RouteIdentityList {
-
-	private ServalDHttpConnectionFactory httpConnector;
-	private HttpURLConnection httpConnection;
-	private JSONTokeniser json;
-	private JSONTableScanner table;
-	int rowCount;
+public class RouteIdentityList extends HttpJsonSerialiser<RouteIdentity, IOException> {
 
 	public RouteIdentityList(ServalDHttpConnectionFactory connector)
 	{
-		this.httpConnector = connector;
-		this.table = new JSONTableScanner()
-					.addColumn("sid", SubscriberId.class)
-					.addColumn("did", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
-					.addColumn("name", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
-					.addColumn("is_self", Boolean.class)
-					.addColumn("hop_count", Integer.class)
-					.addColumn("reachable_broadcast", Boolean.class)
-					.addColumn("reachable_unicast", Boolean.class)
-					.addColumn("reachable_indirect", Boolean.class)
-					;
+		super(connector);
+		addField("sid", true, SubscriberId.class);
+		addField("did", false, JsonObjectHelper.StringFactory);
+		addField("name", false, JsonObjectHelper.StringFactory);
+		addField("is_self", true, JsonObjectHelper.BoolFactory);
+		addField("hop_count", true, JsonObjectHelper.IntFactory);
+		addField("reachable_broadcast", true, JsonObjectHelper.BoolFactory);
+		addField("reachable_unicast", true, JsonObjectHelper.BoolFactory);
+		addField("reachable_indirect", true, JsonObjectHelper.BoolFactory);
 	}
 
-	public boolean isConnected()
-	{
-		return this.json != null;
-	}
-
-	public void connect() throws IOException, ServalDInterfaceException
-	{
-		try {
-			rowCount = 0;
-			httpConnection = httpConnector.newServalDHttpConnection("GET", "/restful/route/all.json");
-			httpConnection.connect();
-			RouteCommon.Status status = RouteCommon.receiveRestfulResponse(httpConnection, HttpURLConnection.HTTP_OK);
-			json = status.json;
-			json.consume(JSONTokeniser.Token.START_OBJECT);
-			json.consume("header");
-			json.consume(JSONTokeniser.Token.COLON);
-			table.consumeHeaderArray(json);
-			json.consume(JSONTokeniser.Token.COMMA);
-			json.consume("rows");
-			json.consume(JSONTokeniser.Token.COLON);
-			json.consume(JSONTokeniser.Token.START_ARRAY);
-		}
-		catch (JSONInputException e) {
-			throw new ServalDInterfaceException(e);
-		}
+	@Override
+	protected HttpRequest getRequest() throws UnsupportedEncodingException {
+		return new HttpRequest("GET", "/restful/route/all.json");
 	}
 
 	public static List<RouteIdentity> getTestIdentities() {
@@ -100,44 +67,18 @@ public class RouteIdentityList {
 		}
 	}
 
-	public RouteIdentity nextIdentity() throws ServalDInterfaceException, IOException
-	{
-		try {
-			Object tok = json.nextToken();
-			if (tok == JSONTokeniser.Token.END_ARRAY) {
-				json.consume(JSONTokeniser.Token.END_OBJECT);
-				json.consume(JSONTokeniser.Token.EOF);
-				return null;
-			}
-			if (rowCount != 0)
-				JSONTokeniser.match(tok, JSONTokeniser.Token.COMMA);
-			else
-				json.pushToken(tok);
-			Map<String,Object> row = table.consumeRowArray(json);
-			return new RouteIdentity(
-					rowCount++,
-					(SubscriberId)row.get("sid"),
-					(String)row.get("did"),
-					(String)row.get("name"),
-					(Boolean)row.get("is_self"),
-					(Integer)row.get("hop_count"),
-					(Boolean)row.get("reachable_broadcast"),
-					(Boolean)row.get("reachable_unicast"),
-					(Boolean)row.get("reachable_indirect")
-				);
-		}
-		catch (JSONInputException e) {
-			throw new ServalDInterfaceException(e);
-		}
+	@Override
+	public RouteIdentity create(Object[] parameters, int row) {
+		return new RouteIdentity(
+				rowCount++,
+				(SubscriberId)parameters[0],
+				(String)parameters[1],
+				(String)parameters[2],
+				(Boolean)parameters[3],
+				(Integer)parameters[4],
+				(Boolean)parameters[5],
+				(Boolean)parameters[6],
+				(Boolean)parameters[7]
+		);
 	}
-
-	public void close() throws IOException
-	{
-		httpConnection = null;
-		if (json != null) {
-			json.close();
-			json = null;
-		}
-	}
-
 }

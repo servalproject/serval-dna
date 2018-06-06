@@ -21,32 +21,25 @@
 
 package org.servalproject.test;
 
-import java.io.File;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
+
+import org.servalproject.json.JsonParser;
 import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDInterfaceException;
-import org.servalproject.servaldna.ServalDNotImplementedException;
 import org.servalproject.servaldna.ServerControl;
-import org.servalproject.servaldna.BundleId;
-import org.servalproject.servaldna.BundleSecret;
 import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.keyring.KeyringIdentityList;
 import org.servalproject.servaldna.keyring.KeyringIdentity;
 
 public class Keyring {
 
-	static void keyring_list(String pin) throws ServalDInterfaceException, IOException, InterruptedException
-	{
+	static void keyring_list(String pin) throws ServalDInterfaceException, IOException, JsonParser.JsonParseException {
 		ServalDClient client = new ServerControl().getRestfulClient();
 		KeyringIdentityList list = null;
 		try {
 			list = client.keyringListIdentities(pin);
 			KeyringIdentity id;
-			while ((id = list.nextIdentity()) != null) {
+			while ((id = list.next()) != null) {
 				System.out.println("sid=" + id.sid +
 								   ", did=" + id.did +
 								   ", name=" + id.name

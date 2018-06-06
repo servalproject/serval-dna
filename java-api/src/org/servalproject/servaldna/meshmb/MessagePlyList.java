@@ -20,30 +20,29 @@
 
 package org.servalproject.servaldna.meshmb;
 
-import org.servalproject.json.JSONInputException;
-import org.servalproject.json.JSONTableScanner;
-import org.servalproject.json.JSONTokeniser;
-import org.servalproject.servaldna.AbstractJsonList;
+import org.servalproject.json.JsonObjectHelper;
+import org.servalproject.json.JsonParser;
+import org.servalproject.servaldna.HttpJsonSerialiser;
+import org.servalproject.servaldna.HttpRequest;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SigningKey;
 
 import java.io.IOException;
-import java.util.Map;
 
-public class MessagePlyList extends AbstractJsonList<PlyMessage, IOException> {
+public class MessagePlyList extends HttpJsonSerialiser<PlyMessage, IOException> {
     private final SigningKey bundleId;
     private final String sinceToken;
     private String name;
 
     public MessagePlyList(ServalDHttpConnectionFactory httpConnector, SigningKey bundleId, String sinceToken){
-        super(httpConnector, new JSONTableScanner()
-                .addColumn("offset", Long.class)
-                .addColumn("token", String.class)
-                .addColumn("text", String.class)
-                .addColumn("timestamp", Long.class, JSONTokeniser.Narrow.ALLOW_NULL));
+        super(httpConnector);
         this.bundleId = bundleId;
         this.sinceToken = sinceToken;
+        addField("offset", true, JsonObjectHelper.LongFactory);
+        addField("token", true, JsonObjectHelper.StringFactory);
+        addField("timestamp", false, JsonObjectHelper.LongFactory);
+        addField("text", true, JsonObjectHelper.StringFactory);
     }
 
     public String getName(){
@@ -51,39 +50,38 @@ public class MessagePlyList extends AbstractJsonList<PlyMessage, IOException> {
     }
 
     @Override
-    protected void consumeHeader() throws JSONInputException, IOException {
-        Object tok = json.nextToken();
-        if (tok.equals("name")) {
-            json.consume(JSONTokeniser.Token.COLON);
-            name = json.consume(String.class);
-            json.consume(JSONTokeniser.Token.COMMA);
-        }
+    public void consumeObject(JsonParser.JsonMember header) throws IOException, JsonParser.JsonParseException {
+        if (header.name.equals("name")){
+            if (header.type == JsonParser.ValueType.Null)
+                name = null;
+            else if (header.type == JsonParser.ValueType.String)
+                name = parser.readString();
+            else
+                parser.expected("value");
+        }else
+            super.consumeObject(header);
     }
 
     @Override
-    protected void handleResponseError() throws IOException, ServalDInterfaceException {
-        // TODO handle specific errors
-        super.handleResponseError();
-    }
-
-    @Override
-    protected Request getRequest() {
+    protected HttpRequest getRequest() {
+        String suffix;
         if (this.sinceToken == null)
-            return new Request("GET", "/restful/meshmb/" + bundleId.toHex() + "/messagelist.json");
+            suffix = "/messagelist.json";
         else if(this.sinceToken.equals(""))
-            return new Request("GET", "/restful/meshmb/" + bundleId.toHex() + "/newsince/messagelist.json");
+            suffix = "/newsince/messagelist.json";
         else
-            return new Request("GET", "/restful/meshmb/" + bundleId.toHex() + "/newsince/" + sinceToken + "/messagelist.json");
+            suffix = "/newsince/" + sinceToken + "/messagelist.json";
+        return new HttpRequest("GET", "/restful/meshmb/" + bundleId.toHex() + suffix);
     }
 
     @Override
-    protected PlyMessage factory(Map<String, Object> row, long rowCount) {
+    public PlyMessage create(Object[] parameters, int row) {
         return new PlyMessage(
-                rowCount,
-                (Long)row.get("offset"),
-                (String)row.get("token"),
-                (Long)row.get("timestamp"),
-                (String)row.get("text")
+                row,
+                (Long)parameters[0],
+                (String)parameters[1],
+                (Long)parameters[2],
+                (String)parameters[3]
         );
     }
 }
