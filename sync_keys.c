@@ -51,6 +51,7 @@ struct sync_peer_state{
   void *peer_context;
   unsigned send_count;
   unsigned recv_count;
+  uint8_t explained;
   struct node *root;
 };
 
@@ -703,6 +704,7 @@ static int recv_key(struct sync_state *state, struct sync_peer_state *peer_state
   if (message->prefix_len == KEY_LEN_BITS+1){
     // peer has no node of their own, they don't have anything that we have.
     peer_missing_leaf_nodes(state, peer_state, state->root, NODE_CHILDREN, 0);
+    peer_state->explained = 1;
     return 0;
   }
 
@@ -740,9 +742,13 @@ static int recv_key(struct sync_state *state, struct sync_peer_state *peer_state
     // Nothing to do if we understand the rest of the differences
     if (cmp_message(&peer_message, &node->message)==0){
       state->received_uninteresting++;
+      if (node->message.min_prefix_len==0)
+	peer_state->explained = 1;
       return 0;
     }
     
+    peer_state->explained = 0;
+
     // once we've looked at all of the prefix_len bits of the incoming key
     // we need to stop
     if (peer_message.prefix_len <= prefix_len){
