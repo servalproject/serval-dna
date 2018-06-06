@@ -1258,14 +1258,17 @@ static int rhizome_disk_status_content_chunk(struct http_request *hr, strbuf b)
   strbuf_json_string(b, alloca_uuid_str(rhizome_database.uuid));
   strbuf_puts(b, ",\n");
 
-  strbuf_sprintf(b, "\"external_bytes\":%"PRIu64",\n", r->u.status.rhizome_space.external_bytes);
-  strbuf_sprintf(b, "\"db_page_size\":%"PRIu64",\n", r->u.status.rhizome_space.db_page_size);
-  strbuf_sprintf(b, "\"db_total_pages\":%"PRIu64",\n", r->u.status.rhizome_space.db_total_pages);
-  strbuf_sprintf(b, "\"db_available_pages\":%"PRIu64",\n", r->u.status.rhizome_space.db_available_pages);
-  strbuf_sprintf(b, "\"content_bytes\":%"PRIu64",\n", r->u.status.rhizome_space.content_bytes);
-  strbuf_sprintf(b, "\"content_limit_bytes\":%"PRIu64",\n", r->u.status.rhizome_space.content_limit_bytes);
-  strbuf_sprintf(b, "\"filesystem_bytes\":%"PRIu64",\n", r->u.status.rhizome_space.filesystem_bytes);
-  strbuf_sprintf(b, "\"filesystem_free_bytes\":%"PRIu64"\n}", r->u.status.rhizome_space.filesystem_free_bytes);
+  struct rhizome_space_report *space = &r->u.status.rhizome_space;
+
+  strbuf_sprintf(b, "\"file_count\":%"PRIu64",\n", space->file_count);
+  strbuf_sprintf(b, "\"internal_bytes\":%"PRIu64",\n", space->internal_bytes);
+  strbuf_sprintf(b, "\"external_bytes\":%"PRIu64",\n", space->external_bytes);
+  strbuf_sprintf(b, "\"overhead_bytes\":%"PRIu64",\n", space->content_bytes - (space->external_bytes + space->internal_bytes));
+  strbuf_sprintf(b, "\"used_bytes\":%"PRIu64",\n", space->content_bytes);
+  strbuf_sprintf(b, "\"available_bytes\":%"PRIu64",\n", space->content_limit_bytes - space->content_bytes);
+  strbuf_sprintf(b, "\"reclaimable_bytes\":%"PRIu64",\n", space->db_available_pages * space->db_page_size);
+  strbuf_sprintf(b, "\"filesystem_bytes\":%"PRIu64",\n", space->filesystem_bytes);
+  strbuf_sprintf(b, "\"filesystem_free_bytes\":%"PRIu64"\n}", space->filesystem_free_bytes);
   return 0;
 }
 

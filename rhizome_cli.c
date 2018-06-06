@@ -492,9 +492,17 @@ static int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context
     verify_bundles();
   }
   struct rhizome_cleanup_report report;
+  if (clean && rhizome_cleanup(&report) == -1)
+    return -1;
+  if (rhizome_store_space_usage(&report.space_used)!=RHIZOME_PAYLOAD_STATUS_EMPTY)
+    return -1;
+
+  cli_field_name(context, "rhizome_dir", ":");
+  cli_put_string(context, rhizome_database.dir_path, "\n");
+  cli_field_name(context, "rhizome_uuid", ":");
+  cli_put_string(context, alloca_uuid_str(rhizome_database.uuid), "\n");
+
   if (clean){
-    if (rhizome_cleanup(&report) == -1)
-      return -1;
     cli_field_name(context, "deleted_stale_incoming_files", ":");
     cli_put_long(context, report.deleted_stale_incoming_files, "\n");
     cli_field_name(context, "deleted_orphan_files", ":");
@@ -504,8 +512,6 @@ static int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context
     cli_field_name(context, "deleted_orphan_manifests", ":");
     cli_put_long(context, report.deleted_orphan_manifests, "\n");
   }
-  if (rhizome_store_space_usage(&report.space_used)!=RHIZOME_PAYLOAD_STATUS_EMPTY)
-    return -1;
   cli_field_name(context, "file_count", ":");
   cli_put_long(context, report.space_used.file_count, "\n");
   cli_field_name(context, "file_size_bytes", ":");
@@ -520,7 +526,9 @@ static int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context
     ((report.space_used.content_limit_bytes == UINT64_MAX) ? 0 : report.space_used.content_bytes), "\n");
   cli_field_name(context, "reclaimable_bytes", ":");
   cli_put_long(context, report.space_used.db_available_pages * report.space_used.db_page_size, "\n");
-  cli_field_name(context, "free_space_bytes", ":");
+  cli_field_name(context, "filesystem_bytes", ":");
+  cli_put_long(context, report.space_used.filesystem_bytes, "\n");
+  cli_field_name(context, "filesystem_free_bytes", ":");
   cli_put_long(context, report.space_used.filesystem_free_bytes, "\n");
   return 0;
 }

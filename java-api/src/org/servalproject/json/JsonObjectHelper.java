@@ -87,14 +87,14 @@ public class JsonObjectHelper {
 	}
 
 	public abstract static class ObjectFactory<T> implements Factory{
-		protected final Map<String, JsonField> columnMap = new HashMap<>();
+		private final Map<String, JsonField> columnMap;
 
-		protected void add(String name, boolean required, Factory factory){
-			columnMap.put(name, new JsonField(name, required, factory));
+		protected ObjectFactory(Map<String, JsonField> columnMap) {
+			this.columnMap = columnMap;
 		}
 
 		@Override
-		public Object create(JsonParser parser, JsonParser.ValueType type) throws IOException, JsonParser.JsonParseException {
+		public T create(JsonParser parser, JsonParser.ValueType type) throws IOException, JsonParser.JsonParseException {
 			if (type == JsonParser.ValueType.Null)
 				return null;
 

@@ -21,9 +21,11 @@
 
 package org.servalproject.servaldna.rhizome;
 
+import org.servalproject.json.JsonParser;
 import org.servalproject.servaldna.BundleId;
 import org.servalproject.servaldna.BundleSecret;
 import org.servalproject.servaldna.ContentType;
+import org.servalproject.servaldna.HttpRequest;
 import org.servalproject.servaldna.PostHelper;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
@@ -352,6 +354,12 @@ public class RhizomeCommon
 			}
 			throw e;
 		}
+	}
+
+	public static RhizomeDiskStatus rhizomeStatus(ServalDHttpConnectionFactory connector) throws ServalDInterfaceException, IOException, JsonParser.JsonParseException {
+		HttpRequest request = new HttpRequest("GET", "/restful/rhizome/storestatus.json");
+		request.connect(connector);
+		return RhizomeDiskStatus.factory.create(request.parser, request.parser.parse());
 	}
 
 	public static String quoteString(String unquoted)

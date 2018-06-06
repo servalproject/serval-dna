@@ -21,6 +21,7 @@
 package org.servalproject.servaldna;
 
 import org.servalproject.codec.Base64;
+import org.servalproject.json.JsonParser;
 import org.servalproject.servaldna.keyring.KeyringCommon;
 import org.servalproject.servaldna.keyring.KeyringIdentity;
 import org.servalproject.servaldna.keyring.KeyringIdentityList;
@@ -35,6 +36,7 @@ import org.servalproject.servaldna.meshms.MeshMSMessageList;
 import org.servalproject.servaldna.meshms.MeshMSStatus;
 import org.servalproject.servaldna.rhizome.RhizomeBundleList;
 import org.servalproject.servaldna.rhizome.RhizomeCommon;
+import org.servalproject.servaldna.rhizome.RhizomeDiskStatus;
 import org.servalproject.servaldna.rhizome.RhizomeEncryptionException;
 import org.servalproject.servaldna.rhizome.RhizomeException;
 import org.servalproject.servaldna.rhizome.RhizomeFakeManifestException;
@@ -113,6 +115,10 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 		RouteIdentityList list = new RouteIdentityList(this);
 		list.connect();
 		return list;
+	}
+
+	public RhizomeDiskStatus rhizomeDiskStatus() throws ServalDInterfaceException, IOException, JsonParser.JsonParseException {
+		return RhizomeCommon.rhizomeStatus(this);
 	}
 
 	public RhizomeBundleList rhizomeListBundles() throws ServalDInterfaceException, IOException

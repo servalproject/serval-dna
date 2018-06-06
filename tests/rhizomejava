@@ -50,6 +50,17 @@ teardown() {
    report_all_servald_servers
 }
 
+doc_RhizomeDiskStatus="Java API Rhizome disk status"
+setup_RhizomeDiskStatus() {
+   setup
+   executeOk_servald config set rhizome.max_blob_size 1024
+   rhizome_add_files --size=512 file1 --size=2048 file2
+}
+test_RhizomeDiskStatus() {
+   executeJavaOk --stderr org.servalproject.test.Rhizome rhizome-disk-status
+   tfw_cat --stdout --stderr
+}
+
 doc_RhizomeList="Java API Rhizome list 100 bundles"
 setup_RhizomeList() {
    setup

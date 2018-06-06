@@ -1159,6 +1159,11 @@ doc_RhizomeStatus="REST API Rhizome storage status"
 setup_RhizomeStatus() {
    export SERVALD_FAKE_SPACE_LIMIT=2M
    setup
+   executeOk_servald config \
+      set rhizome.max_blob_size 1024 \
+      set rhizome.min_free_space 65536 \
+      sync
+   rhizome_add_files --size=512 file1 --size=2048 file2
 }
 test_RhizomeStatus() {
    rest_request GET "/restful/rhizome/storestatus.json"

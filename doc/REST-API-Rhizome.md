@@ -1145,25 +1145,26 @@ Fetch on the current disk usage of the rhizome store.
 
 The results will be a single json object with the following fields;
 
+* `file_count` - the number of file payloads currently stored.
+
+* `internal_bytes` - the total size of all payloads stored inside the 
+  sqlite database
+
 * `external_bytes` - the total size of all payloads larger than
   rhizome.max_blob_size, that have been stored outside of sqlite, in the
   rhizome blob folder.
 
-* `db_page_size` - the size of disk pages returned by sqlite.
+* `overhead_bytes` - the total disk space used by manifests or sqlite.
 
-* `db_total_pages` - the number of disk pages in the sqlite database file.
+* `used_bytes` - the total bytes of space used in the sqlite database, and
+  in payloads stored outside of sqlite. 
 
-* `db_available_pages` - the number of disk pages in the sqlite database file
-  that have been allocated but are not currently in use.
-
-* `content_bytes` - the total bytes of space used in the sqlite database, and
-  in payloads stored outside of sqlite. This should be equal to;
-  db_page_size * (db_total_pages - db_available_pages) + external_bytes
-
-* `content_limit_bytes` - the calculated storage limit that is being applied.
-  This will be the smallest of the configured rhizome.database_size or the
+* `available_bytes` - the remaining space for storing additional file payloads.
+  Limited by the smallest of the configured rhizome.database_size or the
   maximum we can store while keeping rhizome.min_free_space available for
   other uses.
+
+* `reclaimable_bytes` - space allocated by sqlite that can be reclaimed.
 
 * `filesystem_bytes` - the measured total size of the filesystem where the
   rhizome store is located.

@@ -34,6 +34,7 @@ import org.servalproject.servaldna.ServerControl;
 import org.servalproject.servaldna.BundleId;
 import org.servalproject.servaldna.BundleSecret;
 import org.servalproject.servaldna.SubscriberId;
+import org.servalproject.servaldna.rhizome.RhizomeDiskStatus;
 import org.servalproject.servaldna.rhizome.RhizomeManifest;
 import org.servalproject.servaldna.rhizome.RhizomeIncompleteManifest;
 import org.servalproject.servaldna.rhizome.RhizomeImportStatus;
@@ -282,6 +283,22 @@ public class Rhizome {
 		System.exit(0);
 	}
 
+	private static void rhizome_disk_status() {
+		try {
+			ServalDClient client = new ServerControl().getRestfulClient();;
+			RhizomeDiskStatus status = client.rhizomeDiskStatus();
+			System.out.println(status.toString());
+			System.exit(0);
+		} catch (ServalDInterfaceException e) {
+			System.out.println(e.toString());
+		} catch (JsonParser.JsonParseException e) {
+			System.out.println(e.toString());
+		} catch (IOException e) {
+			System.out.println(e.toString());
+		}
+		System.exit(1);
+	}
+
 	public static void main(String... args)
 	{
 		if (args.length < 1)
@@ -308,6 +325,8 @@ public class Rhizome {
 							  );
 			else if (methodName.equals("rhizome-import"))
 				rhizome_import(args[1], args[2]);
+			else if (methodName.equals("rhizome-disk-status"))
+				rhizome_disk_status();
 		} catch (Exception e) {
 			e.printStackTrace();
 			System.exit(1);
@@ -315,4 +334,5 @@ public class Rhizome {
 		System.err.println("No such command: " + methodName);
 		System.exit(1);
 	}
+
 }
