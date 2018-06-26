@@ -111,7 +111,7 @@ public class JsonParser {
 		if (current != ch) {
 			return false;
 		}
-		read();
+		current=0;
 		return true;
 	}
 
@@ -122,14 +122,8 @@ public class JsonParser {
 
 	private void requireConstString(String str) throws IOException, JsonParseException{
 		// Check for every character, without attempting to read past the end
-		for(int i=0;i<str.length();i++) {
-			if (current == 0)
-				read();
-			char ch = str.charAt(i);
-			if (current != ch)
-				expected("'"+ch+"'");
-			current = 0;
-		}
+		for(int i=0;i<str.length();i++)
+			requireChar(str.charAt(i));
 	}
 
 	private void skipWhiteSpace() throws IOException {
@@ -404,6 +398,8 @@ public class JsonParser {
 	public String readString() throws IOException, JsonParseException {
 		StringBuilder sb = new StringBuilder();
 		requireChar('"');
+		if (current == 0)
+			read();
 		while(current != '"'){
 			if (current == '\\'){
 				switch (read()) {

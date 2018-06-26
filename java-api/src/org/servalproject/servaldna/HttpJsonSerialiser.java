@@ -67,6 +67,20 @@ public abstract class HttpJsonSerialiser<T, E extends Exception> extends JsonTab
         }
     }
 
+    @Override
+    public T next() throws IOException, JsonParser.JsonParseException, E {
+        if (closed)
+            return null;
+        try {
+            return super.next();
+        }catch (IOException | JsonParser.JsonParseException e){
+            // don't throw if a close was triggered from another thread
+            if (closed)
+                return null;
+            throw e;
+        }
+    }
+
     public void close() throws IOException
     {
         if (closed)
