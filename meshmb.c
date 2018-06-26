@@ -467,8 +467,8 @@ int meshmb_flush(struct meshmb_feeds *feeds)
 
 	if (tree_walk(&feeds->root, NULL, 0, write_metadata, &write)==0){
 	  pstatus = rhizome_finish_write(&write);
-	  if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW){
-
+	  // follow -> ignore might end up with the same payload bytes
+	  if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW || pstatus == RHIZOME_PAYLOAD_STATUS_STORED){
 	    rhizome_manifest_set_filehash(m, &write.id);
 	    rhizome_manifest_set_filesize(m, write.file_length);
 	    struct rhizome_bundle_result end_result = rhizome_manifest_finalise(m, &mout, 1);
