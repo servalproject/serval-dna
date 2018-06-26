@@ -36,8 +36,8 @@ public class MeshMBSubscriptionList extends HttpJsonSerialiser<MeshMBSubscriptio
 
 	public MeshMBSubscriptionList(ServalDHttpConnectionFactory httpConnector, Subscriber identity){
 		super(httpConnector);
-		addField("id", true, SigningKey.class);
 		addField("author", true, SubscriberId.class);
+		addField("id", true, SigningKey.class);
 		addField("blocked", true, JsonObjectHelper.BoolFactory);
 		addField("name", false, JsonObjectHelper.StringFactory);
 		addField("timestamp", true, JsonObjectHelper.LongFactory);

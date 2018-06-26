@@ -38,8 +38,8 @@ public class MeshMBActivityList extends HttpJsonSerialiser<MeshMBActivityMessage
 		super(httpConnector);
 		addField(".token", true, JsonObjectHelper.StringFactory);
 		addField("ack_offset", true, JsonObjectHelper.LongFactory);
-		addField("id", true, SigningKey.class);
 		addField("author", true, SubscriberId.class);
+		addField("id", true, SigningKey.class);
 		addField("name", false, JsonObjectHelper.StringFactory);
 		addField("timestamp", true, JsonObjectHelper.LongFactory);
 		addField("offset", true, JsonObjectHelper.LongFactory);
