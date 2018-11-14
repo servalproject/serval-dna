@@ -115,7 +115,7 @@ get_author_label() {
    # Serval Project email addresses get special treatment, to reduce day-to-day
    # version string verbosity.
    case "$email" in
-   '') author_label="${LOGNAME?}@$(hostname --fqdn)";; #" <-- fix Vim syntax highlighting
+   '') author_label="${LOGNAME?}@$(hostname -f)";; #" <-- fix Vim syntax highlighting
    *@servalproject.org) author_label="${email%@*}";; #" <-- fix Vim syntax highlighting
    *) author_label="$email";;
    esac
