@@ -431,6 +431,7 @@ static void sync_send_peer(struct subscriber *peer, struct rhizome_sync_keys *sy
 		alloca_sync_key(&msg->key),
 		rhizome_bundle_status_message_nonnull(status));
 	      FALLTHROUGH;
+	/* fall through */
 	    case RHIZOME_BUNDLE_STATUS_NEW:
 	      // TODO we don't have this bundle anymore!
 	      ob_rewind(payload);

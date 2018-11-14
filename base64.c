@@ -76,6 +76,7 @@ static size_t _base64_encodev(const char symbols[], char *dstBase64, const struc
     case 1:
       *dst++ = symbols[64];
       FALLTHROUGH;
+	/* fall through */
     case 2:
       *dst++ = symbols[64];
   }

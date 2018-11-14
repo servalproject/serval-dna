@@ -507,6 +507,7 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
     }
     FALLTHROUGH;
   }
+	/* fall through */
   default: {
       strbuf_append_socket_domain(sb, addr->sa_family);
       size_t len = (size_t)addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;

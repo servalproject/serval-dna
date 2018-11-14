@@ -342,6 +342,7 @@ static int restful_meshmb_list_json_content_chunk(struct http_request *hr, strbu
 
 ROWS:
     case LIST_ROWS: FALLTHROUGH;
+	/* fall through */
     case LIST_FIRST:
 
       if (!message_ply_is_open(&r->u.plylist.ply_reader)){
@@ -374,6 +375,7 @@ ROWS:
 END:
       r->u.plylist.phase = LIST_END;
       FALLTHROUGH;
+	/* fall through */
     case LIST_END:
 
       {
@@ -399,6 +401,7 @@ END:
       if (!strbuf_overrun(b))
 	r->u.plylist.phase = LIST_DONE;
       FALLTHROUGH;
+	/* fall through */
     case LIST_DONE:
       return 0;
   }
@@ -604,6 +607,7 @@ static int restful_meshmb_feedlist_json_content_chunk(struct http_request *hr, s
       return 1;
 
     case LIST_ROWS: FALLTHROUGH;
+	/* fall through */
     case LIST_FIRST:
       {
 	struct enum_state state={
@@ -618,11 +622,13 @@ static int restful_meshmb_feedlist_json_content_chunk(struct http_request *hr, s
       }
       r->u.meshmb_feeds.phase = LIST_END;
       FALLTHROUGH;
+	/* fall through */
     case LIST_END:
       strbuf_puts(b, "\n]\n}\n");
       if (!strbuf_overrun(b))
 	r->u.plylist.phase = LIST_DONE;
       FALLTHROUGH;
+	/* fall through */
     case LIST_DONE:
       return 0;
   }

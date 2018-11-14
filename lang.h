@@ -81,7 +81,7 @@ typedef char bool_t;
 #   define FALLTHROUGH __attribute__((__fallthrough__))
 #else
 #   define __ATTRIBUTE_fallthrough
-#   define FALLTHROUGH
+#   define FALLTHROUGH /* fall through */
 #endif
 
 #endif // __SERVAL_DNA__LANG_H

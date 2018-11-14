@@ -1214,6 +1214,7 @@ static int http_request_decode_chunks(struct http_request *r){
       }
       FALLTHROUGH;
     }
+	/* fall through */
     case CHUNK_SIZE:{
       const char *p;
       // TODO fail on non hex input
@@ -1242,6 +1243,7 @@ static int http_request_decode_chunks(struct http_request *r){
       }
       FALLTHROUGH;
     }
+	/* fall through */
     case CHUNK_DATA:{
       // Skip over the chunk heading if we can, to avoid a memmove.
       if (r->end_decoded == r->parsed)
@@ -1532,6 +1534,7 @@ static int http_request_form_data_start_part(struct http_request *r, int b)
 	    );
       }
       FALLTHROUGH;
+	/* fall through */
     case HEADER:
       _INVOKE_HANDLER_VOID(handle_mime_part_end);
       break;
@@ -1572,6 +1575,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
       at_start = 1;
       r->form_data_state = PREAMBLE;
       FALLTHROUGH;
+	/* fall through */
     case PREAMBLE: {
 	DEBUGF(http_server, "PREAMBLE");
 	char *start = r->parsed;
@@ -2166,6 +2170,7 @@ unsigned http_range_close(struct http_range *dst, const struct http_range *src, 
       case CLOSED:
 	last = range->last < resource_length ? range->last : resource_length - 1;
 	FALLTHROUGH;
+	/* fall through */
       case OPEN:
 	first = range->first < resource_length ? range->first : resource_length;
 	break;

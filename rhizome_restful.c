@@ -586,6 +586,7 @@ static int insert_make_manifest(httpd_request *r)
     default:
       WHYF("rhizome_manifest_parse() returned %d", n);
       FALLTHROUGH;
+	/* fall through */
     case -1:
       r->bundle_result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "Internal error while parsing manifest");
       break;
