@@ -159,9 +159,9 @@ static int send_content_end(struct http_request *hr)
   }else{
     if ( !session ) 
       http_request_simple_response(&r->http, 500, "No session");
-    elsif (send_result==-1)
+    else if (send_result==-1)
       http_request_simple_response(&r->http, 500, "meshmb_send() failed");
-    elsif (send_result==-1)
+    else if (send_result==-1)
       http_request_simple_response(&r->http, 500, "meshmb_flush() failed");
     else
       http_request_simple_response(&r->http, 500, "Seemingly impossible error");
