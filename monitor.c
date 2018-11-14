@@ -58,6 +58,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 #include <sys/stat.h>
+#ifdef __APPLE__
+#include "TargetConditionals.h"
+#endif
+
 #include "serval.h"
 #include "conf.h"
 #include "rhizome.h"
@@ -122,6 +126,11 @@ static void monitor_setup_sockets()
 {
   if (serverMode == SERVER_NOT_RUNNING)
     return;
+
+#ifdef  TARGET_OS_IPHONE
+    // Can't bind named sockets on iOS, and we only need the HTTP API, anyway.
+    return;
+#endif
 
   int sock = -1;
   if ((sock = esocket(AF_UNIX, SOCK_STREAM, 0)) == -1)
