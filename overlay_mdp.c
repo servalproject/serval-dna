@@ -50,6 +50,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <dirent.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#ifdef __APPLE__
+#include "TargetConditionals.h"
+#endif
+
 #include "serval.h"
 #include "conf.h"
 #include "str.h"
@@ -209,7 +213,7 @@ static int mdp_bind_socket(const char *name)
 {
   struct socket_address addr;
   int sock;
-  
+ 
   if (make_local_sockaddr(&addr, "%s", name) == -1)
     return -1;
   if ((sock = esocket(addr.addr.sa_family, SOCK_DGRAM, 0)) == -1)
@@ -251,6 +255,10 @@ static void overlay_mdp_setup_sockets()
 {
   if (serverMode == SERVER_NOT_RUNNING)
     return;
+
+#ifdef TARGET_OS_IPHONE
+  return;
+#endif
 
   /* Delete stale socket files from instance directory. */
   overlay_mdp_clean_socket_files();
