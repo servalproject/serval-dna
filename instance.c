@@ -23,6 +23,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 #include <stdlib.h>
+
+#ifdef __APPLE__
+#include "TargetConditionals.h"
+#endif
+
 #include "instance.h"
 #include "conf.h"
 #include "str.h"
@@ -133,6 +138,19 @@ static int vformf_path(struct __sourceloc __whence, strbuf b, const char *fhs_pa
 int _formf_serval_etc_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, ...)
 {
   va_list ap;
+  char *base_path = SERVAL_ETC_PATH;
+
+#ifdef __APPLE__
+#ifdef TARGET_OS_IPHONE  
+  // iOS device
+  char containerised_path[8192];
+  if (getenv("HOME")) {
+    snprintf(containerised_path,8192,"%s/%s",getenv("HOME"),SERVAL_ETC_PATH);
+    base_path=containerised_path;
+  }  
+#endif
+#endif
+  
   va_start(ap, fmt);
   int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_ETC_PATH, NULL, fmt, ap);
   va_end(ap);
