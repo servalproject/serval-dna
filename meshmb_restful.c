@@ -148,14 +148,23 @@ static int send_content_end(struct http_request *hr)
 
   struct meshmb_session *session = open_session(&r->bid);
   int ret;
+  int send_result=0;
+  int flush_result=0;
 
   if (session
-    && meshmb_send(session->feeds, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length, 0, NULL)!=-1
-    && meshmb_flush(session->feeds)!=-1){
-    http_request_simple_response(&r->http, 201, "TODO, detailed response");
+    && (send_result=meshmb_send(session->feeds, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length, 0, NULL))!=-1
+    && (flush_result=meshmb_flush(session->feeds))!=-1){
+    http_request_simple_response(&r->http, 201, "Message sent and flushed");
     ret = 201;
   }else{
-    http_request_simple_response(&r->http, 500, "TODO, detailed response");
+    if ( !session ) 
+      http_request_simple_response(&r->http, 500, "No session");
+    elsif (send_result==-1)
+      http_request_simple_response(&r->http, 500, "meshmb_send() failed");
+    elsif (send_result==-1)
+      http_request_simple_response(&r->http, 500, "meshmb_flush() failed");
+    else
+      http_request_simple_response(&r->http, 500, "Seemingly impossible error");
     ret = 500;
   }
   if (session)
@@ -534,10 +543,10 @@ static int restful_meshmb_follow_ignore(httpd_request *r, const char *remainder)
 
   if (ret!=-1
     && meshmb_flush(session->feeds)!=-1){
-    http_request_simple_response(&r->http, 201, "TODO, detailed response");
+    http_request_simple_response(&r->http, 201, "Message flushed");
     ret = 201;
   }else{
-    http_request_simple_response(&r->http, 500, "TODO, detailed response");
+    http_request_simple_response(&r->http, 500, "meshmb_flush() failed (2)");
     ret = 500;
   }
   if (session)
@@ -668,7 +677,7 @@ static int restful_meshmb_feedlist(httpd_request *r, const char *remainder)
 
   struct meshmb_session *session = open_session(&r->bid);
   if (!session){
-    http_request_simple_response(&r->http, 500, "TODO, detailed response");
+    http_request_simple_response(&r->http, 500, "open_session() for MeshMB failed");
     return 500;
   }
 
@@ -871,7 +880,7 @@ static int restful_meshmb_activity(httpd_request *r, const char *remainder)
 
   struct meshmb_session *session = open_session(&r->bid);
   if (!session){
-    http_request_simple_response(&r->http, 500, "TODO, detailed response");
+    http_request_simple_response(&r->http, 500, "open_session() for MeshMB failed (2)");
     return 500;
   }
   assert(r->finalise_union == NULL);
