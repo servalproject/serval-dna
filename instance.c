@@ -168,7 +168,20 @@ int _formf_serval_run_path(struct __sourceloc __whence, char *buf, size_t bufsiz
 
 int _vformf_serval_run_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, va_list ap)
 {
-  return vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_RUN_PATH, NULL, fmt, ap);
+  char *base_path = SERVAL_RUN_PATH;
+
+#ifdef __APPLE__
+#ifdef TARGET_OS_IPHONE
+  // iOS device
+  char containerised_path[8192];
+  if (getenv("HOME")) {
+    snprintf(containerised_path,8192,"%s/%s",getenv("HOME"),SERVAL_RUN_PATH);
+    base_path=containerised_path;
+  } 
+#endif
+#endif
+
+  return vformf_path(__whence, strbuf_local(buf, bufsiz), base_path, NULL, fmt, ap);
 }
 
 strbuf strbuf_system_log_path(strbuf sb)
@@ -180,55 +193,133 @@ strbuf strbuf_system_log_path(strbuf sb)
 
 strbuf strbuf_serval_log_path(strbuf sb)
 {
+ char *base_path = SERVAL_LOG_PATH;
+
+#ifdef __APPLE__
+#ifdef TARGET_OS_IPHONE
+  // iOS device
+  char containerised_path[8192];
+  if (getenv("HOME")) { 
+    snprintf(containerised_path,8192,"%s/%s",getenv("HOME"),SERVAL_LOG_PATH);
+    base_path=containerised_path;
+  }
+#endif 
+#endif
+
   const char *ipath = instance_path();
   if (ipath)
     strbuf_path_join(sb, ipath, "log", NULL);
   else
-    strbuf_puts(sb, SERVAL_LOG_PATH);
+    strbuf_puts(sb, base_path);
   return sb;
 }
 
 int _formf_serval_cache_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, ...)
 {
+ char *base_path = SERVAL_CACHE_PATH;
+
+#ifdef __APPLE__
+#ifdef TARGET_OS_IPHONE
+  // iOS device
+  char containerised_path[8192];
+  if (getenv("HOME")) { 
+    snprintf(containerised_path,8192,"%s/%s",getenv("HOME"),SERVAL_CACHE_PATH);
+    base_path=containerised_path;
+  }
+#endif 
+#endif
+
   va_list ap;
   va_start(ap, fmt);
-  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_CACHE_PATH, NULL, fmt, ap);
+  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), base_path, NULL, fmt, ap);
   va_end(ap);
   return ret;
 }
 
 int _formf_rhizome_store_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, ...)
 {
+ char *base_path = RHIZOME_STORE_PATH;
+
+#ifdef __APPLE__
+#ifdef TARGET_OS_IPHONE
+  // iOS device
+  char containerised_path[8192];
+  if (getenv("HOME")) { 
+    snprintf(containerised_path,8192,"%s/%s",getenv("HOME"),RHIZOME_STORE_PATH);
+    base_path=containerised_path;
+  }
+#endif 
+#endif
+
   va_list ap;
   va_start(ap, fmt);
-  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), RHIZOME_STORE_PATH, config.rhizome.datastore_path, fmt, ap);
+  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), base_path, config.rhizome.datastore_path, fmt, ap);
   va_end(ap);
   return ret;
 }
 
 int _formf_rhizome_store_legacy_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, ...)
 {
+ char *base_path = RHIZOME_STORE_PATH;
+
+#ifdef __APPLE__
+#ifdef TARGET_OS_IPHONE
+  // iOS device
+  char containerised_path[8192];
+  if (getenv("HOME")) {
+    snprintf(containerised_path,8192,"%s/%s",getenv("HOME"),RHIZOME_STORE_PATH);
+    base_path=containerised_path;
+  }
+#endif 
+#endif
+
   va_list ap;
   va_start(ap, fmt);
-  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), RHIZOME_STORE_PATH, NULL, fmt, ap);
+  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), base_path, NULL, fmt, ap);
   va_end(ap);
   return ret;
 }
 
 int _formf_serval_tmp_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, ...)
 {
+char *base_path = SERVAL_TMP_PATH;
+
+#ifdef __APPLE__
+#ifdef TARGET_OS_IPHONE
+  // iOS device
+  char containerised_path[8192];
+  if (getenv("HOME")) {
+    snprintf(containerised_path,8192,"%s/%s",getenv("HOME"),SERVAL_TMP_PATH);
+    base_path=containerised_path;
+  }
+#endif
+#endif
+
   va_list ap;
   va_start(ap, fmt);
-  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_TMP_PATH, NULL, fmt, ap);
+  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), base_path, NULL, fmt, ap);
   va_end(ap);
   return ret;
 }
 
 int _formf_servald_proc_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, ...)
 {
+char *base_path = SERVAL_RUN_PATH "/proc";
+
+#ifdef __APPLE__
+#ifdef TARGET_OS_IPHONE
+  // iOS device
+  char containerised_path[8192];
+  if (getenv("HOME")) {
+    snprintf(containerised_path,8192,"%s/%s/proc",getenv("HOME"),SERVAL_RUN_PATH);
+    base_path=containerised_path;
+  }
+#endif
+#endif
+
   va_list ap;
   va_start(ap, fmt);
-  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_RUN_PATH "/proc", NULL, fmt, ap);
+  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), base_path, NULL, fmt, ap);
   va_end(ap);
   return ret;
 }
