@@ -24,6 +24,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/socket.h>
 #include <netdb.h>
 
+#ifdef __APPLE__
+#include "TargetConditionals.h"
+#endif
+
 #include "instance.h"
 #include "str.h"
 #include "conf.h"
@@ -53,7 +57,13 @@ int _make_local_sockaddr(struct __sourceloc __whence, struct socket_address *add
   addr->local.sun_family = AF_UNIX;
   va_list ap;
   va_start(ap, fmt);
-  int r = VFORMF_SERVAL_RUN_PATH(addr->local.sun_path, fmt, ap);
+#ifdef TARGET_OS_IPHONE
+ // Do what we need to make the path short enough to fit in the BSD named socket maximum length of
+ // 104 chars, even if we have a horribly long container path name.
+ int r = snprintf(addr->local.sun_path,100,"%s/%s", getenv("HOME")?getenv("HOME"):"/tmp",fmt);
+#else
+ int r = VFORMF_SERVAL_RUN_PATH(addr->local.sun_path, fmt, ap);
+#endif
   va_end(ap);
   if (!r)
     return WHY("socket name overflow");
