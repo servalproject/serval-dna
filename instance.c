@@ -152,7 +152,7 @@ int _formf_serval_etc_path(struct __sourceloc __whence, char *buf, size_t bufsiz
 #endif
   
   va_start(ap, fmt);
-  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), SERVAL_ETC_PATH, NULL, fmt, ap);
+  int ret = vformf_path(__whence, strbuf_local(buf, bufsiz), base_path, NULL, fmt, ap);
   va_end(ap);
   return ret;
 }
