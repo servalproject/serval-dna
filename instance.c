@@ -186,8 +186,21 @@ int _vformf_serval_run_path(struct __sourceloc __whence, char *buf, size_t bufsi
 
 strbuf strbuf_system_log_path(strbuf sb)
 {
+char *base_path = SERVAL_LOG_PATH;
+
+#ifdef __APPLE__
+#ifdef TARGET_OS_IPHONE
+  // iOS device
+  char containerised_path[8192];
+  if (getenv("HOME")) {
+    snprintf(containerised_path,8192,"%s/%s",getenv("HOME"),SERVAL_LOG_PATH);
+    base_path=containerised_path;
+  }
+#endif
+#endif
+
   const char *ipath = instance_path();
-  strbuf_puts(sb, ipath ? ipath : SYSTEM_LOG_PATH);
+  strbuf_puts(sb, ipath ? ipath : base_path);
   return sb;
 }
 
