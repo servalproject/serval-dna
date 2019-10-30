@@ -981,6 +981,7 @@ static int restful_rhizome_(httpd_request *r, const char *remainder)
       break;
     case RHIZOME_BUNDLE_STATUS_BUSY:
       rhizome_manifest_free(r->manifest);
+      r->manifest = NULL;
       return http_request_rhizome_response(r, 0, NULL);
     case RHIZOME_BUNDLE_STATUS_ERROR:
       rhizome_manifest_free(r->manifest);
