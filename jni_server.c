@@ -142,6 +142,10 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_server(
     jstring str = (jstring)(*env)->NewStringUTF(env, instance_path());
     (*env)->CallVoidMethod(env, callback, started, str, getpid(), mdp_loopback_port, httpd_server_port);
     (*env)->DeleteLocalRef(env, str);
+    if ((*env)->ExceptionCheck(env)){
+      ret = WHY("Not starting server due to startup exception");
+      goto end;
+    }
   }
   
   server_loop(waiting, wokeup);
