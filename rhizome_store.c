@@ -1708,7 +1708,7 @@ static int append_existing_journal_file(struct rhizome_write *write, const rhizo
   if (!FORM_BLOB_PATH(existing_path, RHIZOME_BLOB_SUBDIR, hashp))
     return WHYF("existing path too long?");
 
-  int payloadfd = open(existing_path, O_RDWR, 0664);
+  int payloadfd = open(existing_path, O_RDWR);
   if (payloadfd<0){
     if (errno != ENOENT)
       WHYF_perror("Failed to open existing journal payload %s", existing_path);
