@@ -341,8 +341,7 @@ static int restful_meshmb_list_json_content_chunk(struct http_request *hr, strbu
       return 1;
 
 ROWS:
-    case LIST_ROWS: FALLTHROUGH;
-    case LIST_FIRST:
+    case LIST_ROWS: case LIST_FIRST:
 
       if (!message_ply_is_open(&r->u.plylist.ply_reader)){
 	// re-load the current message text
@@ -373,7 +372,7 @@ ROWS:
 
 END:
       r->u.plylist.phase = LIST_END;
-      FALLTHROUGH;
+      FALLTHROUGH; // fall through
     case LIST_END:
 
       {
@@ -398,7 +397,7 @@ END:
       strbuf_puts(b, "\n]\n}\n");
       if (!strbuf_overrun(b))
 	r->u.plylist.phase = LIST_DONE;
-      FALLTHROUGH;
+      FALLTHROUGH; // fall through
     case LIST_DONE:
       return 0;
   }
@@ -603,8 +602,7 @@ static int restful_meshmb_feedlist_json_content_chunk(struct http_request *hr, s
 	r->u.meshmb_feeds.phase = LIST_ROWS;
       return 1;
 
-    case LIST_ROWS: FALLTHROUGH;
-    case LIST_FIRST:
+    case LIST_ROWS: case LIST_FIRST:
       {
 	struct enum_state state={
 	  .request = r,
@@ -617,12 +615,12 @@ static int restful_meshmb_feedlist_json_content_chunk(struct http_request *hr, s
 	  return 0;
       }
       r->u.meshmb_feeds.phase = LIST_END;
-      FALLTHROUGH;
+      FALLTHROUGH; // fall through
     case LIST_END:
       strbuf_puts(b, "\n]\n}\n");
       if (!strbuf_overrun(b))
 	r->u.plylist.phase = LIST_DONE;
-      FALLTHROUGH;
+      FALLTHROUGH; // fall through
     case LIST_DONE:
       return 0;
   }

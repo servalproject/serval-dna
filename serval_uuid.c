@@ -79,7 +79,9 @@ strbuf strbuf_uuid(strbuf sb, const serval_uuid_t *uuid)
     switch (i) {
       case 4: case 6: case 8: case 10:
 	strbuf_putc(sb, '-');
-	FALLTHROUGH;
+	strbuf_putc(sb, hexdigit_lower[uuid->u.binary[i] >> 4]);
+	strbuf_putc(sb, hexdigit_lower[uuid->u.binary[i] & 0xf]);
+	break;
       default:
 	strbuf_putc(sb, hexdigit_lower[uuid->u.binary[i] >> 4]);
 	strbuf_putc(sb, hexdigit_lower[uuid->u.binary[i] & 0xf]);

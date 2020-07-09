@@ -212,14 +212,14 @@ static int activity_ack(struct meshmb_feeds *feeds, struct message_ply_ack *ack)
       case RHIZOME_BUNDLE_STATUS_NEW:
 	rhizome_manifest_set_tail(m, 0);
 	rhizome_manifest_set_filesize(m, 0);
-	FALLTHROUGH;
+	FALLTHROUGH; // fall through
       case RHIZOME_BUNDLE_STATUS_SAME:
       {
 	enum rhizome_payload_status pstatus = rhizome_write_open_journal(&feeds->ack_writer, m, 0, RHIZOME_SIZE_UNSET);
 	if (pstatus==RHIZOME_PAYLOAD_STATUS_NEW)
 	  break;
       }
-	FALLTHROUGH;
+	FALLTHROUGH;  // fall through
       case RHIZOME_BUNDLE_STATUS_BUSY:
 	rhizome_bundle_result_free(&result);
 	rhizome_manifest_free(m);

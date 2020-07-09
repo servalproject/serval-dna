@@ -1496,7 +1496,7 @@ static void file_interface_init(const struct config_network_interface *ifconfig)
     broadcast.inet.sin_port=htons(ifconfig->port);
     broadcast.inet.sin_addr.s_addr=ifconfig->dummy_address.s_addr | ~ifconfig->dummy_netmask.s_addr;
 
-    FALLTHROUGH;
+    FALLTHROUGH; // fall through
   case SOCK_STREAM:
     if (!form_dummy_file_path(file_path, sizeof file_path, ifconfig->file))
       return; // ignore if path is too long

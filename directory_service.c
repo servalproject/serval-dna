@@ -120,7 +120,7 @@ static int add_record(int mdp_sockfd){
   
   // TODO check that did is a valid phone number
   
-  char url[256];
+  char url[4096];
   snprintf(url, sizeof(url), "sid://%s/local/%s|%s|%s", sid, did, did, name);
   
   // TODO only add whitelisted entries

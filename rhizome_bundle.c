@@ -1399,7 +1399,8 @@ struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const ch
     if (rhizome_manifest_createid(m) == -1) {
       return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "Could not bind manifest to an ID");
     }
-    FALLTHROUGH; // to set the BK field...
+    // to set the BK field...    
+    FALLTHROUGH; // fall through
   case NEW_BUNDLE_ID:
     assert(m->has_id);
     // If the manifest has no author but does have a 'sender' field, then use the

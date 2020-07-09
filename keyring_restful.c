@@ -177,7 +177,7 @@ static int restful_keyring_identitylist_json_content_chunk(struct http_request *
       
     case LIST_ROWS:
       strbuf_putc(b, ',');
-      FALLTHROUGH;
+      FALLTHROUGH; // fall through
     case LIST_FIRST:
       r->u.sidlist.phase = LIST_ROWS;
       const char *did = NULL;

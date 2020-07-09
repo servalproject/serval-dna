@@ -104,7 +104,7 @@ static int restful_route_list_json_content_chunk(struct http_request *hr, strbuf
 
     case LIST_ROWS:
       strbuf_putc(b, ',');
-      FALLTHROUGH;
+      FALLTHROUGH; // fall through
     case LIST_FIRST:
       r->u.subscriberlist.phase = LIST_ROWS;
       struct subscriber **subscriberp = subscriber_iterator_get_current(&r->u.subscriberlist.it);

@@ -78,10 +78,13 @@ typedef char bool_t;
 // To suppress the "may fall through" warning from -Wimplicit-fallthrough.
 #ifdef HAVE_STMT_ATTRIBUTE_FALLTHROUGH
 #   define __ATTRIBUTE_fallthrough  __fallthrough__
-#   define FALLTHROUGH __attribute__((__fallthrough__))
+#   define FALLTHROUGH __attribute__((__fallthrough__));
 #else
 #   define __ATTRIBUTE_fallthrough
-#   define FALLTHROUGH
+// If there is no __fallthrough__ attribute, it is a bit of a pain, because
+// not all version of GCC will let us define the fall-through comment in a macro
+// like this for portability.
+#   define FALLTHROUGH // fall-through
 #endif
 
 #endif // __SERVAL_DNA__LANG_H

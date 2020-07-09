@@ -494,19 +494,28 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
     }
     break;
   case AF_INET: FALLTHROUGH;
-  case AF_INET6:{
-    char name[INET6_ADDRSTRLEN];
-    char service[6];
-    
-    if (getnameinfo(addr, addrlen, name, sizeof name, service, sizeof service, NI_NUMERICHOST|NI_NUMERICSERV)==0){
-      strbuf_sprintf(sb, "%s:%s:%s", 
-	addr->sa_family==AF_INET?"AF_INET":"AF_INET6", 
-	name, 
-	service);
-      break;
+  case AF_INET6:
+    {
+      char name[INET6_ADDRSTRLEN];
+      char service[6];
+      
+      if (getnameinfo(addr, addrlen, name, sizeof name, service, sizeof service, NI_NUMERICHOST|NI_NUMERICSERV)==0){
+	strbuf_sprintf(sb, "%s:%s:%s", 
+		       addr->sa_family==AF_INET?"AF_INET":"AF_INET6", 
+		       name, 
+		       service);
+	break;
+      }
+
+      strbuf_append_socket_domain(sb, addr->sa_family);
+      size_t len = (size_t)addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
+      unsigned i;
+      for (i = 0; i < len; ++i) {
+	strbuf_putc(sb, i ? ',' : ':');
+	strbuf_sprintf(sb, "%02x", addr->sa_data[i]);
+      }
     }
-    FALLTHROUGH;
-  }
+    break;
   default: {
       strbuf_append_socket_domain(sb, addr->sa_family);
       size_t len = (size_t)addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;

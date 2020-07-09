@@ -702,7 +702,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	    case SQLITE_LOCKED: \
 	      if (retry && _sqlite_retry(__whence, retry, #FUNC "()")) \
 		continue; \
-	      FALLTHROUGH; \
+	      FALLTHROUGH; /* fall through */	\
 	    default: \
 	      LOGF(log_level, #FUNC "(%d) failed, %s: %s", index, sqlite3_errmsg(rhizome_database.db), sqlite3_sql(statement)); \
 	      sqlite3_finalize(statement); \
