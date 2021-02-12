@@ -108,7 +108,7 @@ in the [OpenWRT 12.09 Buildroot][] repository is:
 
     src-svn packages svn://svn.openwrt.org/openwrt/branches/packages_12.09
     src-svn xwrt http://x-wrt.googlecode.com/svn/trunk/package
-    src-svn luci http://svn.luci.subsignal.org/luci/branches/luci-0.11/contrib/package
+    src-git luci git://github.com/openwrt/luci/
     src-git routing git://github.com/openwrt-routing/packages.git;for-12.09.x
     #src-svn phone svn://svn.openwrt.org/openwrt/feeds/phone
     #src-svn efl svn://svn.openwrt.org/openwrt/feeds/efl
