@@ -615,6 +615,97 @@ end:
   return ret;
 }
 
+DEFINE_CMD(app_route_json, 0,
+  "Print the routing table as json",
+  "route","json");
+static int app_route_json(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  int mdp_sockfd;
+  DEBUG_cli_parsed(verbose, parsed);
+
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    return WHY("Cannot create MDP socket");
+
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+
+  mdp.packetTypeAndFlags=MDP_ROUTING_TABLE;
+  overlay_mdp_send(mdp_sockfd, &mdp,0,0);
+
+  cli_put_string(context, "{\"directed\": false, \"graph\": {}, \n\"nodes\": [", "\n");
+
+  size_t rowcount=0;
+
+  sid_t sid_network[MAX_PEERS][2];
+  int reachable_network[MAX_PEERS];
+  sid_t sid_self;
+
+  while(overlay_mdp_client_poll(mdp_sockfd, 200)){
+    overlay_mdp_frame rx;
+    int ttl;
+    if (overlay_mdp_recv(mdp_sockfd, &rx, 0, &ttl))
+      continue;
+
+    int ofs=0;
+    while(ofs + sizeof(struct overlay_route_record) <= rx.out.payload_length){
+      struct overlay_route_record *p=&rx.out.route_record;
+      ofs+=sizeof(struct overlay_route_record);
+
+      if (p->reachable==REACHABLE_NONE)
+	continue;
+
+      sid_network[rowcount][0] = p->sid;
+      sid_network[rowcount][1] = p->neighbour;
+      reachable_network[rowcount] = p->reachable;
+
+      if(p->reachable == REACHABLE_SELF) {
+        sid_self = p->sid;
+      }
+
+      if (rowcount > 0)
+        cli_puts(context, ",\n");
+      cli_printf(context, "  {\"id\": \"%s\", \"group\": %d, \"name\":\"%s\", \"reachable\": %d}", alloca_tohex_sid_t(p->sid), p->reachable, alloca_tohex_sid_t(p->sid), p->reachable);
+
+      rowcount++;
+      if(rowcount >= MAX_PEERS)
+        break;
+    }
+  }
+  overlay_mdp_client_close(mdp_sockfd);
+  cli_puts(context, "\n], \"links\": [\n");
+  unsigned int i, j;
+  for(i=0; i < rowcount; i++) {
+    if(!is_sid_t_any(sid_network[i][1]) && !is_sid_t_broadcast(sid_network[i][1]) ) {
+      int router_idx = -1;
+      for(j=0; j < rowcount; j++) {
+        if(cmp_sid_t(&sid_network[i][1], &sid_network[j][0]) == 0) {
+          router_idx = j;
+          break;
+        }
+      }
+      if(i!=0)
+        cli_puts(context,", \n");
+      cli_printf(context,"  {\"source\": %d, \"target\": %d}", i, router_idx);
+    } else if(is_sid_t_any(sid_network[i][1])) {
+        if(reachable_network[i] == REACHABLE_DIRECT || reachable_network[i] == REACHABLE_UNICAST) {
+          int router_idx = -1;
+          for(j=0; j < rowcount; j++) {
+            if(cmp_sid_t(&sid_self, &sid_network[j][0]) == 0) {
+              router_idx = j;
+              break;
+            }
+          }
+          if(i!=0)
+            cli_puts(context,", \n");
+          cli_printf(context,"  {\"source\": %d, \"target\": %d}", i, router_idx);
+        }
+    }
+  }
+
+  cli_puts(context, "\n], \"multigraph\": false}\n");
+  return 0;
+}
+
 DEFINE_CMD(app_network_scan, 0,
   "Scan the network for serval peers. If no argument is supplied, all local addresses will be scanned.",
   "scan","[<address>]");
