@@ -449,7 +449,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs)
   assert((*ofs) < m->manifest_all_bytes);
   const unsigned char *sig = m->manifestdata + *ofs;
   uint8_t sigType = m->manifestdata[*ofs];
-  uint8_t len = (sigType << 2) + 4 + 1;
+  uint16_t len = (sigType << 2) + 4 + 1;
   if (*ofs + len > m->manifest_all_bytes) {
     WARNF("Invalid signature at offset %u: type=%#02x gives len=%u that overruns manifest size",
 	*ofs, sigType, len);
