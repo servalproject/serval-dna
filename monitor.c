@@ -652,14 +652,19 @@ static int monitor_help(const struct cli_parsed *parsed, struct cli_context *con
 }
 
 static void monitor_announce_bundle(rhizome_manifest *m)
-{
-  char msg[1024];
+{ 
+  // This message can contain the entire manifest, which itself can be 1024 bytes long.
+  // Thus we need to allow more space.
+  char msg[2048];
   int len = snprintf(msg,1024,"\n*%zd:BUNDLE:%s\n",
            m->manifest_all_bytes,
 	   alloca_tohex_rhizome_bid_t(m->keypair.public_key));
-  bcopy(m->manifestdata, &msg[len], m->manifest_all_bytes);
-  len+=m->manifest_all_bytes;
-  msg[len++]='\n';
+
+  if ((len+m->manifest_all_bytes)<sizeof(msg)) {
+    bcopy(m->manifestdata, &msg[len], m->manifest_all_bytes);
+    len+=m->manifest_all_bytes;
+    msg[len++]='\n';
+  }
   monitor_tell_clients(msg, len, MONITOR_RHIZOME);
 }
 DEFINE_TRIGGER(bundle_add, monitor_announce_bundle);
