@@ -52,7 +52,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "radio_link.h"
 #include "debug.h"
 
-#define MAVLINK_MSG_ID_RADIO 166
+#define MAVLINK10_STX 254	// 0xfe
+#define MAVLINK09_MSG_ID_RADIO 166	// 0xa6
+#define MAVLINK10_MSG_ID_RADIO 109	// 0x6d
 #define MAVLINK_MSG_ID_DATASTREAM 67
 
 // use '3D' for 3DRadio
@@ -189,7 +191,7 @@ static int radio_link_encode_packet(struct radio_link_state *link_state)
     endP = 0;
   }
   
-  link_state->txbuffer[0]=0xfe; // mavlink v1.0 magic header
+  link_state->txbuffer[0]=MAVLINK10_STX; // mavlink v1.0 magic header
   
   // we need to add FEC_LENGTH for FEC, but the length field doesn't include the expected headers or CRC
   int len = count + FEC_LENGTH - RADIO_CRC_LENGTH;
@@ -247,7 +249,7 @@ static int build_heartbeat(struct radio_link_state *link_state)
   int count=9;
   bzero(link_state->txbuffer, count + RADIO_CRC_LENGTH + RADIO_HEADER_LENGTH);
   
-  link_state->txbuffer[0]=0xfe; // mavlink v1.0 link_state->txbuffer
+  link_state->txbuffer[0]=MAVLINK10_STX; // mavlink v1.0 link_state->txbuffer
   // Must be 9 to indicate heartbeat
   link_state->txbuffer[1]=count; // payload len, excluding 6 byte header and 2 byte CRC
   link_state->txbuffer[2]=(count & 0xF); // packet sequence
@@ -343,11 +345,11 @@ int radio_link_tx(struct overlay_interface *interface)
 
 static int parse_heartbeat(struct radio_link_state *state, const unsigned char *payload)
 {
-  if (payload[0]==0xFE 
+  if (payload[0]==MAVLINK10_STX
     && payload[1]==9
     && payload[3]==RADIO_SOURCE_SYSTEM
     && payload[4]==RADIO_SOURCE_COMPONENT
-    && payload[5]==MAVLINK_MSG_ID_RADIO){
+    && (payload[5]==MAVLINK09_MSG_ID_RADIO || payload[5]==MAVLINK10_MSG_ID_RADIO)){
     
     // we can assume that radio status packets arrive without corruption
     state->radio_rssi=(1.0*payload[10]-payload[13])/1.9;
@@ -473,11 +475,11 @@ int radio_link_decode(struct overlay_interface *interface, uint8_t c)
     // look for packet length headers
     p = &state->payload[state->payload_start];
     while(state->payload_length==0 && state->payload_offset>=6){
-      if (p[0]==0xFE 
+      if (p[0]==MAVLINK10_STX
 	&& p[1]==9
 	&& p[3]==RADIO_SOURCE_SYSTEM
 	&& p[4]==RADIO_SOURCE_COMPONENT
-	&& p[5]==MAVLINK_MSG_ID_RADIO){
+	&& (p[5]==MAVLINK09_MSG_ID_RADIO || p[5]==MAVLINK10_MSG_ID_RADIO)){
 	//looks like a valid heartbeat response header, read the rest and process it
 	state->payload_length=17;
 	break;
